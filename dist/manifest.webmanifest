@@ -1,0 +1,12 @@
+{
+  "name": "DimsTasks — персональний таск-менеджер",
+  "short_name": "DimsTasks",
+  "description": "Швидкий local-first таск-менеджер",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f4f1ea",
+  "theme_color": "#1e293b",
+  "icons": [{ "src": "./icons/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }]
+}
+

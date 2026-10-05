@@ -1,0 +1,62 @@
+<header class="topbar">
+  <div>
+    <p class="eyebrow">Персональний фокус</p>
+    <h1>DimsTasks</h1>
+  </div>
+  <div class="header-actions">
+    <button id="install-btn" class="icon-btn" hidden>Встановити</button>
+    <button id="theme-btn" class="icon-btn" aria-label="Змінити тему">◐</button>
+  </div>
+</header>
+
+<main>
+  <section class="composer" aria-labelledby="new-task-title">
+    <h2 id="new-task-title">Що треба зробити?</h2>
+    <form id="task-form">
+      <label class="sr-only" for="task-title">Нова задача</label>
+      <input id="task-title" name="title" maxlength="160" autocomplete="off" placeholder="Наприклад: спланувати тиждень" required>
+      <button type="submit">Додати</button>
+    </form>
+  </section>
+
+  <section class="workspace" aria-labelledby="tasks-title">
+    <div class="section-head">
+      <div>
+        <p class="eyebrow" id="task-count">0 активних</p>
+        <h2 id="tasks-title">Мої задачі</h2>
+      </div>
+      <div class="filters" role="group" aria-label="Фільтр задач">
+        <button class="filter active" data-filter="all">Усі</button>
+        <button class="filter" data-filter="active">Активні</button>
+        <button class="filter" data-filter="done">Готові</button>
+      </div>
+    </div>
+    <ul id="task-list" aria-live="polite"></ul>
+    <div id="empty-state" class="empty">
+      <span>✓</span>
+      <p>Тут поки тихо. Додайте першу задачу.</p>
+    </div>
+  </section>
+
+  <section class="data-panel">
+    <details>
+      <summary>Дані та резервна копія</summary>
+      <p>Задачі зберігаються тільки в цьому браузері. Експорт створює повну JSON-копію.</p>
+      <div class="data-actions">
+        <button id="export-btn" class="secondary">Експорт</button>
+        <label class="secondary file-label">Відновити<input id="import-input" type="file" accept="application/json,.json"></label>
+      </div>
+    </details>
+  </section>
+</main>
+
+<template id="task-template">
+  <li class="task-card">
+    <button class="toggle" aria-label="Позначити виконаною"><span>✓</span></button>
+    <p class="task-text"></p>
+    <button class="delete" aria-label="Видалити задачу">×</button>
+  </li>
+</template>
+
+<div id="toast" class="toast" role="status" aria-live="polite"></div>
+
