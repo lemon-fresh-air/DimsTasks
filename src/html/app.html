@@ -1,62 +1,23 @@
-<header class="topbar">
-  <div>
-    <p class="eyebrow">Персональний фокус</p>
-    <h1>DimsTasks</h1>
-  </div>
-  <div class="header-actions">
-    <button id="install-btn" class="icon-btn" hidden>Встановити</button>
-    <button id="theme-btn" class="icon-btn" aria-label="Змінити тему">◐</button>
-  </div>
-</header>
-
-<main>
-  <section class="composer" aria-labelledby="new-task-title">
-    <h2 id="new-task-title">Що треба зробити?</h2>
-    <form id="task-form">
-      <label class="sr-only" for="task-title">Нова задача</label>
-      <input id="task-title" name="title" maxlength="160" autocomplete="off" placeholder="Наприклад: спланувати тиждень" required>
-      <button type="submit">Додати</button>
-    </form>
-  </section>
-
-  <section class="workspace" aria-labelledby="tasks-title">
-    <div class="section-head">
-      <div>
-        <p class="eyebrow" id="task-count">0 активних</p>
-        <h2 id="tasks-title">Мої задачі</h2>
-      </div>
-      <div class="filters" role="group" aria-label="Фільтр задач">
-        <button class="filter active" data-filter="all">Усі</button>
-        <button class="filter" data-filter="active">Активні</button>
-        <button class="filter" data-filter="done">Готові</button>
-      </div>
+<div class="app-shell">
+  <header class="page-header"><h1>Нові</h1><p id="task-count">0 задач</p></header>
+  <main><section class="task-section" aria-labelledby="inbox-title">
+    <h2 id="inbox-title">Нові</h2><ul id="task-list" aria-live="polite"></ul>
+    <div id="empty-state" class="empty"><span class="empty-icon" aria-hidden="true">✓</span><p>Нових задач поки немає</p><small>Натисніть кнопку внизу, щоб додати першу.</small></div>
+  </section></main>
+  <button id="add-task-btn" class="fab" aria-label="Додати задачу"><span aria-hidden="true">＋</span></button>
+  <nav class="bottom-nav" aria-label="Основна навігація"><button class="nav-item active" aria-current="page"><span class="inbox-icon" aria-hidden="true"></span><span>Нові</span></button></nav>
+</div>
+<dialog id="task-dialog" class="task-dialog">
+  <form id="task-form" method="dialog">
+    <label class="sr-only" for="task-title">Назва задачі</label>
+    <textarea id="task-title" name="title" rows="1" maxlength="160" placeholder="Назва задачі" required></textarea>
+    <div class="composer-actions">
+      <span class="meta-chip inbox-chip"><span class="inbox-icon" aria-hidden="true"></span>Нові</span>
+      <label class="meta-chip date-chip" for="task-date"><span class="calendar-icon" aria-hidden="true"></span><span id="date-label">Сьогодні</span><input id="task-date" name="date" type="date"></label>
     </div>
-    <ul id="task-list" aria-live="polite"></ul>
-    <div id="empty-state" class="empty">
-      <span>✓</span>
-      <p>Тут поки тихо. Додайте першу задачу.</p>
-    </div>
-  </section>
-
-  <section class="data-panel">
-    <details>
-      <summary>Дані та резервна копія</summary>
-      <p>Задачі зберігаються тільки в цьому браузері. Експорт створює повну JSON-копію.</p>
-      <div class="data-actions">
-        <button id="export-btn" class="secondary">Експорт</button>
-        <label class="secondary file-label">Відновити<input id="import-input" type="file" accept="application/json,.json"></label>
-      </div>
-    </details>
-  </section>
-</main>
-
-<template id="task-template">
-  <li class="task-card">
-    <button class="toggle" aria-label="Позначити виконаною"><span>✓</span></button>
-    <p class="task-text"></p>
-    <button class="delete" aria-label="Видалити задачу">×</button>
-  </li>
-</template>
-
+    <p class="form-hint">Enter — додати · Shift+Enter — новий рядок</p>
+  </form>
+</dialog>
+<template id="task-template"><li class="task-card"><button class="toggle" aria-label="Позначити виконаною"><span>✓</span></button><div class="task-copy"><p class="task-text"></p><p class="task-date"></p></div><span class="task-project">Нові <span class="inbox-icon" aria-hidden="true"></span></span></li></template>
 <div id="toast" class="toast" role="status" aria-live="polite"></div>
 

@@ -1,27 +1,8 @@
-const els = {
-  form: document.querySelector("#task-form"), input: document.querySelector("#task-title"), list: document.querySelector("#task-list"),
-  empty: document.querySelector("#empty-state"), count: document.querySelector("#task-count"), template: document.querySelector("#task-template"), toast: document.querySelector("#toast")
-};
-
-function toast(message) {
-  els.toast.textContent = message;
-  els.toast.classList.add("show");
-  clearTimeout(toast.timer);
-  toast.timer = setTimeout(() => els.toast.classList.remove("show"), 2200);
-}
-
-function renderTasks(tasks, filter) {
-  const visible = tasks.filter(task => filter === "all" || (filter === "done" ? task.done : !task.done));
-  els.list.replaceChildren(...visible.map(task => {
-    const row = els.template.content.firstElementChild.cloneNode(true);
-    row.dataset.id = task.id;
-    row.classList.toggle("done", task.done);
-    row.querySelector(".task-text").textContent = task.title;
-    row.querySelector(".toggle").setAttribute("aria-label", task.done ? "Позначити активною" : "Позначити виконаною");
-    return row;
-  }));
-  els.empty.hidden = visible.length > 0;
-  const active = tasks.filter(task => !task.done).length;
-  els.count.textContent = `${active} ${active === 1 ? "активна" : "активних"}`;
-}
+const els = { form:document.querySelector("#task-form"), input:document.querySelector("#task-title"), date:document.querySelector("#task-date"), dateLabel:document.querySelector("#date-label"), dialog:document.querySelector("#task-dialog"), add:document.querySelector("#add-task-btn"), list:document.querySelector("#task-list"), empty:document.querySelector("#empty-state"), count:document.querySelector("#task-count"), template:document.querySelector("#task-template"), toast:document.querySelector("#toast") };
+const dateFormatter = new Intl.DateTimeFormat("uk-UA",{day:"numeric",month:"short"});
+function localDateValue(date=new Date()){const offset=date.getTimezoneOffset()*60000;return new Date(date.getTime()-offset).toISOString().slice(0,10)}
+function readableDate(value){if(!value)return "Без дати";if(value===localDateValue())return "Сьогодні";const tomorrow=new Date();tomorrow.setDate(tomorrow.getDate()+1);if(value===localDateValue(tomorrow))return "Завтра";return dateFormatter.format(new Date(`${value}T12:00:00`))}
+function toast(message){els.toast.textContent=message;els.toast.classList.add("show");clearTimeout(toast.timer);toast.timer=setTimeout(()=>els.toast.classList.remove("show"),1800)}
+function renderTasks(tasks){const active=tasks.filter(task=>!task.done);els.list.replaceChildren(...active.map(task=>{const row=els.template.content.firstElementChild.cloneNode(true);row.dataset.id=task.id;row.querySelector(".task-text").textContent=task.title;row.querySelector(".task-date").textContent=readableDate(task.dueDate||task.createdAt?.slice(0,10));return row}));els.list.hidden=active.length===0;els.empty.hidden=active.length>0;els.count.textContent=`${active.length} ${active.length===1?"задача":active.length>1&&active.length<5?"задачі":"задач"}`}
+function openComposer(){els.form.reset();els.date.value=localDateValue();els.dateLabel.textContent="Сьогодні";els.dialog.showModal();requestAnimationFrame(()=>els.input.focus())}
 
