@@ -38,7 +38,8 @@ document = f'''<!doctype html>
 if "__BUILD_ID__" in document:
     raise SystemExit("Unresolved placeholder in index.html")
 
-build_id = sha256(document.encode("utf-8")).hexdigest()[:12]
+asset_bytes = b"".join(path.read_bytes() for path in [STATIC / "manifest.webmanifest", STATIC / "icons/icon.svg"])
+build_id = sha256(document.encode("utf-8") + asset_bytes).hexdigest()[:12]
 DIST.mkdir(exist_ok=True)
 (DIST / "index.html").write_text(document, encoding="utf-8", newline="\n")
 copy2(STATIC / "manifest.webmanifest", DIST / "manifest.webmanifest")
@@ -48,4 +49,3 @@ if "__BUILD_ID__" in service_worker:
 (DIST / "service-worker.js").write_text(service_worker, encoding="utf-8", newline="\n")
 copytree(STATIC / "icons", DIST / "icons", dirs_exist_ok=True)
 print(f"Built DimsTasks {build_id} -> {DIST}")
-
