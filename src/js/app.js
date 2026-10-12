@@ -106,7 +106,13 @@ els.input.addEventListener("input", () => { els.input.style.height = "auto"; els
 els.input.addEventListener("keydown", event => { if (event.key === "Enter" && !event.shiftKey && !els.dialog.classList.contains("detail-mode")) { event.preventDefault(); addTask(); } if (event.key === "Escape") els.dialog.close(); });
 els.form.addEventListener("submit", event => { event.preventDefault(); if (!els.dialog.classList.contains("detail-mode")) addTask(); });
 els.dialog.addEventListener("close", () => { if (els.dialog.dataset.taskId) saveOpenTask().catch(() => toast("Не вдалося зберегти зміни")); });
-els.dialog.addEventListener("click", event => { const box = els.dialog.getBoundingClientRect(); if (event.clientX < box.left || event.clientX > box.right || event.clientY < box.top || event.clientY > box.bottom) { if (els.dialog.dataset.taskId) closeTaskDetails(); else els.dialog.close(); } });
+els.dialog.addEventListener("pointerdown", event => {
+  if (event.target !== els.dialog) return;
+  const box = els.dialog.getBoundingClientRect();
+  const outside = event.clientX < box.left || event.clientX > box.right || event.clientY < box.top || event.clientY > box.bottom;
+  if (!outside) return;
+  if (els.dialog.dataset.taskId) closeTaskDetails(); else els.dialog.close();
+});
 els.list.addEventListener("click", async event => {
   const row = event.target.closest(".swipe-row");
   if (row?.dataset.swiped) { delete row.dataset.swiped; return; }
