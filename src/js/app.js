@@ -19,6 +19,36 @@ function toggleTaskSelection(id) {
   renderTasks(tasks, selectedTaskIds);
 }
 
+function clearTaskSelection() {
+  selectedTaskIds = new Set();
+  renderTasks(tasks, selectedTaskIds);
+}
+
+async function deleteSelectedTasks() {
+  const deletedTasks = tasks.filter(task => selectedTaskIds.has(task.id));
+  if (!deletedTasks.length) return;
+  const deletedIds = deletedTasks.map(task => task.id);
+  tasks = tasks.filter(task => !selectedTaskIds.has(task.id));
+  selectedTaskIds = new Set();
+  renderTasks(tasks, selectedTaskIds);
+  try {
+    await taskDb.deleteMany(deletedIds);
+    const message = deletedTasks.length === 1 ? "Завдання видалено" : `Видалено завдань: ${deletedTasks.length}`;
+    toast(message, {
+      duration: 3000,
+      action: async () => {
+        await taskDb.putMany(deletedTasks);
+        await refresh();
+        toast("Завдання відновлено");
+      }
+    });
+  } catch (_error) {
+    tasks.push(...deletedTasks);
+    await refresh();
+    toast("Не вдалося видалити завдання");
+  }
+}
+
 async function addTask() {
   const title = els.input.value.trim();
   if (!title) { els.input.focus(); return; }
@@ -52,6 +82,8 @@ async function deleteTask(id) {
 }
 
 els.add.addEventListener("click", openComposer);
+els.selectionClose.addEventListener("click", clearTaskSelection);
+els.deleteSelected.addEventListener("click", deleteSelectedTasks);
 els.date.addEventListener("change", () => { els.dateLabel.textContent = readableDate(els.date.value); });
 els.input.addEventListener("input", () => { els.input.style.height = "auto"; els.input.style.height = `${Math.min(els.input.scrollHeight, 150)}px`; });
 els.input.addEventListener("keydown", event => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); addTask(); } if (event.key === "Escape") els.dialog.close(); });
