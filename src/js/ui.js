@@ -118,7 +118,7 @@ function openComposer() {
   els.dialog.dataset.taskId = "";
   els.form.reset();
   els.detailHeader.hidden = true;
-  els.detailFields.hidden = true;
+  els.detailFields.hidden = false;
   els.attributePlaceholders.hidden = true;
   els.detailToggle.hidden = true;
   els.formHint.hidden = false;

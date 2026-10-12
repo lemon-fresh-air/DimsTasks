@@ -99,6 +99,7 @@ body.task-dialog-open { overflow:hidden; }
 .detail-mode .composer-actions { margin-left:50px; }
 .detail-mode .inbox-chip { display:none; }
 .detail-fields { margin:8px 0 0 50px; }
+.task-dialog:not(.detail-mode) .detail-fields { margin-left:0; }
 #task-description { width:100%; min-height:64px; max-height:132px; resize:vertical; border:0; outline:0; padding:8px 0; background:transparent; color:var(--text); font:400 1rem/1.45 system-ui,sans-serif; }
 #task-description::placeholder { color:var(--muted); opacity:.85; }
 .meta-chip { min-height:48px; display:inline-flex; align-items:center; gap:9px; flex:0 0 auto; padding:0 15px; border:0; border-radius:14px; background:#f3f3f5; color:var(--text); font-weight:700; }
@@ -507,7 +508,7 @@ function openComposer() {
   els.dialog.dataset.taskId = "";
   els.form.reset();
   els.detailHeader.hidden = true;
-  els.detailFields.hidden = true;
+  els.detailFields.hidden = false;
   els.attributePlaceholders.hidden = true;
   els.detailToggle.hidden = true;
   els.formHint.hidden = false;
@@ -656,7 +657,7 @@ async function deleteSelectedTasks() {
 async function addTask() {
   const title = els.input.value.trim();
   if (!title) { els.input.focus(); return; }
-  await taskDb.put(createTask({ title, dueDate: els.date.value || null }));
+  await taskDb.put(createTask({ title, description: els.description.value.trim(), dueDate: els.date.value || null }));
   hideTaskDialog();
   await refresh();
   toast("Задачу додано");

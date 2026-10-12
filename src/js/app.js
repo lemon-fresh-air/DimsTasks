@@ -52,7 +52,7 @@ async function deleteSelectedTasks() {
 async function addTask() {
   const title = els.input.value.trim();
   if (!title) { els.input.focus(); return; }
-  await taskDb.put(createTask({ title, dueDate: els.date.value || null }));
+  await taskDb.put(createTask({ title, description: els.description.value.trim(), dueDate: els.date.value || null }));
   hideTaskDialog();
   await refresh();
   toast("Задачу додано");
