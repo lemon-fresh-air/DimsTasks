@@ -711,7 +711,7 @@ els.date.addEventListener("change", () => { els.dateLabel.textContent = readable
 els.input.addEventListener("input", () => { els.input.style.height = "auto"; els.input.style.height = `${Math.min(els.input.scrollHeight, 150)}px`; });
 els.form.addEventListener("keydown", event => {
   if (event.key === "Escape") { event.preventDefault(); saveAndLeaveTaskEditor({ allowEmptyNew: true }); return; }
-  if (event.key === "Enter" && !event.shiftKey && event.target.matches("#task-title,#task-description")) {
+  if (event.key === "Enter" && !event.shiftKey && event.target.matches("#task-title")) {
     event.preventDefault();
     saveAndLeaveTaskEditor();
   }
