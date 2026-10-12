@@ -1,4 +1,4 @@
-const CACHE = "dims-tasks-69251a282be9";
+const CACHE = "dims-tasks-1b9059714f23";
 const SHELL = ["./", "./index.html", "./manifest.webmanifest", "./icons/icon.svg"];
 self.addEventListener("install", event => event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(SHELL)).then(() => self.skipWaiting())));
 self.addEventListener("activate", event => event.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(key => key.startsWith("dims-tasks-") && key !== CACHE).map(key => caches.delete(key)))).then(() => self.clients.claim())));

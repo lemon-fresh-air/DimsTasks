@@ -10,14 +10,11 @@ const els = {
   description: document.querySelector("#task-description"),
   date: document.querySelector("#task-date"),
   dateLabel: document.querySelector("#date-label"),
-  dialog: document.querySelector("#task-dialog"),
-  detailHeader: document.querySelector(".detail-header"),
+  editor: document.querySelector("#task-editor"),
   detailFields: document.querySelector(".detail-fields"),
   attributePlaceholders: document.querySelector(".attribute-placeholders"),
   detailToggle: document.querySelector("#detail-toggle"),
-  collapseTask: document.querySelector("#collapse-task"),
-  saveTaskButton: document.querySelector("#save-task-button"),
-  formHint: document.querySelector(".form-hint"),
+  editorBack: document.querySelector("#task-editor-back"),
   add: document.querySelector("#add-task-btn"),
   list: document.querySelector("#task-list"),
   empty: document.querySelector("#empty-state"),
@@ -102,62 +99,44 @@ function renderTasks(tasks, selectedIds = new Set()) {
     : `${active.length} ${active.length === 1 ? "задача" : active.length > 1 && active.length < 5 ? "задачі" : "задач"}`;
 }
 
-function showTaskDialog() {
-  els.dialog.hidden = false;
-  document.body.classList.add("task-dialog-open");
-  syncTaskDialogViewport();
+function showTaskEditor() {
+  els.shell.hidden = true;
+  els.editor.hidden = false;
+  document.body.classList.add("task-editor-open");
 }
 
-function hideTaskDialog() {
-  if (els.dialog.hidden) return;
-  els.dialog.hidden = true;
-  document.body.classList.remove("task-dialog-open");
-  els.dialog.dispatchEvent(new Event("taskdialogclose"));
+function hideTaskEditor() {
+  els.editor.hidden = true;
+  els.shell.hidden = false;
+  document.body.classList.remove("task-editor-open");
+  window.scrollTo(0, 0);
 }
 
-function syncTaskDialogViewport() {
-  if (!window.visualViewport) return;
-  const viewport = window.visualViewport;
-  els.dialog.style.setProperty("--visual-viewport-height", `${viewport.height}px`);
-  els.dialog.style.setProperty("--visual-viewport-top", `${viewport.offsetTop}px`);
-}
-
-if (window.visualViewport) {
-  window.visualViewport.addEventListener("resize", syncTaskDialogViewport);
-  window.visualViewport.addEventListener("scroll", syncTaskDialogViewport);
-}
-
-function openComposer() {
-  els.dialog.classList.remove("detail-mode");
-  els.dialog.dataset.taskId = "";
+function openNewTaskEditor() {
+  els.editor.classList.remove("detail-mode");
+  els.editor.dataset.taskId = "";
   els.form.reset();
-  els.detailHeader.hidden = true;
   els.detailFields.hidden = false;
   els.attributePlaceholders.hidden = true;
   els.detailToggle.hidden = true;
-  els.saveTaskButton.textContent = "Створити задачу";
-  els.formHint.hidden = false;
   els.date.value = localDateValue();
   els.dateLabel.textContent = "Сьогодні";
-  showTaskDialog();
+  showTaskEditor();
   requestAnimationFrame(() => els.input.focus());
 }
 
 function openTaskDetails(task) {
-  els.dialog.classList.add("detail-mode");
-  els.dialog.dataset.taskId = task.id;
+  els.editor.classList.add("detail-mode");
+  els.editor.dataset.taskId = task.id;
   els.form.reset();
-  els.detailHeader.hidden = false;
   els.detailFields.hidden = false;
   els.attributePlaceholders.hidden = false;
   els.detailToggle.hidden = false;
-  els.saveTaskButton.textContent = "Зберегти зміни";
-  els.formHint.hidden = true;
   els.input.value = task.title;
   els.description.value = task.description || "";
   els.date.value = task.dueDate || "";
   els.dateLabel.textContent = readableDate(task.dueDate);
-  showTaskDialog();
+  showTaskEditor();
   requestAnimationFrame(() => {
     els.input.style.height = "auto";
     els.input.style.height = `${Math.min(els.input.scrollHeight, 150)}px`;

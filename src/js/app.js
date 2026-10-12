@@ -51,15 +51,14 @@ async function deleteSelectedTasks() {
 
 async function addTask() {
   const title = els.input.value.trim();
-  if (!title) { els.input.focus(); return; }
+  if (!title) { els.input.focus(); return false; }
   await taskDb.put(createTask({ title, description: els.description.value.trim(), dueDate: els.date.value || null }));
-  hideTaskDialog();
   await refresh();
-  toast("Задачу додано");
+  return true;
 }
 
 async function saveOpenTask() {
-  const id = els.dialog.dataset.taskId;
+  const id = els.editor.dataset.taskId;
   if (!id) return false;
   const task = tasks.find(item => item.id === id);
   const title = els.input.value.trim();
@@ -69,22 +68,18 @@ async function saveOpenTask() {
   return true;
 }
 
-async function submitTaskForm() {
-  if (!els.dialog.classList.contains("detail-mode")) {
-    await addTask();
+async function saveAndLeaveTaskEditor({ allowEmptyNew = false } = {}) {
+  const editing = Boolean(els.editor.dataset.taskId);
+  const title = els.input.value.trim();
+  if (!editing && !title && allowEmptyNew) {
+    hideTaskEditor();
     return;
   }
-  const saved = await saveOpenTask();
+  const saved = editing ? await saveOpenTask() : await addTask();
   if (!saved) { els.input.focus(); return; }
-  els.dialog.dataset.taskId = "";
-  hideTaskDialog();
-  toast("Зміни збережено");
-}
-
-async function closeTaskDetails() {
-  await saveOpenTask();
-  els.dialog.dataset.taskId = "";
-  hideTaskDialog();
+  els.editor.dataset.taskId = "";
+  hideTaskEditor();
+  toast(editing ? "Зміни збережено" : "Задачу додано");
 }
 
 async function deleteTask(id) {
@@ -110,19 +105,20 @@ async function deleteTask(id) {
   }
 }
 
-els.add.addEventListener("click", openComposer);
-els.collapseTask.addEventListener("click", closeTaskDetails);
+els.add.addEventListener("click", openNewTaskEditor);
+els.editorBack.addEventListener("click", () => saveAndLeaveTaskEditor({ allowEmptyNew: true }));
 els.selectionClose.addEventListener("click", clearTaskSelection);
 els.deleteSelected.addEventListener("click", deleteSelectedTasks);
 els.date.addEventListener("change", () => { els.dateLabel.textContent = readableDate(els.date.value); });
 els.input.addEventListener("input", () => { els.input.style.height = "auto"; els.input.style.height = `${Math.min(els.input.scrollHeight, 150)}px`; });
-els.input.addEventListener("keydown", event => { if (event.key === "Enter" && !event.shiftKey && !els.dialog.classList.contains("detail-mode")) { event.preventDefault(); addTask(); } if (event.key === "Escape") hideTaskDialog(); });
-els.form.addEventListener("submit", event => { event.preventDefault(); submitTaskForm(); });
-els.dialog.addEventListener("taskdialogclose", () => { if (els.dialog.dataset.taskId) saveOpenTask().catch(() => toast("Не вдалося зберегти зміни")); });
-els.dialog.addEventListener("pointerdown", event => {
-  if (event.target !== els.dialog) return;
-  if (els.dialog.dataset.taskId) closeTaskDetails(); else hideTaskDialog();
+els.form.addEventListener("keydown", event => {
+  if (event.key === "Escape") { event.preventDefault(); saveAndLeaveTaskEditor({ allowEmptyNew: true }); return; }
+  if (event.key === "Enter" && !event.shiftKey && event.target.matches("#task-title,#task-description")) {
+    event.preventDefault();
+    saveAndLeaveTaskEditor();
+  }
 });
+els.form.addEventListener("submit", event => { event.preventDefault(); saveAndLeaveTaskEditor(); });
 els.list.addEventListener("click", async event => {
   const row = event.target.closest(".swipe-row");
   if (row?.dataset.swiped) { delete row.dataset.swiped; return; }
@@ -147,12 +143,12 @@ els.list.addEventListener("click", async event => {
 });
 
 els.detailToggle.addEventListener("click", async () => {
-  const task = tasks.find(item => item.id === els.dialog.dataset.taskId);
+  const task = tasks.find(item => item.id === els.editor.dataset.taskId);
   if (!task) return;
   const completedAt = new Date().toISOString();
   await taskDb.put({ ...task, title: els.input.value.trim() || task.title, description: els.description.value.trim(), dueDate: els.date.value || null, status: "completed", completedAt, updatedAt: completedAt });
-  els.dialog.dataset.taskId = "";
-  hideTaskDialog();
+  els.editor.dataset.taskId = "";
+  hideTaskEditor();
   await refresh();
   toast("Виконано");
 });
