@@ -18,11 +18,28 @@
 </div>
 <dialog id="task-dialog" class="task-dialog">
   <form id="task-form" method="dialog">
-    <label class="sr-only" for="task-title">Назва задачі</label>
-    <textarea id="task-title" name="title" rows="1" maxlength="160" placeholder="Назва задачі" required></textarea>
+    <div class="detail-header" hidden>
+      <span class="detail-list"><span class="inbox-icon" aria-hidden="true"></span>Нові</span>
+      <button id="collapse-task" class="sheet-icon-button" type="button" aria-label="Згорнути деталі завдання"><span aria-hidden="true"></span></button>
+    </div>
+    <div class="task-title-row">
+      <button id="detail-toggle" class="toggle detail-toggle" type="button" aria-label="Позначити виконаною" hidden><span>✓</span></button>
+      <label class="sr-only" for="task-title">Назва задачі</label>
+      <textarea id="task-title" name="title" rows="1" maxlength="160" placeholder="Назва задачі" required></textarea>
+    </div>
+    <div class="detail-fields" hidden>
+      <label class="sr-only" for="task-description">Опис завдання</label>
+      <textarea id="task-description" name="description" rows="2" maxlength="1000" placeholder="Додати опис…"></textarea>
+    </div>
     <div class="composer-actions">
       <span class="meta-chip inbox-chip"><span class="inbox-icon" aria-hidden="true"></span>Нові</span>
       <label class="meta-chip date-chip" for="task-date"><span class="calendar-icon" aria-hidden="true"></span><span id="date-label">Сьогодні</span><input id="task-date" name="date" type="date"></label>
+    </div>
+    <div class="attribute-placeholders" hidden aria-label="Атрибути завдання">
+      <button class="attribute-chip" type="button" disabled><span aria-hidden="true">⚑</span>Пріоритет</button>
+      <button class="attribute-chip" type="button" disabled><span aria-hidden="true">◷</span>Нагадування</button>
+      <button class="attribute-chip" type="button" disabled><span aria-hidden="true">◇</span>Мітки</button>
+      <button class="attribute-chip" type="button" disabled><span aria-hidden="true">◎</span>Повтор</button>
     </div>
     <p class="form-hint">Enter — додати · Shift+Enter — новий рядок</p>
   </form>

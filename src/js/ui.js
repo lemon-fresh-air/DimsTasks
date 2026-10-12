@@ -7,9 +7,16 @@ const els = {
   deleteSelected: document.querySelector("#delete-selected"),
   form: document.querySelector("#task-form"),
   input: document.querySelector("#task-title"),
+  description: document.querySelector("#task-description"),
   date: document.querySelector("#task-date"),
   dateLabel: document.querySelector("#date-label"),
   dialog: document.querySelector("#task-dialog"),
+  detailHeader: document.querySelector(".detail-header"),
+  detailFields: document.querySelector(".detail-fields"),
+  attributePlaceholders: document.querySelector(".attribute-placeholders"),
+  detailToggle: document.querySelector("#detail-toggle"),
+  collapseTask: document.querySelector("#collapse-task"),
+  formHint: document.querySelector(".form-hint"),
   add: document.querySelector("#add-task-btn"),
   list: document.querySelector("#task-list"),
   empty: document.querySelector("#empty-state"),
@@ -90,11 +97,38 @@ function renderTasks(tasks, selectedIds = new Set()) {
 }
 
 function openComposer() {
+  els.dialog.classList.remove("detail-mode");
+  els.dialog.dataset.taskId = "";
   els.form.reset();
+  els.detailHeader.hidden = true;
+  els.detailFields.hidden = true;
+  els.attributePlaceholders.hidden = true;
+  els.detailToggle.hidden = true;
+  els.formHint.hidden = false;
   els.date.value = localDateValue();
   els.dateLabel.textContent = "Сьогодні";
   els.dialog.showModal();
   requestAnimationFrame(() => els.input.focus());
+}
+
+function openTaskDetails(task) {
+  els.dialog.classList.add("detail-mode");
+  els.dialog.dataset.taskId = task.id;
+  els.form.reset();
+  els.detailHeader.hidden = false;
+  els.detailFields.hidden = false;
+  els.attributePlaceholders.hidden = false;
+  els.detailToggle.hidden = false;
+  els.formHint.hidden = true;
+  els.input.value = task.title;
+  els.description.value = task.description || "";
+  els.date.value = task.dueDate || "";
+  els.dateLabel.textContent = readableDate(task.dueDate);
+  els.dialog.showModal();
+  requestAnimationFrame(() => {
+    els.input.style.height = "auto";
+    els.input.style.height = `${Math.min(els.input.scrollHeight, 150)}px`;
+  });
 }
 
 function enableTaskSwipe({ onDelete, isSelectionMode, onLongPress }) {
@@ -158,4 +192,3 @@ function enableTaskSwipe({ onDelete, isSelectionMode, onLongPress }) {
   els.list.addEventListener("pointerup", finishGesture);
   els.list.addEventListener("pointercancel", finishGesture);
 }
-

@@ -13,6 +13,7 @@
 
 
 
+
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
 html { font-family: Inter, ui-sans-serif, system-ui, -apple-system, sans-serif; background: var(--bg); color: var(--text); }
@@ -78,13 +79,30 @@ h1 { font-size:clamp(2.25rem,9vw,3.4rem); line-height:1; letter-spacing:-.05em; 
 .task-dialog { width:min(100% - 20px,720px); max-width:none; margin:auto auto 10px; padding:0; border:0; border-radius:34px; background:var(--surface); color:var(--text); box-shadow:var(--shadow-sheet); overflow:visible; }
 .task-dialog::backdrop { background:var(--overlay); backdrop-filter:blur(1px); }
 #task-form { padding:26px 24px 18px; }
+.detail-header { min-height:36px; display:flex; align-items:center; justify-content:space-between; gap:16px; margin-bottom:18px; }
+.detail-header[hidden],.detail-fields[hidden],.attribute-placeholders[hidden] { display:none; }
+.detail-list { display:inline-flex; align-items:center; gap:9px; color:var(--muted); font-size:.92rem; font-weight:720; }
+.sheet-icon-button { width:42px; height:42px; border:0; border-radius:14px; display:grid; place-items:center; background:#f3f3f5; color:var(--muted); }
+.sheet-icon-button span { width:14px; height:14px; border-right:2px solid currentColor; border-bottom:2px solid currentColor; transform:rotate(45deg) translate(-2px,-2px); }
+.task-title-row { display:grid; grid-template-columns:minmax(0,1fr); align-items:start; gap:12px; }
+.detail-mode .task-title-row { grid-template-columns:38px minmax(0,1fr); }
+.detail-toggle { width:32px; height:32px; margin-top:3px; }
 #task-title { display:block; width:100%; min-height:58px; max-height:150px; resize:none; overflow-y:auto; border:0; outline:0; padding:0; background:transparent; color:var(--text); font:650 clamp(1.45rem,6vw,2rem)/1.25 system-ui,sans-serif; }
 #task-title::placeholder { color:#aaa; opacity:1; }
 .composer-actions { display:flex; align-items:center; gap:10px; margin-top:18px; overflow-x:auto; scrollbar-width:none; }
 .composer-actions::-webkit-scrollbar { display:none; }
+.detail-mode .composer-actions { margin-left:50px; }
+.detail-mode .inbox-chip { display:none; }
+.detail-fields { margin:8px 0 0 50px; }
+#task-description { width:100%; min-height:64px; max-height:132px; resize:vertical; border:0; outline:0; padding:8px 0; background:transparent; color:var(--text); font:400 1rem/1.45 system-ui,sans-serif; }
+#task-description::placeholder { color:var(--muted); opacity:.85; }
 .meta-chip { min-height:48px; display:inline-flex; align-items:center; gap:9px; flex:0 0 auto; padding:0 15px; border:0; border-radius:14px; background:#f3f3f5; color:var(--text); font-weight:700; }
 .date-chip { color:var(--date); position:relative; cursor:pointer; }
 .date-chip input { position:absolute; inset:0; opacity:0; width:100%; cursor:pointer; }
+.attribute-placeholders { display:flex; gap:9px; margin:16px 0 0 50px; overflow-x:auto; padding-bottom:2px; scrollbar-width:none; }
+.attribute-placeholders::-webkit-scrollbar { display:none; }
+.attribute-chip { flex:0 0 auto; min-height:44px; padding:0 14px; border:0; border-radius:14px; display:inline-flex; align-items:center; gap:8px; background:#efefec; color:#555; font-weight:700; opacity:1; }
+.attribute-chip:disabled { cursor:default; }
 .calendar-icon { width:20px; height:20px; border:2px solid currentColor; border-radius:3px; position:relative; }
 .calendar-icon::before { content:""; position:absolute; left:2px; right:2px; top:5px; border-top:2px solid currentColor; }
 .form-hint { margin:13px 2px 0; color:var(--muted); font-size:.75rem; }
@@ -100,6 +118,7 @@ h1 { font-size:clamp(2.25rem,9vw,3.4rem); line-height:1; letter-spacing:-.05em; 
 @keyframes toast-countdown { to { stroke-dashoffset:69.12; } }
 @media (min-width:760px) { .app-shell { padding-inline:28px; } .fab { right:max(32px,calc((100vw - 700px)/2)); } .task-dialog { margin-bottom:28px; } }
 @media (prefers-reduced-motion:reduce) { *,*::before,*::after { scroll-behavior:auto!important; transition-duration:.01ms!important; animation-duration:.01ms!important; } }
+
 
 
   </style>
@@ -125,17 +144,35 @@ h1 { font-size:clamp(2.25rem,9vw,3.4rem); line-height:1; letter-spacing:-.05em; 
 </div>
 <dialog id="task-dialog" class="task-dialog">
   <form id="task-form" method="dialog">
-    <label class="sr-only" for="task-title">Назва задачі</label>
-    <textarea id="task-title" name="title" rows="1" maxlength="160" placeholder="Назва задачі" required></textarea>
+    <div class="detail-header" hidden>
+      <span class="detail-list"><span class="inbox-icon" aria-hidden="true"></span>Нові</span>
+      <button id="collapse-task" class="sheet-icon-button" type="button" aria-label="Згорнути деталі завдання"><span aria-hidden="true"></span></button>
+    </div>
+    <div class="task-title-row">
+      <button id="detail-toggle" class="toggle detail-toggle" type="button" aria-label="Позначити виконаною" hidden><span>✓</span></button>
+      <label class="sr-only" for="task-title">Назва задачі</label>
+      <textarea id="task-title" name="title" rows="1" maxlength="160" placeholder="Назва задачі" required></textarea>
+    </div>
+    <div class="detail-fields" hidden>
+      <label class="sr-only" for="task-description">Опис завдання</label>
+      <textarea id="task-description" name="description" rows="2" maxlength="1000" placeholder="Додати опис…"></textarea>
+    </div>
     <div class="composer-actions">
       <span class="meta-chip inbox-chip"><span class="inbox-icon" aria-hidden="true"></span>Нові</span>
       <label class="meta-chip date-chip" for="task-date"><span class="calendar-icon" aria-hidden="true"></span><span id="date-label">Сьогодні</span><input id="task-date" name="date" type="date"></label>
+    </div>
+    <div class="attribute-placeholders" hidden aria-label="Атрибути завдання">
+      <button class="attribute-chip" type="button" disabled><span aria-hidden="true">⚑</span>Пріоритет</button>
+      <button class="attribute-chip" type="button" disabled><span aria-hidden="true">◷</span>Нагадування</button>
+      <button class="attribute-chip" type="button" disabled><span aria-hidden="true">◇</span>Мітки</button>
+      <button class="attribute-chip" type="button" disabled><span aria-hidden="true">◎</span>Повтор</button>
     </div>
     <p class="form-hint">Enter — додати · Shift+Enter — новий рядок</p>
   </form>
 </dialog>
 <template id="task-template"><li class="swipe-row"><div class="delete-reveal" aria-hidden="true"><span class="delete-icon"></span><span>Видалити</span></div><article class="task-card"><button class="toggle" aria-label="Позначити виконаною"><span>✓</span></button><div class="task-copy"><p class="task-text"></p><p class="task-date"></p></div><span class="task-project">Нові <span class="inbox-icon" aria-hidden="true"></span></span></article></li></template>
 <div id="toast" class="toast" role="status" aria-live="polite"><span class="toast-message"></span><button id="toast-action" class="toast-action" type="button">Відмінити</button><svg class="toast-timer" viewBox="0 0 28 28" aria-hidden="true"><circle class="toast-timer-track" cx="14" cy="14" r="11"></circle><circle class="toast-timer-progress" cx="14" cy="14" r="11"></circle></svg></div>
+
 
 
 <script>
@@ -289,6 +326,7 @@ const taskDb = {
 };
 
 
+
 const ENTITY_VERSION = 1;
 function nowIso() { return new Date().toISOString(); }
 function baseRecord(values = {}) {
@@ -311,6 +349,7 @@ function isTaskCompleted(task) { return task.status === "completed" || task.done
 function currentProjectTask(tasks, projectId) {
   return tasks.filter(task => task.projectId === projectId && !isTaskCompleted(task)).sort((a, b) => (a.projectPosition ?? Number.MAX_SAFE_INTEGER) - (b.projectPosition ?? Number.MAX_SAFE_INTEGER))[0] || null;
 }
+
 
 
 const BACKUP_FORMAT = "local-first-pwa-backup";
@@ -342,6 +381,7 @@ async function parseBackup(file) {
 async function restoreBackup(file) { await appDb.replaceAll(await parseBackup(file)); }
 
 
+
 const els = {
   shell: document.querySelector(".app-shell"),
   normalHeader: document.querySelector("#normal-header"),
@@ -351,9 +391,16 @@ const els = {
   deleteSelected: document.querySelector("#delete-selected"),
   form: document.querySelector("#task-form"),
   input: document.querySelector("#task-title"),
+  description: document.querySelector("#task-description"),
   date: document.querySelector("#task-date"),
   dateLabel: document.querySelector("#date-label"),
   dialog: document.querySelector("#task-dialog"),
+  detailHeader: document.querySelector(".detail-header"),
+  detailFields: document.querySelector(".detail-fields"),
+  attributePlaceholders: document.querySelector(".attribute-placeholders"),
+  detailToggle: document.querySelector("#detail-toggle"),
+  collapseTask: document.querySelector("#collapse-task"),
+  formHint: document.querySelector(".form-hint"),
   add: document.querySelector("#add-task-btn"),
   list: document.querySelector("#task-list"),
   empty: document.querySelector("#empty-state"),
@@ -434,11 +481,38 @@ function renderTasks(tasks, selectedIds = new Set()) {
 }
 
 function openComposer() {
+  els.dialog.classList.remove("detail-mode");
+  els.dialog.dataset.taskId = "";
   els.form.reset();
+  els.detailHeader.hidden = true;
+  els.detailFields.hidden = true;
+  els.attributePlaceholders.hidden = true;
+  els.detailToggle.hidden = true;
+  els.formHint.hidden = false;
   els.date.value = localDateValue();
   els.dateLabel.textContent = "Сьогодні";
   els.dialog.showModal();
   requestAnimationFrame(() => els.input.focus());
+}
+
+function openTaskDetails(task) {
+  els.dialog.classList.add("detail-mode");
+  els.dialog.dataset.taskId = task.id;
+  els.form.reset();
+  els.detailHeader.hidden = false;
+  els.detailFields.hidden = false;
+  els.attributePlaceholders.hidden = false;
+  els.detailToggle.hidden = false;
+  els.formHint.hidden = true;
+  els.input.value = task.title;
+  els.description.value = task.description || "";
+  els.date.value = task.dueDate || "";
+  els.dateLabel.textContent = readableDate(task.dueDate);
+  els.dialog.showModal();
+  requestAnimationFrame(() => {
+    els.input.style.height = "auto";
+    els.input.style.height = `${Math.min(els.input.scrollHeight, 150)}px`;
+  });
 }
 
 function enableTaskSwipe({ onDelete, isSelectionMode, onLongPress }) {
@@ -564,6 +638,22 @@ async function addTask() {
   toast("Задачу додано");
 }
 
+async function saveOpenTask() {
+  const id = els.dialog.dataset.taskId;
+  if (!id) return;
+  const task = tasks.find(item => item.id === id);
+  const title = els.input.value.trim();
+  if (!task || !title) return;
+  await taskDb.put({ ...task, title, description: els.description.value.trim(), dueDate: els.date.value || null, updatedAt: new Date().toISOString() });
+  await refresh();
+}
+
+async function closeTaskDetails() {
+  await saveOpenTask();
+  els.dialog.dataset.taskId = "";
+  els.dialog.close();
+}
+
 async function deleteTask(id) {
   const task = tasks.find(item => item.id === id);
   if (!task) return;
@@ -588,13 +678,15 @@ async function deleteTask(id) {
 }
 
 els.add.addEventListener("click", openComposer);
+els.collapseTask.addEventListener("click", closeTaskDetails);
 els.selectionClose.addEventListener("click", clearTaskSelection);
 els.deleteSelected.addEventListener("click", deleteSelectedTasks);
 els.date.addEventListener("change", () => { els.dateLabel.textContent = readableDate(els.date.value); });
 els.input.addEventListener("input", () => { els.input.style.height = "auto"; els.input.style.height = `${Math.min(els.input.scrollHeight, 150)}px`; });
-els.input.addEventListener("keydown", event => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); addTask(); } if (event.key === "Escape") els.dialog.close(); });
-els.form.addEventListener("submit", event => { event.preventDefault(); addTask(); });
-els.dialog.addEventListener("click", event => { const box = els.dialog.getBoundingClientRect(); if (event.clientX < box.left || event.clientX > box.right || event.clientY < box.top || event.clientY > box.bottom) els.dialog.close(); });
+els.input.addEventListener("keydown", event => { if (event.key === "Enter" && !event.shiftKey && !els.dialog.classList.contains("detail-mode")) { event.preventDefault(); addTask(); } if (event.key === "Escape") els.dialog.close(); });
+els.form.addEventListener("submit", event => { event.preventDefault(); if (!els.dialog.classList.contains("detail-mode")) addTask(); });
+els.dialog.addEventListener("close", () => { if (els.dialog.dataset.taskId) saveOpenTask().catch(() => toast("Не вдалося зберегти зміни")); });
+els.dialog.addEventListener("click", event => { const box = els.dialog.getBoundingClientRect(); if (event.clientX < box.left || event.clientX > box.right || event.clientY < box.top || event.clientY > box.bottom) { if (els.dialog.dataset.taskId) closeTaskDetails(); else els.dialog.close(); } });
 els.list.addEventListener("click", async event => {
   const row = event.target.closest(".swipe-row");
   if (row?.dataset.swiped) { delete row.dataset.swiped; return; }
@@ -604,10 +696,27 @@ els.list.addEventListener("click", async event => {
     return;
   }
   const toggle = event.target.closest(".toggle");
-  if (!toggle) return;
+  if (!toggle) {
+    if (row) {
+      const task = tasks.find(item => item.id === row.dataset.id);
+      if (task) openTaskDetails(task);
+    }
+    return;
+  }
   const task = tasks.find(item => item.id === row.dataset.id);
   const completedAt = new Date().toISOString();
   await taskDb.put({ ...task, status: "completed", completedAt, updatedAt: completedAt });
+  await refresh();
+  toast("Виконано");
+});
+
+els.detailToggle.addEventListener("click", async () => {
+  const task = tasks.find(item => item.id === els.dialog.dataset.taskId);
+  if (!task) return;
+  const completedAt = new Date().toISOString();
+  await taskDb.put({ ...task, title: els.input.value.trim() || task.title, description: els.description.value.trim(), dueDate: els.date.value || null, status: "completed", completedAt, updatedAt: completedAt });
+  els.dialog.dataset.taskId = "";
+  els.dialog.close();
   await refresh();
   toast("Виконано");
 });
@@ -623,4 +732,3 @@ refresh().catch(() => toast("Не вдалося відкрити локальн
 </script>
 </body>
 </html>
-

@@ -58,6 +58,22 @@ async function addTask() {
   toast("Задачу додано");
 }
 
+async function saveOpenTask() {
+  const id = els.dialog.dataset.taskId;
+  if (!id) return;
+  const task = tasks.find(item => item.id === id);
+  const title = els.input.value.trim();
+  if (!task || !title) return;
+  await taskDb.put({ ...task, title, description: els.description.value.trim(), dueDate: els.date.value || null, updatedAt: new Date().toISOString() });
+  await refresh();
+}
+
+async function closeTaskDetails() {
+  await saveOpenTask();
+  els.dialog.dataset.taskId = "";
+  els.dialog.close();
+}
+
 async function deleteTask(id) {
   const task = tasks.find(item => item.id === id);
   if (!task) return;
@@ -82,13 +98,15 @@ async function deleteTask(id) {
 }
 
 els.add.addEventListener("click", openComposer);
+els.collapseTask.addEventListener("click", closeTaskDetails);
 els.selectionClose.addEventListener("click", clearTaskSelection);
 els.deleteSelected.addEventListener("click", deleteSelectedTasks);
 els.date.addEventListener("change", () => { els.dateLabel.textContent = readableDate(els.date.value); });
 els.input.addEventListener("input", () => { els.input.style.height = "auto"; els.input.style.height = `${Math.min(els.input.scrollHeight, 150)}px`; });
-els.input.addEventListener("keydown", event => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); addTask(); } if (event.key === "Escape") els.dialog.close(); });
-els.form.addEventListener("submit", event => { event.preventDefault(); addTask(); });
-els.dialog.addEventListener("click", event => { const box = els.dialog.getBoundingClientRect(); if (event.clientX < box.left || event.clientX > box.right || event.clientY < box.top || event.clientY > box.bottom) els.dialog.close(); });
+els.input.addEventListener("keydown", event => { if (event.key === "Enter" && !event.shiftKey && !els.dialog.classList.contains("detail-mode")) { event.preventDefault(); addTask(); } if (event.key === "Escape") els.dialog.close(); });
+els.form.addEventListener("submit", event => { event.preventDefault(); if (!els.dialog.classList.contains("detail-mode")) addTask(); });
+els.dialog.addEventListener("close", () => { if (els.dialog.dataset.taskId) saveOpenTask().catch(() => toast("Не вдалося зберегти зміни")); });
+els.dialog.addEventListener("click", event => { const box = els.dialog.getBoundingClientRect(); if (event.clientX < box.left || event.clientX > box.right || event.clientY < box.top || event.clientY > box.bottom) { if (els.dialog.dataset.taskId) closeTaskDetails(); else els.dialog.close(); } });
 els.list.addEventListener("click", async event => {
   const row = event.target.closest(".swipe-row");
   if (row?.dataset.swiped) { delete row.dataset.swiped; return; }
@@ -98,10 +116,27 @@ els.list.addEventListener("click", async event => {
     return;
   }
   const toggle = event.target.closest(".toggle");
-  if (!toggle) return;
+  if (!toggle) {
+    if (row) {
+      const task = tasks.find(item => item.id === row.dataset.id);
+      if (task) openTaskDetails(task);
+    }
+    return;
+  }
   const task = tasks.find(item => item.id === row.dataset.id);
   const completedAt = new Date().toISOString();
   await taskDb.put({ ...task, status: "completed", completedAt, updatedAt: completedAt });
+  await refresh();
+  toast("Виконано");
+});
+
+els.detailToggle.addEventListener("click", async () => {
+  const task = tasks.find(item => item.id === els.dialog.dataset.taskId);
+  if (!task) return;
+  const completedAt = new Date().toISOString();
+  await taskDb.put({ ...task, title: els.input.value.trim() || task.title, description: els.description.value.trim(), dueDate: els.date.value || null, status: "completed", completedAt, updatedAt: completedAt });
+  els.dialog.dataset.taskId = "";
+  els.dialog.close();
   await refresh();
   toast("Виконано");
 });
@@ -113,4 +148,3 @@ enableTaskSwipe({
 });
 if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("./service-worker.js"));
 refresh().catch(() => toast("Не вдалося відкрити локальне сховище"));
-
