@@ -135,6 +135,12 @@ const taskDb = {
   all: () => appDb.all("tasks"),
   put: task => appDb.put("tasks", task),
   delete: id => appDb.delete("tasks", id),
+  putMany: tasks => transact("tasks", "readwrite", (_tx, stores) => {
+    for (const task of tasks) stores.tasks.put(task);
+  }),
+  deleteMany: ids => transact("tasks", "readwrite", (_tx, stores) => {
+    for (const id of ids) stores.tasks.delete(id);
+  }),
   replaceAll: tasks => transact("tasks", "readwrite", (_tx, stores) => {
     stores.tasks.clear();
     for (const task of tasks) stores.tasks.put(task);
