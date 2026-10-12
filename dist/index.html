@@ -9,7 +9,7 @@
   <link rel="icon" href="./icons/icon.svg" type="image/svg+xml">
   <title>DimsTasks</title>
   <style>
-:root { color-scheme: light; --bg:#f5f5f5; --surface:#fff; --text:#171717; --muted:#6f6f72; --line:#e5e5e7; --accent:#3d5268; --date:#178b40; --overlay:rgba(20,20,20,.5); --shadow-fab:0 12px 26px rgba(32,46,60,.25); --shadow-sheet:0 -12px 40px rgba(0,0,0,.16); --radius:22px; }
+:root { color-scheme: light; --bg:#f5f5f5; --surface:#fff; --text:#171717; --muted:#6f6f72; --line:#e5e5e7; --accent:#3d5268; --date:#178b40; --danger:#d92d20; --overlay:rgba(20,20,20,.5); --shadow-fab:0 12px 26px rgba(32,46,60,.25); --shadow-sheet:0 -12px 40px rgba(0,0,0,.16); --radius:22px; }
 
 
 
@@ -31,8 +31,16 @@ h1 { font-size:clamp(2.25rem,9vw,3.4rem); line-height:1; letter-spacing:-.05em; 
 .page-header p { margin-top:9px; color:var(--muted); font-size:1.08rem; }
 .task-section h2 { margin:0 4px 20px; font-size:1.35rem; letter-spacing:-.025em; }
 #task-list { list-style:none; margin:0; padding:0; overflow:hidden; border-radius:var(--radius); background:var(--surface); }
-.task-card { min-height:82px; display:grid; grid-template-columns:48px minmax(0,1fr) auto; align-items:center; gap:10px; padding:14px 17px 14px 13px; border-bottom:1px solid var(--line); }
-.task-card:last-child { border-bottom:0; }
+.swipe-row { position:relative; overflow:hidden; border-bottom:1px solid var(--line); background:var(--danger); }
+.swipe-row:last-child { border-bottom:0; }
+.delete-reveal { position:absolute; inset:0 0 0 auto; width:112px; display:flex; align-items:center; justify-content:flex-end; gap:8px; padding-right:18px; color:#fff; font-size:.82rem; font-weight:760; opacity:0; transform:translateX(16px); transition:opacity .12s,transform .12s; }
+.delete-icon { width:20px; height:23px; border:2px solid currentColor; border-top:0; border-radius:2px 2px 5px 5px; position:relative; }
+.delete-icon::before { content:""; position:absolute; left:-3px; right:-3px; top:-6px; border-top:2px solid currentColor; border-radius:2px; }
+.delete-icon::after { content:""; position:absolute; width:8px; left:4px; top:-10px; border-top:2px solid currentColor; border-radius:2px; }
+.swipe-row.swiping .delete-reveal,.swipe-row.deleting .delete-reveal { opacity:1; transform:none; }
+.task-card { position:relative; z-index:1; min-height:82px; display:grid; grid-template-columns:48px minmax(0,1fr) auto; align-items:center; gap:10px; padding:14px 17px 14px 13px; background:var(--surface); touch-action:pan-y; user-select:none; will-change:transform; }
+.swipe-row.settling .task-card,.swipe-row.deleting .task-card { transition:transform .18s ease-out; }
+.swipe-row.deleting .task-card { transform:translateX(-110%)!important; }
 .toggle { width:34px; height:34px; display:grid; place-items:center; border:2px solid #aaa; border-radius:50%; background:transparent; color:#fff; }
 .toggle span { opacity:0; }
 .task-copy { min-width:0; }
@@ -64,10 +72,18 @@ h1 { font-size:clamp(2.25rem,9vw,3.4rem); line-height:1; letter-spacing:-.05em; 
 .calendar-icon { width:20px; height:20px; border:2px solid currentColor; border-radius:3px; position:relative; }
 .calendar-icon::before { content:""; position:absolute; left:2px; right:2px; top:5px; border-top:2px solid currentColor; }
 .form-hint { margin:13px 2px 0; color:var(--muted); font-size:.75rem; }
-.toast { position:fixed; z-index:20; left:50%; bottom:calc(88px + env(safe-area-inset-bottom)); translate:-50% 16px; opacity:0; pointer-events:none; padding:11px 16px; border-radius:999px; background:var(--text); color:var(--surface); transition:opacity .18s,transform .18s; white-space:nowrap; }
-.toast.show { opacity:1; translate:-50% 0; }
+.toast { position:fixed; z-index:20; left:50%; bottom:calc(88px + env(safe-area-inset-bottom)); translate:-50% 16px; opacity:0; pointer-events:none; min-height:48px; display:flex; align-items:center; gap:14px; padding:8px 10px 8px 18px; border-radius:999px; background:var(--text); color:var(--surface); box-shadow:0 10px 30px rgba(0,0,0,.22); transition:opacity .18s,translate .18s; white-space:nowrap; }
+.toast.show { opacity:1; translate:-50% 0; pointer-events:auto; }
+.toast-action { min-height:36px; padding:0 4px; border:0; background:transparent; color:#9fc4ff; font-weight:760; }
+.toast:not(.undoable) .toast-action,.toast:not(.undoable) .toast-timer { display:none; }
+.toast-timer { width:28px; height:28px; transform:rotate(-90deg); }
+.toast-timer-track,.toast-timer-progress { fill:none; stroke-width:2.5; }
+.toast-timer-track { stroke:rgba(255,255,255,.22); }
+.toast-timer-progress { stroke:#fff; stroke-linecap:round; stroke-dasharray:69.12; stroke-dashoffset:0; }
+.toast.show.undoable .toast-timer-progress { animation:toast-countdown var(--toast-duration,3s) linear forwards; }
+@keyframes toast-countdown { to { stroke-dashoffset:69.12; } }
 @media (min-width:760px) { .app-shell { padding-inline:28px; } .fab { right:max(32px,calc((100vw - 700px)/2)); } .task-dialog { margin-bottom:28px; } }
-@media (prefers-reduced-motion:reduce) { *,*::before,*::after { scroll-behavior:auto!important; transition-duration:.01ms!important; } }
+@media (prefers-reduced-motion:reduce) { *,*::before,*::after { scroll-behavior:auto!important; transition-duration:.01ms!important; animation-duration:.01ms!important; } }
 
 
   </style>
@@ -93,8 +109,8 @@ h1 { font-size:clamp(2.25rem,9vw,3.4rem); line-height:1; letter-spacing:-.05em; 
     <p class="form-hint">Enter — додати · Shift+Enter — новий рядок</p>
   </form>
 </dialog>
-<template id="task-template"><li class="task-card"><button class="toggle" aria-label="Позначити виконаною"><span>✓</span></button><div class="task-copy"><p class="task-text"></p><p class="task-date"></p></div><span class="task-project">Нові <span class="inbox-icon" aria-hidden="true"></span></span></li></template>
-<div id="toast" class="toast" role="status" aria-live="polite"></div>
+<template id="task-template"><li class="swipe-row"><div class="delete-reveal" aria-hidden="true"><span class="delete-icon"></span><span>Видалити</span></div><article class="task-card"><button class="toggle" aria-label="Позначити виконаною"><span>✓</span></button><div class="task-copy"><p class="task-text"></p><p class="task-date"></p></div><span class="task-project">Нові <span class="inbox-icon" aria-hidden="true"></span></span></article></li></template>
+<div id="toast" class="toast" role="status" aria-live="polite"><span class="toast-message"></span><button id="toast-action" class="toast-action" type="button">Відмінити</button><svg class="toast-timer" viewBox="0 0 28 28" aria-hidden="true"><circle class="toast-timer-track" cx="14" cy="14" r="11"></circle><circle class="toast-timer-progress" cx="14" cy="14" r="11"></circle></svg></div>
 
 
 <script>
@@ -295,29 +311,199 @@ async function parseBackup(file) {
 async function restoreBackup(file) { await appDb.replaceAll(await parseBackup(file)); }
 
 
-const els = { form:document.querySelector("#task-form"), input:document.querySelector("#task-title"), date:document.querySelector("#task-date"), dateLabel:document.querySelector("#date-label"), dialog:document.querySelector("#task-dialog"), add:document.querySelector("#add-task-btn"), list:document.querySelector("#task-list"), empty:document.querySelector("#empty-state"), count:document.querySelector("#task-count"), template:document.querySelector("#task-template"), toast:document.querySelector("#toast") };
-const dateFormatter = new Intl.DateTimeFormat("uk-UA",{day:"numeric",month:"short"});
-function localDateValue(date=new Date()){const offset=date.getTimezoneOffset()*60000;return new Date(date.getTime()-offset).toISOString().slice(0,10)}
-function readableDate(value){if(!value)return "Без дати";if(value===localDateValue())return "Сьогодні";const tomorrow=new Date();tomorrow.setDate(tomorrow.getDate()+1);if(value===localDateValue(tomorrow))return "Завтра";return dateFormatter.format(new Date(`${value}T12:00:00`))}
-function toast(message){els.toast.textContent=message;els.toast.classList.add("show");clearTimeout(toast.timer);toast.timer=setTimeout(()=>els.toast.classList.remove("show"),1800)}
-function renderTasks(tasks){const active=tasks.filter(task=>!isTaskCompleted(task));els.list.replaceChildren(...active.map(task=>{const row=els.template.content.firstElementChild.cloneNode(true);row.dataset.id=task.id;row.querySelector(".task-text").textContent=task.title;row.querySelector(".task-date").textContent=readableDate(task.dueDate||task.createdAt?.slice(0,10));return row}));els.list.hidden=active.length===0;els.empty.hidden=active.length>0;els.count.textContent=`${active.length} ${active.length===1?"задача":active.length>1&&active.length<5?"задачі":"задач"}`}
-function openComposer(){els.form.reset();els.date.value=localDateValue();els.dateLabel.textContent="Сьогодні";els.dialog.showModal();requestAnimationFrame(()=>els.input.focus())}
+const els = {
+  form: document.querySelector("#task-form"),
+  input: document.querySelector("#task-title"),
+  date: document.querySelector("#task-date"),
+  dateLabel: document.querySelector("#date-label"),
+  dialog: document.querySelector("#task-dialog"),
+  add: document.querySelector("#add-task-btn"),
+  list: document.querySelector("#task-list"),
+  empty: document.querySelector("#empty-state"),
+  count: document.querySelector("#task-count"),
+  template: document.querySelector("#task-template"),
+  toast: document.querySelector("#toast"),
+  toastMessage: document.querySelector(".toast-message"),
+  toastAction: document.querySelector("#toast-action")
+};
+
+const dateFormatter = new Intl.DateTimeFormat("uk-UA", { day: "numeric", month: "short" });
+let toastTimer;
+let toastAction;
+
+function localDateValue(date = new Date()) {
+  const offset = date.getTimezoneOffset() * 60000;
+  return new Date(date.getTime() - offset).toISOString().slice(0, 10);
+}
+
+function readableDate(value) {
+  if (!value) return "Без дати";
+  if (value === localDateValue()) return "Сьогодні";
+  const tomorrow = new Date();
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  if (value === localDateValue(tomorrow)) return "Завтра";
+  return dateFormatter.format(new Date(`${value}T12:00:00`));
+}
+
+function hideToast() {
+  clearTimeout(toastTimer);
+  toastAction = null;
+  els.toast.classList.remove("show", "undoable");
+}
+
+function toast(message, options = {}) {
+  clearTimeout(toastTimer);
+  toastAction = options.action || null;
+  els.toastMessage.textContent = message;
+  els.toast.classList.remove("show", "undoable");
+  void els.toast.offsetWidth;
+  if (toastAction) {
+    els.toast.classList.add("undoable");
+    els.toast.style.setProperty("--toast-duration", `${options.duration || 3000}ms`);
+  }
+  els.toast.classList.add("show");
+  toastTimer = setTimeout(hideToast, options.duration || 1800);
+}
+
+els.toastAction.addEventListener("click", async () => {
+  const action = toastAction;
+  hideToast();
+  if (action) await action();
+});
+
+function renderTasks(tasks) {
+  const active = tasks.filter(task => !isTaskCompleted(task));
+  els.list.replaceChildren(...active.map(task => {
+    const row = els.template.content.firstElementChild.cloneNode(true);
+    row.dataset.id = task.id;
+    row.querySelector(".task-text").textContent = task.title;
+    row.querySelector(".task-date").textContent = readableDate(task.dueDate || task.createdAt?.slice(0, 10));
+    return row;
+  }));
+  els.list.hidden = active.length === 0;
+  els.empty.hidden = active.length > 0;
+  els.count.textContent = `${active.length} ${active.length === 1 ? "задача" : active.length > 1 && active.length < 5 ? "задачі" : "задач"}`;
+}
+
+function openComposer() {
+  els.form.reset();
+  els.date.value = localDateValue();
+  els.dateLabel.textContent = "Сьогодні";
+  els.dialog.showModal();
+  requestAnimationFrame(() => els.input.focus());
+}
+
+function enableTaskSwipe(onDelete) {
+  let gesture = null;
+  const maxReveal = 112;
+  const deleteThreshold = 72;
+
+  els.list.addEventListener("pointerdown", event => {
+    const card = event.target.closest(".task-card");
+    if (!card || event.button > 0) return;
+    const row = card.closest(".swipe-row");
+    gesture = { row, card, pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, dx: 0, horizontal: false };
+    card.setPointerCapture(event.pointerId);
+    row.classList.remove("settling");
+  });
+
+  els.list.addEventListener("pointermove", event => {
+    if (!gesture || gesture.pointerId !== event.pointerId) return;
+    const dx = event.clientX - gesture.startX;
+    const dy = event.clientY - gesture.startY;
+    if (!gesture.horizontal && Math.abs(dy) > Math.abs(dx) && Math.abs(dy) > 8) {
+      gesture = null;
+      return;
+    }
+    if (dx >= 0 && !gesture.horizontal) return;
+    if (Math.abs(dx) > 8) gesture.horizontal = true;
+    if (!gesture.horizontal) return;
+    gesture.dx = Math.max(-maxReveal, Math.min(0, dx));
+    gesture.row.classList.add("swiping");
+    gesture.card.style.transform = `translateX(${gesture.dx}px)`;
+  });
+
+  const finishGesture = event => {
+    if (!gesture || gesture.pointerId !== event.pointerId) return;
+    const { row, card, dx, horizontal } = gesture;
+    gesture = null;
+    if (horizontal && Math.abs(dx) >= deleteThreshold) {
+      row.classList.remove("swiping");
+      row.classList.add("deleting");
+      row.dataset.swiped = "true";
+      setTimeout(() => onDelete(row.dataset.id), 180);
+      return;
+    }
+    row.classList.remove("swiping");
+    row.classList.add("settling");
+    card.style.transform = "translateX(0)";
+    setTimeout(() => row.classList.remove("settling"), 180);
+  };
+
+  els.list.addEventListener("pointerup", finishGesture);
+  els.list.addEventListener("pointercancel", finishGesture);
+}
 
 
+let tasks = [];
 
-let tasks=[];
-async function refresh(){tasks=(await taskDb.all()).sort((a,b)=>b.createdAt.localeCompare(a.createdAt));renderTasks(tasks)}
-async function addTask(){const title=els.input.value.trim();if(!title){els.input.focus();return}await taskDb.put(createTask({title,dueDate:els.date.value||null}));els.dialog.close();await refresh();toast("Задачу додано")}
-els.add.addEventListener("click",openComposer);
-els.date.addEventListener("change",()=>{els.dateLabel.textContent=readableDate(els.date.value)});
-els.input.addEventListener("input",()=>{els.input.style.height="auto";els.input.style.height=`${Math.min(els.input.scrollHeight,150)}px`});
-els.input.addEventListener("keydown",event=>{if(event.key==="Enter"&&!event.shiftKey){event.preventDefault();addTask()}if(event.key==="Escape")els.dialog.close()});
-els.form.addEventListener("submit",event=>{event.preventDefault();addTask()});
-els.dialog.addEventListener("click",event=>{const box=els.dialog.getBoundingClientRect();if(event.clientX<box.left||event.clientX>box.right||event.clientY<box.top||event.clientY>box.bottom)els.dialog.close()});
-els.list.addEventListener("click",async event=>{const toggle=event.target.closest(".toggle");if(!toggle)return;const row=toggle.closest(".task-card");const task=tasks.find(item=>item.id===row.dataset.id);const completedAt=new Date().toISOString();await taskDb.put({...task,status:"completed",completedAt,updatedAt:completedAt});await refresh();toast("Виконано")});
-if("serviceWorker" in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("./service-worker.js"));
-refresh().catch(()=>toast("Не вдалося відкрити локальне сховище"));
+async function refresh() {
+  tasks = (await taskDb.all()).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  renderTasks(tasks);
+}
 
+async function addTask() {
+  const title = els.input.value.trim();
+  if (!title) { els.input.focus(); return; }
+  await taskDb.put(createTask({ title, dueDate: els.date.value || null }));
+  els.dialog.close();
+  await refresh();
+  toast("Задачу додано");
+}
+
+async function deleteTask(id) {
+  const task = tasks.find(item => item.id === id);
+  if (!task) return;
+  tasks = tasks.filter(item => item.id !== id);
+  renderTasks(tasks);
+  try {
+    await taskDb.delete(id);
+    toast("Завдання видалено", {
+      duration: 3000,
+      action: async () => {
+        await taskDb.put(task);
+        await refresh();
+        toast("Завдання відновлено");
+      }
+    });
+  } catch (_error) {
+    tasks.push(task);
+    renderTasks(tasks);
+    toast("Не вдалося видалити завдання");
+  }
+}
+
+els.add.addEventListener("click", openComposer);
+els.date.addEventListener("change", () => { els.dateLabel.textContent = readableDate(els.date.value); });
+els.input.addEventListener("input", () => { els.input.style.height = "auto"; els.input.style.height = `${Math.min(els.input.scrollHeight, 150)}px`; });
+els.input.addEventListener("keydown", event => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); addTask(); } if (event.key === "Escape") els.dialog.close(); });
+els.form.addEventListener("submit", event => { event.preventDefault(); addTask(); });
+els.dialog.addEventListener("click", event => { const box = els.dialog.getBoundingClientRect(); if (event.clientX < box.left || event.clientX > box.right || event.clientY < box.top || event.clientY > box.bottom) els.dialog.close(); });
+els.list.addEventListener("click", async event => {
+  const row = event.target.closest(".swipe-row");
+  if (row?.dataset.swiped) { delete row.dataset.swiped; return; }
+  const toggle = event.target.closest(".toggle");
+  if (!toggle) return;
+  const task = tasks.find(item => item.id === row.dataset.id);
+  const completedAt = new Date().toISOString();
+  await taskDb.put({ ...task, status: "completed", completedAt, updatedAt: completedAt });
+  await refresh();
+  toast("Виконано");
+});
+
+enableTaskSwipe(deleteTask);
+if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("./service-worker.js"));
+refresh().catch(() => toast("Не вдалося відкрити локальне сховище"));
 
 </script>
 </body>
