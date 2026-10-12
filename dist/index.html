@@ -99,55 +99,179 @@ h1 { font-size:clamp(2.25rem,9vw,3.4rem); line-height:1; letter-spacing:-.05em; 
 
 <script>
 const DB_NAME = "dims-tasks-db";
-const DB_VERSION = 1;
-const STORE = "tasks";
+const DB_VERSION = 2;
+const STORE_NAMES = ["lists", "sections", "projects", "tasks"];
+const INBOX_LIST_ID = "system-list-inbox";
+
+function ensureIndex(store, name, keyPath, options = {}) {
+  if (!store.indexNames.contains(name)) store.createIndex(name, keyPath, options);
+}
+
+function configureStore(db, transaction, name) {
+  const store = db.objectStoreNames.contains(name)
+    ? transaction.objectStore(name)
+    : db.createObjectStore(name, { keyPath: "id" });
+  if (name === "lists") {
+    ensureIndex(store, "by-kind", "kind");
+    ensureIndex(store, "by-position", "position");
+  }
+  if (name === "sections") {
+    ensureIndex(store, "by-list", "listId");
+    ensureIndex(store, "by-list-position", ["listId", "position"]);
+  }
+  if (name === "projects") {
+    ensureIndex(store, "by-status", "status");
+    ensureIndex(store, "by-position", "position");
+  }
+  if (name === "tasks") {
+    ensureIndex(store, "by-list", "listId");
+    ensureIndex(store, "by-section", "sectionId");
+    ensureIndex(store, "by-project", "projectId");
+    ensureIndex(store, "by-status", "status");
+    ensureIndex(store, "by-due-date", "dueDate");
+    ensureIndex(store, "by-list-status", ["listId", "status"]);
+    ensureIndex(store, "by-project-position", ["projectId", "projectPosition"]);
+  }
+  return store;
+}
+
+function migrateLegacyTasks(store) {
+  const request = store.openCursor();
+  request.onsuccess = () => {
+    const cursor = request.result;
+    if (!cursor) return;
+    const task = cursor.value;
+    const completed = task.status === "completed" || task.done === true;
+    cursor.update({
+      ...task,
+      entityVersion: task.entityVersion || 1,
+      customFields: task.customFields || {},
+      listId: task.listId || INBOX_LIST_ID,
+      sectionId: task.sectionId ?? null,
+      projectId: task.projectId ?? null,
+      description: task.description || "",
+      status: completed ? "completed" : "active",
+      completedAt: completed ? (task.completedAt || task.updatedAt || new Date().toISOString()) : null,
+      dueTime: task.dueTime ?? null,
+      position: Number.isFinite(task.position) ? task.position : 0,
+      projectPosition: Number.isFinite(task.projectPosition) ? task.projectPosition : null
+    });
+    cursor.continue();
+  };
+}
 
 function openDatabase() {
   return new Promise((resolve, reject) => {
     const request = indexedDB.open(DB_NAME, DB_VERSION);
-    request.onupgradeneeded = () => {
+    request.onupgradeneeded = event => {
       const db = request.result;
-      if (!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE, { keyPath: "id" });
+      const transaction = request.transaction;
+      const stores = Object.fromEntries(STORE_NAMES.map(name => [name, configureStore(db, transaction, name)]));
+      if (event.oldVersion < 2) {
+        const now = new Date().toISOString();
+        stores.lists.put({ id: INBOX_LIST_ID, entityVersion: 1, title: "Інбокс", description: "", kind: "inbox", position: 0, customFields: {}, createdAt: now, updatedAt: now });
+        migrateLegacyTasks(stores.tasks);
+      }
     };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+    request.onblocked = () => reject(new Error("Оновлення бази заблоковане іншою вкладкою DimsTasks"));
+  });
+}
+
+async function transact(storeNames, mode, action) {
+  const names = Array.isArray(storeNames) ? storeNames : [storeNames];
+  const db = await openDatabase();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(names, mode);
+    try {
+      action(tx, Object.fromEntries(names.map(name => [name, tx.objectStore(name)])));
+    } catch (error) {
+      tx.abort();
+      db.close();
+      reject(error);
+      return;
+    }
+    tx.oncomplete = () => { db.close(); resolve(); };
+    tx.onerror = () => { db.close(); reject(tx.error); };
+    tx.onabort = () => { db.close(); reject(tx.error || new Error("Транзакцію скасовано")); };
+  });
+}
+
+function requestResult(request) {
+  return new Promise((resolve, reject) => {
     request.onsuccess = () => resolve(request.result);
     request.onerror = () => reject(request.error);
   });
 }
 
-async function transact(mode, action) {
-  const db = await openDatabase();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(STORE, mode);
-    const result = action(tx.objectStore(STORE));
-    tx.oncomplete = () => { db.close(); resolve(result?.result); };
-    tx.onerror = () => { db.close(); reject(tx.error); };
-  });
-}
-
-const taskDb = {
-  all: () => transact("readonly", store => store.getAll()),
-  put: task => transact("readwrite", store => store.put(task)),
-  delete: id => transact("readwrite", store => store.delete(id)),
-  replaceAll: async tasks => {
+const appDb = {
+  all: async storeName => {
     const db = await openDatabase();
-    return new Promise((resolve, reject) => {
-      const tx = db.transaction(STORE, "readwrite");
-      const store = tx.objectStore(STORE);
-      store.clear();
-      tasks.forEach(task => store.put(task));
-      tx.oncomplete = () => { db.close(); resolve(); };
-      tx.onerror = () => { db.close(); reject(tx.error); };
-    });
-  }
+    try { return await requestResult(db.transaction(storeName, "readonly").objectStore(storeName).getAll()); }
+    finally { db.close(); }
+  },
+  get: async (storeName, id) => {
+    const db = await openDatabase();
+    try { return await requestResult(db.transaction(storeName, "readonly").objectStore(storeName).get(id)); }
+    finally { db.close(); }
+  },
+  put: (storeName, record) => transact(storeName, "readwrite", (_tx, stores) => stores[storeName].put(record)),
+  delete: (storeName, id) => transact(storeName, "readwrite", (_tx, stores) => stores[storeName].delete(id)),
+  exportAll: async () => Object.fromEntries(await Promise.all(STORE_NAMES.map(async name => [name, await appDb.all(name)]))),
+  replaceAll: data => transact(STORE_NAMES, "readwrite", (_tx, stores) => {
+    for (const name of STORE_NAMES) {
+      stores[name].clear();
+      for (const record of data[name] || []) stores[name].put(record);
+    }
+    if (!(data.lists || []).some(list => list.id === INBOX_LIST_ID)) {
+      const now = new Date().toISOString();
+      stores.lists.put({ id: INBOX_LIST_ID, entityVersion: 1, title: "Інбокс", description: "", kind: "inbox", position: 0, customFields: {}, createdAt: now, updatedAt: now });
+    }
+  })
 };
 
+const taskDb = {
+  all: () => appDb.all("tasks"),
+  put: task => appDb.put("tasks", task),
+  delete: id => appDb.delete("tasks", id),
+  replaceAll: tasks => transact("tasks", "readwrite", (_tx, stores) => {
+    stores.tasks.clear();
+    for (const task of tasks) stores.tasks.put(task);
+  })
+};
+
+
+const ENTITY_VERSION = 1;
+function nowIso() { return new Date().toISOString(); }
+function baseRecord(values = {}) {
+  const now = nowIso();
+  return { id: values.id || crypto.randomUUID(), entityVersion: values.entityVersion || ENTITY_VERSION, createdAt: values.createdAt || now, updatedAt: values.updatedAt || now, customFields: values.customFields || {} };
+}
+function createList(values = {}) {
+  return { ...baseRecord(values), ...values, title: String(values.title || "").trim(), description: values.description || "", kind: values.kind || "regular", position: Number.isFinite(values.position) ? values.position : 0 };
+}
+function createSection(values = {}) {
+  return { ...baseRecord(values), ...values, listId: values.listId, title: String(values.title || "").trim(), description: values.description || "", position: Number.isFinite(values.position) ? values.position : 0 };
+}
+function createProject(values = {}) {
+  return { ...baseRecord(values), ...values, title: String(values.title || "").trim(), goal: values.goal || "", description: values.description || "", status: values.status || "active", dueDate: values.dueDate || null, dueTime: values.dueTime || null, completedAt: values.completedAt || null, position: Number.isFinite(values.position) ? values.position : 0 };
+}
+function createTask(values = {}) {
+  return { ...baseRecord(values), ...values, listId: values.listId || INBOX_LIST_ID, sectionId: values.sectionId || null, projectId: values.projectId || null, title: String(values.title || "").trim(), description: values.description || "", status: values.status || "active", completedAt: values.completedAt || null, dueDate: values.dueDate || null, dueTime: values.dueTime || null, position: Number.isFinite(values.position) ? values.position : 0, projectPosition: Number.isFinite(values.projectPosition) ? values.projectPosition : null };
+}
+function isTaskCompleted(task) { return task.status === "completed" || task.done === true; }
+function currentProjectTask(tasks, projectId) {
+  return tasks.filter(task => task.projectId === projectId && !isTaskCompleted(task)).sort((a, b) => (a.projectPosition ?? Number.MAX_SAFE_INTEGER) - (b.projectPosition ?? Number.MAX_SAFE_INTEGER))[0] || null;
+}
 
 
 const BACKUP_FORMAT = "local-first-pwa-backup";
 const APP_ID = "dims-tasks";
+const BACKUP_FORMAT_VERSION = 2;
 
-function downloadBackup(tasks) {
-  const payload = { format: BACKUP_FORMAT, appId: APP_ID, formatVersion: 1, databaseVersion: DB_VERSION, exportedAt: new Date().toISOString(), data: { tasks } };
+async function downloadBackup() {
+  const payload = { format: BACKUP_FORMAT, appId: APP_ID, formatVersion: BACKUP_FORMAT_VERSION, databaseVersion: DB_VERSION, exportedAt: new Date().toISOString(), data: await appDb.exportAll() };
   const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
   const link = document.createElement("a");
   link.href = URL.createObjectURL(blob);
@@ -156,14 +280,19 @@ function downloadBackup(tasks) {
   URL.revokeObjectURL(link.href);
 }
 
+function isRecord(value) { return value && typeof value.id === "string" && typeof value.createdAt === "string"; }
 async function parseBackup(file) {
   const value = JSON.parse(await file.text());
-  if (value?.format !== BACKUP_FORMAT || value?.appId !== APP_ID || value?.formatVersion !== 1 || !Array.isArray(value?.data?.tasks)) throw new Error("Це не резервна копія DimsTasks");
-  const valid = value.data.tasks.every(task => typeof task.id === "string" && typeof task.title === "string" && typeof task.done === "boolean");
-  if (!valid) throw new Error("Копія містить пошкоджені задачі");
-  return value.data.tasks;
+  if (value?.format !== BACKUP_FORMAT || value?.appId !== APP_ID) throw new Error("Це не резервна копія DimsTasks");
+  if (value.formatVersion === 1 && Array.isArray(value?.data?.tasks)) {
+    return { lists: [], sections: [], projects: [], tasks: value.data.tasks.map(task => createTask({ ...task, status: task.done ? "completed" : "active" })) };
+  }
+  if (value.formatVersion !== BACKUP_FORMAT_VERSION) throw new Error("Цю версію резервної копії ще не підтримано");
+  if (!STORE_NAMES.every(name => Array.isArray(value?.data?.[name]))) throw new Error("Копія має неповну структуру даних");
+  if (!STORE_NAMES.every(name => value.data[name].every(isRecord))) throw new Error("Копія містить пошкоджені записи");
+  return value.data;
 }
-
+async function restoreBackup(file) { await appDb.replaceAll(await parseBackup(file)); }
 
 
 const els = { form:document.querySelector("#task-form"), input:document.querySelector("#task-title"), date:document.querySelector("#task-date"), dateLabel:document.querySelector("#date-label"), dialog:document.querySelector("#task-dialog"), add:document.querySelector("#add-task-btn"), list:document.querySelector("#task-list"), empty:document.querySelector("#empty-state"), count:document.querySelector("#task-count"), template:document.querySelector("#task-template"), toast:document.querySelector("#toast") };
@@ -171,21 +300,21 @@ const dateFormatter = new Intl.DateTimeFormat("uk-UA",{day:"numeric",month:"shor
 function localDateValue(date=new Date()){const offset=date.getTimezoneOffset()*60000;return new Date(date.getTime()-offset).toISOString().slice(0,10)}
 function readableDate(value){if(!value)return "Без дати";if(value===localDateValue())return "Сьогодні";const tomorrow=new Date();tomorrow.setDate(tomorrow.getDate()+1);if(value===localDateValue(tomorrow))return "Завтра";return dateFormatter.format(new Date(`${value}T12:00:00`))}
 function toast(message){els.toast.textContent=message;els.toast.classList.add("show");clearTimeout(toast.timer);toast.timer=setTimeout(()=>els.toast.classList.remove("show"),1800)}
-function renderTasks(tasks){const active=tasks.filter(task=>!task.done);els.list.replaceChildren(...active.map(task=>{const row=els.template.content.firstElementChild.cloneNode(true);row.dataset.id=task.id;row.querySelector(".task-text").textContent=task.title;row.querySelector(".task-date").textContent=readableDate(task.dueDate||task.createdAt?.slice(0,10));return row}));els.list.hidden=active.length===0;els.empty.hidden=active.length>0;els.count.textContent=`${active.length} ${active.length===1?"задача":active.length>1&&active.length<5?"задачі":"задач"}`}
+function renderTasks(tasks){const active=tasks.filter(task=>!isTaskCompleted(task));els.list.replaceChildren(...active.map(task=>{const row=els.template.content.firstElementChild.cloneNode(true);row.dataset.id=task.id;row.querySelector(".task-text").textContent=task.title;row.querySelector(".task-date").textContent=readableDate(task.dueDate||task.createdAt?.slice(0,10));return row}));els.list.hidden=active.length===0;els.empty.hidden=active.length>0;els.count.textContent=`${active.length} ${active.length===1?"задача":active.length>1&&active.length<5?"задачі":"задач"}`}
 function openComposer(){els.form.reset();els.date.value=localDateValue();els.dateLabel.textContent="Сьогодні";els.dialog.showModal();requestAnimationFrame(()=>els.input.focus())}
 
 
 
 let tasks=[];
 async function refresh(){tasks=(await taskDb.all()).sort((a,b)=>b.createdAt.localeCompare(a.createdAt));renderTasks(tasks)}
-async function addTask(){const title=els.input.value.trim();if(!title){els.input.focus();return}await taskDb.put({id:crypto.randomUUID(),title,dueDate:els.date.value||null,done:false,createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()});els.dialog.close();await refresh();toast("Задачу додано")}
+async function addTask(){const title=els.input.value.trim();if(!title){els.input.focus();return}await taskDb.put(createTask({title,dueDate:els.date.value||null}));els.dialog.close();await refresh();toast("Задачу додано")}
 els.add.addEventListener("click",openComposer);
 els.date.addEventListener("change",()=>{els.dateLabel.textContent=readableDate(els.date.value)});
 els.input.addEventListener("input",()=>{els.input.style.height="auto";els.input.style.height=`${Math.min(els.input.scrollHeight,150)}px`});
 els.input.addEventListener("keydown",event=>{if(event.key==="Enter"&&!event.shiftKey){event.preventDefault();addTask()}if(event.key==="Escape")els.dialog.close()});
 els.form.addEventListener("submit",event=>{event.preventDefault();addTask()});
 els.dialog.addEventListener("click",event=>{const box=els.dialog.getBoundingClientRect();if(event.clientX<box.left||event.clientX>box.right||event.clientY<box.top||event.clientY>box.bottom)els.dialog.close()});
-els.list.addEventListener("click",async event=>{const toggle=event.target.closest(".toggle");if(!toggle)return;const row=toggle.closest(".task-card");const task=tasks.find(item=>item.id===row.dataset.id);await taskDb.put({...task,done:true,updatedAt:new Date().toISOString()});await refresh();toast("Виконано")});
+els.list.addEventListener("click",async event=>{const toggle=event.target.closest(".toggle");if(!toggle)return;const row=toggle.closest(".task-card");const task=tasks.find(item=>item.id===row.dataset.id);const completedAt=new Date().toISOString();await taskDb.put({...task,status:"completed",completedAt,updatedAt:completedAt});await refresh();toast("Виконано")});
 if("serviceWorker" in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("./service-worker.js"));
 refresh().catch(()=>toast("Не вдалося відкрити локальне сховище"));
 
@@ -193,3 +322,4 @@ refresh().catch(()=>toast("Не вдалося відкрити локальне
 </script>
 </body>
 </html>
+
