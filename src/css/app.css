@@ -37,6 +37,8 @@ h1 { font-size:clamp(2.25rem,9vw,3.4rem); line-height:1; letter-spacing:-.05em; 
 .task-open:focus-visible { outline:2px solid var(--accent); outline-offset:4px; border-radius:8px; }
 .task-copy { min-width:0; display:block; }
 .task-text { font-size:1.08rem; line-height:1.35; overflow-wrap:anywhere; }
+.task-description-preview { display:-webkit-box; margin-top:5px; overflow:hidden; color:var(--muted); font-size:.94rem; line-height:1.35; overflow-wrap:anywhere; -webkit-box-orient:vertical; -webkit-line-clamp:2; }
+.task-description-preview[hidden] { display:none; }
 .task-date { display:block; margin-top:5px; color:var(--date); font-size:.88rem; font-weight:590; }
 .task-project { display:inline-flex; align-items:center; gap:6px; color:var(--muted); font-size:.9rem; white-space:nowrap; align-self:end; padding-bottom:5px; }
 .inbox-icon { width:17px; height:15px; display:inline-block; border:2px solid currentColor; border-radius:3px 3px 5px 5px; position:relative; }

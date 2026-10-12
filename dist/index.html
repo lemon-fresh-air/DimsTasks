@@ -63,6 +63,8 @@ h1 { font-size:clamp(2.25rem,9vw,3.4rem); line-height:1; letter-spacing:-.05em; 
 .task-open:focus-visible { outline:2px solid var(--accent); outline-offset:4px; border-radius:8px; }
 .task-copy { min-width:0; display:block; }
 .task-text { font-size:1.08rem; line-height:1.35; overflow-wrap:anywhere; }
+.task-description-preview { display:-webkit-box; margin-top:5px; overflow:hidden; color:var(--muted); font-size:.94rem; line-height:1.35; overflow-wrap:anywhere; -webkit-box-orient:vertical; -webkit-line-clamp:2; }
+.task-description-preview[hidden] { display:none; }
 .task-date { display:block; margin-top:5px; color:var(--date); font-size:.88rem; font-weight:590; }
 .task-project { display:inline-flex; align-items:center; gap:6px; color:var(--muted); font-size:.9rem; white-space:nowrap; align-self:end; padding-bottom:5px; }
 .inbox-icon { width:17px; height:15px; display:inline-block; border:2px solid currentColor; border-radius:3px 3px 5px 5px; position:relative; }
@@ -173,7 +175,7 @@ body.task-dialog-open { overflow:hidden; }
     <p class="form-hint">Enter — додати · Shift+Enter — новий рядок</p>
   </form>
 </div>
-<template id="task-template"><li class="swipe-row"><div class="delete-reveal" aria-hidden="true"><span class="delete-icon"></span><span>Видалити</span></div><article class="task-card"><button class="toggle" aria-label="Позначити виконаною"><span>✓</span></button><button class="task-open" type="button" aria-label="Відкрити деталі завдання"><span class="task-copy"><span class="task-text"></span><span class="task-date"></span></span><span class="task-project">Нові <span class="inbox-icon" aria-hidden="true"></span></span></button></article></li></template>
+<template id="task-template"><li class="swipe-row"><div class="delete-reveal" aria-hidden="true"><span class="delete-icon"></span><span>Видалити</span></div><article class="task-card"><button class="toggle" aria-label="Позначити виконаною"><span>✓</span></button><button class="task-open" type="button" aria-label="Відкрити деталі завдання"><span class="task-copy"><span class="task-text"></span><span class="task-description-preview" hidden></span><span class="task-date"></span></span><span class="task-project">Нові <span class="inbox-icon" aria-hidden="true"></span></span></button></article></li></template>
 <div id="toast" class="toast" role="status" aria-live="polite"><span class="toast-message"></span><button id="toast-action" class="toast-action" type="button">Відмінити</button><svg class="toast-timer" viewBox="0 0 28 28" aria-hidden="true"><circle class="toast-timer-track" cx="14" cy="14" r="11"></circle><circle class="toast-timer-progress" cx="14" cy="14" r="11"></circle></svg></div>
 
 
@@ -473,6 +475,10 @@ function renderTasks(tasks, selectedIds = new Set()) {
     row.classList.toggle("selected", selected);
     row.setAttribute("aria-selected", String(selected));
     row.querySelector(".task-text").textContent = task.title;
+    const description = task.description?.trim();
+    const preview = row.querySelector(".task-description-preview");
+    preview.hidden = !description;
+    preview.textContent = description || "";
     row.querySelector(".task-date").textContent = readableDate(task.dueDate || task.createdAt?.slice(0, 10));
     row.querySelector(".task-open").setAttribute("aria-label", `Відкрити деталі: ${task.title}`);
     return row;

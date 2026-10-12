@@ -86,6 +86,10 @@ function renderTasks(tasks, selectedIds = new Set()) {
     row.classList.toggle("selected", selected);
     row.setAttribute("aria-selected", String(selected));
     row.querySelector(".task-text").textContent = task.title;
+    const description = task.description?.trim();
+    const preview = row.querySelector(".task-description-preview");
+    preview.hidden = !description;
+    preview.textContent = description || "";
     row.querySelector(".task-date").textContent = readableDate(task.dueDate || task.createdAt?.slice(0, 10));
     row.querySelector(".task-open").setAttribute("aria-label", `Відкрити деталі: ${task.title}`);
     return row;
