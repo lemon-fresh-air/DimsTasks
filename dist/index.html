@@ -113,6 +113,8 @@ body.task-dialog-open { overflow:hidden; }
 .attribute-placeholders::-webkit-scrollbar { display:none; }
 .attribute-chip { flex:0 0 auto; min-height:44px; padding:0 14px; border:0; border-radius:14px; display:inline-flex; align-items:center; gap:8px; background:#efefec; color:#555; font-weight:700; opacity:1; }
 .attribute-chip:disabled { cursor:default; }
+.save-task-button { width:100%; min-height:54px; margin-top:12px; border:0; border-radius:17px; background:var(--accent); color:#fff; font-weight:760; letter-spacing:.01em; box-shadow:0 5px 14px color-mix(in srgb,var(--accent) 24%,transparent); }
+.save-task-button:active { transform:translateY(1px); }
 .calendar-icon { width:20px; height:20px; border:2px solid currentColor; border-radius:3px; position:relative; }
 .calendar-icon::before { content:""; position:absolute; left:2px; right:2px; top:5px; border-top:2px solid currentColor; }
 .form-hint { margin:13px 2px 0; color:var(--muted); font-size:.75rem; }
@@ -179,6 +181,7 @@ body.task-dialog-open { overflow:hidden; }
       <button class="attribute-chip" type="button" disabled><span aria-hidden="true">◇</span>Мітки</button>
       <button class="attribute-chip" type="button" disabled><span aria-hidden="true">◎</span>Повтор</button>
     </div>
+    <button id="save-task-button" class="save-task-button" type="submit">Створити задачу</button>
     <p class="form-hint">Enter — додати · Shift+Enter — новий рядок</p>
   </form>
 </div>
@@ -412,6 +415,7 @@ const els = {
   attributePlaceholders: document.querySelector(".attribute-placeholders"),
   detailToggle: document.querySelector("#detail-toggle"),
   collapseTask: document.querySelector("#collapse-task"),
+  saveTaskButton: document.querySelector("#save-task-button"),
   formHint: document.querySelector(".form-hint"),
   add: document.querySelector("#add-task-btn"),
   list: document.querySelector("#task-list"),
@@ -517,6 +521,7 @@ function openComposer() {
   els.detailFields.hidden = false;
   els.attributePlaceholders.hidden = true;
   els.detailToggle.hidden = true;
+  els.saveTaskButton.textContent = "Створити задачу";
   els.formHint.hidden = false;
   els.date.value = localDateValue();
   els.dateLabel.textContent = "Сьогодні";
@@ -532,6 +537,7 @@ function openTaskDetails(task) {
   els.detailFields.hidden = false;
   els.attributePlaceholders.hidden = false;
   els.detailToggle.hidden = false;
+  els.saveTaskButton.textContent = "Зберегти зміни";
   els.formHint.hidden = true;
   els.input.value = task.title;
   els.description.value = task.description || "";
@@ -671,12 +677,25 @@ async function addTask() {
 
 async function saveOpenTask() {
   const id = els.dialog.dataset.taskId;
-  if (!id) return;
+  if (!id) return false;
   const task = tasks.find(item => item.id === id);
   const title = els.input.value.trim();
-  if (!task || !title) return;
+  if (!task || !title) return false;
   await taskDb.put({ ...task, title, description: els.description.value.trim(), dueDate: els.date.value || null, updatedAt: new Date().toISOString() });
   await refresh();
+  return true;
+}
+
+async function submitTaskForm() {
+  if (!els.dialog.classList.contains("detail-mode")) {
+    await addTask();
+    return;
+  }
+  const saved = await saveOpenTask();
+  if (!saved) { els.input.focus(); return; }
+  els.dialog.dataset.taskId = "";
+  hideTaskDialog();
+  toast("Зміни збережено");
 }
 
 async function closeTaskDetails() {
@@ -715,7 +734,7 @@ els.deleteSelected.addEventListener("click", deleteSelectedTasks);
 els.date.addEventListener("change", () => { els.dateLabel.textContent = readableDate(els.date.value); });
 els.input.addEventListener("input", () => { els.input.style.height = "auto"; els.input.style.height = `${Math.min(els.input.scrollHeight, 150)}px`; });
 els.input.addEventListener("keydown", event => { if (event.key === "Enter" && !event.shiftKey && !els.dialog.classList.contains("detail-mode")) { event.preventDefault(); addTask(); } if (event.key === "Escape") hideTaskDialog(); });
-els.form.addEventListener("submit", event => { event.preventDefault(); if (!els.dialog.classList.contains("detail-mode")) addTask(); });
+els.form.addEventListener("submit", event => { event.preventDefault(); submitTaskForm(); });
 els.dialog.addEventListener("taskdialogclose", () => { if (els.dialog.dataset.taskId) saveOpenTask().catch(() => toast("Не вдалося зберегти зміни")); });
 els.dialog.addEventListener("pointerdown", event => {
   if (event.target !== els.dialog) return;

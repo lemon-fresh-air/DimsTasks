@@ -16,6 +16,7 @@ const els = {
   attributePlaceholders: document.querySelector(".attribute-placeholders"),
   detailToggle: document.querySelector("#detail-toggle"),
   collapseTask: document.querySelector("#collapse-task"),
+  saveTaskButton: document.querySelector("#save-task-button"),
   formHint: document.querySelector(".form-hint"),
   add: document.querySelector("#add-task-btn"),
   list: document.querySelector("#task-list"),
@@ -121,6 +122,7 @@ function openComposer() {
   els.detailFields.hidden = false;
   els.attributePlaceholders.hidden = true;
   els.detailToggle.hidden = true;
+  els.saveTaskButton.textContent = "Створити задачу";
   els.formHint.hidden = false;
   els.date.value = localDateValue();
   els.dateLabel.textContent = "Сьогодні";
@@ -136,6 +138,7 @@ function openTaskDetails(task) {
   els.detailFields.hidden = false;
   els.attributePlaceholders.hidden = false;
   els.detailToggle.hidden = false;
+  els.saveTaskButton.textContent = "Зберегти зміни";
   els.formHint.hidden = true;
   els.input.value = task.title;
   els.description.value = task.description || "";

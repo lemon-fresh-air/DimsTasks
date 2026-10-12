@@ -87,6 +87,8 @@ body.task-dialog-open { overflow:hidden; }
 .attribute-placeholders::-webkit-scrollbar { display:none; }
 .attribute-chip { flex:0 0 auto; min-height:44px; padding:0 14px; border:0; border-radius:14px; display:inline-flex; align-items:center; gap:8px; background:#efefec; color:#555; font-weight:700; opacity:1; }
 .attribute-chip:disabled { cursor:default; }
+.save-task-button { width:100%; min-height:54px; margin-top:12px; border:0; border-radius:17px; background:var(--accent); color:#fff; font-weight:760; letter-spacing:.01em; box-shadow:0 5px 14px color-mix(in srgb,var(--accent) 24%,transparent); }
+.save-task-button:active { transform:translateY(1px); }
 .calendar-icon { width:20px; height:20px; border:2px solid currentColor; border-radius:3px; position:relative; }
 .calendar-icon::before { content:""; position:absolute; left:2px; right:2px; top:5px; border-top:2px solid currentColor; }
 .form-hint { margin:13px 2px 0; color:var(--muted); font-size:.75rem; }
