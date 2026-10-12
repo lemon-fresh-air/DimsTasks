@@ -8,13 +8,14 @@ h1 { font-size:clamp(2.25rem,9vw,3.4rem); line-height:1; letter-spacing:-.05em; 
 #task-list { list-style:none; margin:0; padding:0; overflow:hidden; border-radius:var(--radius); background:var(--surface); }
 .swipe-row { position:relative; overflow:hidden; border-bottom:1px solid var(--line); background:var(--danger); }
 .swipe-row:last-child { border-bottom:0; }
-.delete-reveal { position:absolute; inset:0 0 0 auto; width:112px; display:flex; align-items:center; justify-content:flex-end; gap:8px; padding-right:18px; color:#fff; font-size:.82rem; font-weight:760; opacity:0; transform:translateX(16px); transition:opacity .12s,transform .12s; }
+.delete-reveal { position:absolute; inset:0 0 0 auto; width:112px; display:flex; align-items:center; justify-content:flex-end; gap:8px; padding-right:18px; color:#fff; font-size:.82rem; font-weight:760; opacity:0; transform:translateX(16px); transition:opacity .18s var(--ease-swipe),transform .24s var(--ease-swipe); }
 .delete-icon { width:20px; height:23px; border:2px solid currentColor; border-top:0; border-radius:2px 2px 5px 5px; position:relative; }
 .delete-icon::before { content:""; position:absolute; left:-3px; right:-3px; top:-6px; border-top:2px solid currentColor; border-radius:2px; }
 .delete-icon::after { content:""; position:absolute; width:8px; left:4px; top:-10px; border-top:2px solid currentColor; border-radius:2px; }
 .swipe-row.swiping .delete-reveal,.swipe-row.deleting .delete-reveal { opacity:1; transform:none; }
 .task-card { position:relative; z-index:1; min-height:82px; display:grid; grid-template-columns:48px minmax(0,1fr) auto; align-items:center; gap:10px; padding:14px 17px 14px 13px; background:var(--surface); touch-action:pan-y; user-select:none; will-change:transform; }
-.swipe-row.settling .task-card,.swipe-row.deleting .task-card { transition:transform .18s ease-out; }
+.swipe-row.settling .task-card { transition:transform .26s var(--ease-swipe); }
+.swipe-row.deleting .task-card { transition:transform .3s var(--ease-swipe); }
 .swipe-row.deleting .task-card { transform:translateX(-110%)!important; }
 .toggle { width:34px; height:34px; display:grid; place-items:center; border:2px solid #aaa; border-radius:50%; background:transparent; color:#fff; }
 .toggle span { opacity:0; }
