@@ -5,7 +5,7 @@ from shutil import copy2, copytree
 ROOT = Path(__file__).resolve().parents[1]
 DIST = ROOT / "dist"
 CSS_FILES = [ROOT / "src/css/tokens.css", ROOT / "src/css/base.css", ROOT / "src/css/app.css"]
-JS_FILES = [ROOT / "src/js/db.js", ROOT / "src/js/import-export.js", ROOT / "src/js/ui.js", ROOT / "src/js/app.js"]
+JS_FILES = [ROOT / "src/js/db.js", ROOT / "src/js/model.js", ROOT / "src/js/import-export.js", ROOT / "src/js/ui.js", ROOT / "src/js/app.js"]
 HTML_FILE = ROOT / "src/html/app.html"
 STATIC = ROOT / "static"
 
@@ -49,3 +49,4 @@ if "__BUILD_ID__" in service_worker:
 (DIST / "service-worker.js").write_text(service_worker, encoding="utf-8", newline="\n")
 copytree(STATIC / "icons", DIST / "icons", dirs_exist_ok=True)
 print(f"Built DimsTasks {build_id} -> {DIST}")
+
