@@ -33,6 +33,10 @@ h1 { font-size:clamp(2.25rem,9vw,3.4rem); line-height:1; letter-spacing:-.05em; 
 #task-list { list-style:none; margin:0; padding:0; overflow:hidden; border-radius:var(--radius); background:var(--surface); }
 .swipe-row { position:relative; overflow:hidden; border-bottom:1px solid var(--line); background:var(--danger); }
 .swipe-row:last-child { border-bottom:0; }
+.swipe-row.selected .task-card { background:#edf2f7; box-shadow:inset 4px 0 0 var(--accent); }
+.selection-mode .toggle { border-color:color-mix(in srgb,var(--accent) 52%,var(--line)); }
+.swipe-row.selected .toggle { border-color:var(--accent); background:var(--accent); }
+.swipe-row.selected .toggle span { opacity:1; }
 .delete-reveal { position:absolute; inset:0 0 0 auto; width:112px; display:flex; align-items:center; justify-content:flex-end; gap:8px; padding-right:18px; color:#fff; font-size:.82rem; font-weight:760; opacity:0; transform:translateX(16px); transition:opacity .18s var(--ease-swipe),transform .24s var(--ease-swipe); }
 .delete-icon { width:20px; height:23px; border:2px solid currentColor; border-top:0; border-radius:2px 2px 5px 5px; position:relative; }
 .delete-icon::before { content:""; position:absolute; left:-3px; right:-3px; top:-6px; border-top:2px solid currentColor; border-radius:2px; }
@@ -372,18 +376,25 @@ els.toastAction.addEventListener("click", async () => {
   if (action) await action();
 });
 
-function renderTasks(tasks) {
+function renderTasks(tasks, selectedIds = new Set()) {
   const active = tasks.filter(task => !isTaskCompleted(task));
+  const selectionMode = selectedIds.size > 0;
+  els.list.classList.toggle("selection-mode", selectionMode);
   els.list.replaceChildren(...active.map(task => {
     const row = els.template.content.firstElementChild.cloneNode(true);
     row.dataset.id = task.id;
+    const selected = selectedIds.has(task.id);
+    row.classList.toggle("selected", selected);
+    row.setAttribute("aria-selected", String(selected));
     row.querySelector(".task-text").textContent = task.title;
     row.querySelector(".task-date").textContent = readableDate(task.dueDate || task.createdAt?.slice(0, 10));
     return row;
   }));
   els.list.hidden = active.length === 0;
   els.empty.hidden = active.length > 0;
-  els.count.textContent = `${active.length} ${active.length === 1 ? "задача" : active.length > 1 && active.length < 5 ? "задачі" : "задач"}`;
+  els.count.textContent = selectionMode
+    ? `Вибрано: ${selectedIds.size}`
+    : `${active.length} ${active.length === 1 ? "задача" : active.length > 1 && active.length < 5 ? "задачі" : "задач"}`;
 }
 
 function openComposer() {
@@ -394,7 +405,7 @@ function openComposer() {
   requestAnimationFrame(() => els.input.focus());
 }
 
-function enableTaskSwipe(onDelete) {
+function enableTaskSwipe({ onDelete, isSelectionMode, onLongPress }) {
   let gesture = null;
   const maxReveal = 112;
   const deleteThreshold = 72;
@@ -403,17 +414,24 @@ function enableTaskSwipe(onDelete) {
 
   els.list.addEventListener("pointerdown", event => {
     const card = event.target.closest(".task-card");
-    if (!card || event.button > 0) return;
+    if (!card || event.button > 0 || isSelectionMode()) return;
     const row = card.closest(".swipe-row");
-    gesture = { row, card, pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, dx: 0, horizontal: false };
+    gesture = { row, card, pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, dx: 0, horizontal: false, longPress: false };
     card.setPointerCapture(event.pointerId);
     row.classList.remove("settling");
+    gesture.longPressTimer = setTimeout(() => {
+      if (!gesture || gesture.pointerId !== event.pointerId || gesture.horizontal) return;
+      gesture.longPress = true;
+      row.dataset.longPressed = "true";
+      onLongPress(row.dataset.id);
+    }, 520);
   });
 
   els.list.addEventListener("pointermove", event => {
     if (!gesture || gesture.pointerId !== event.pointerId) return;
     const dx = event.clientX - gesture.startX;
     const dy = event.clientY - gesture.startY;
+    if (Math.abs(dx) > 8 || Math.abs(dy) > 8) clearTimeout(gesture.longPressTimer);
     if (!gesture.horizontal && Math.abs(dy) > Math.abs(dx) && Math.abs(dy) > 8) {
       gesture = null;
       return;
@@ -428,8 +446,10 @@ function enableTaskSwipe(onDelete) {
 
   const finishGesture = event => {
     if (!gesture || gesture.pointerId !== event.pointerId) return;
-    const { row, card, dx, horizontal } = gesture;
+    const { row, card, dx, horizontal, longPress, longPressTimer } = gesture;
     gesture = null;
+    clearTimeout(longPressTimer);
+    if (longPress) return;
     if (horizontal && Math.abs(dx) >= deleteThreshold) {
       row.classList.remove("swiping");
       row.classList.add("deleting");
@@ -449,10 +469,24 @@ function enableTaskSwipe(onDelete) {
 
 
 let tasks = [];
+let selectedTaskIds = new Set();
 
 async function refresh() {
   tasks = (await taskDb.all()).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-  renderTasks(tasks);
+  selectedTaskIds = new Set([...selectedTaskIds].filter(id => tasks.some(task => task.id === id)));
+  renderTasks(tasks, selectedTaskIds);
+}
+
+function selectTask(id) {
+  selectedTaskIds = new Set([id]);
+  renderTasks(tasks, selectedTaskIds);
+}
+
+function toggleTaskSelection(id) {
+  const next = new Set(selectedTaskIds);
+  if (next.has(id)) next.delete(id); else next.add(id);
+  selectedTaskIds = next;
+  renderTasks(tasks, selectedTaskIds);
 }
 
 async function addTask() {
@@ -468,7 +502,8 @@ async function deleteTask(id) {
   const task = tasks.find(item => item.id === id);
   if (!task) return;
   tasks = tasks.filter(item => item.id !== id);
-  renderTasks(tasks);
+  selectedTaskIds.delete(id);
+  renderTasks(tasks, selectedTaskIds);
   try {
     await taskDb.delete(id);
     toast("Завдання видалено", {
@@ -481,7 +516,7 @@ async function deleteTask(id) {
     });
   } catch (_error) {
     tasks.push(task);
-    renderTasks(tasks);
+    renderTasks(tasks, selectedTaskIds);
     toast("Не вдалося видалити завдання");
   }
 }
@@ -495,6 +530,11 @@ els.dialog.addEventListener("click", event => { const box = els.dialog.getBoundi
 els.list.addEventListener("click", async event => {
   const row = event.target.closest(".swipe-row");
   if (row?.dataset.swiped) { delete row.dataset.swiped; return; }
+  if (row?.dataset.longPressed) { delete row.dataset.longPressed; return; }
+  if (selectedTaskIds.size && row) {
+    toggleTaskSelection(row.dataset.id);
+    return;
+  }
   const toggle = event.target.closest(".toggle");
   if (!toggle) return;
   const task = tasks.find(item => item.id === row.dataset.id);
@@ -504,7 +544,11 @@ els.list.addEventListener("click", async event => {
   toast("Виконано");
 });
 
-enableTaskSwipe(deleteTask);
+enableTaskSwipe({
+  onDelete: deleteTask,
+  isSelectionMode: () => selectedTaskIds.size > 0,
+  onLongPress: selectTask
+});
 if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("./service-worker.js"));
 refresh().catch(() => toast("Не вдалося відкрити локальне сховище"));
 
