@@ -1,5 +1,14 @@
 <div class="app-shell">
-  <header class="page-header"><h1>Нові</h1><p id="task-count">0 задач</p></header>
+  <header class="page-header">
+    <div id="normal-header"><h1>Нові</h1><p id="task-count">0 задач</p></div>
+    <div id="selection-toolbar" class="selection-toolbar" hidden>
+      <button id="selection-close" class="toolbar-action" type="button" aria-label="Завершити виділення"><span class="back-icon" aria-hidden="true"></span></button>
+      <p id="selection-count">Вибрано: 0</p>
+      <div class="selection-actions" aria-label="Дії з вибраними завданнями">
+        <button id="delete-selected" class="toolbar-action destructive" type="button" aria-label="Видалити вибрані завдання"><span class="trash-icon" aria-hidden="true"></span></button>
+      </div>
+    </div>
+  </header>
   <main><section class="task-section" aria-labelledby="inbox-title">
     <h2 id="inbox-title">Нові</h2><ul id="task-list" aria-live="polite"></ul>
     <div id="empty-state" class="empty"><span class="empty-icon" aria-hidden="true">✓</span><p>Нових задач поки немає</p><small>Натисніть кнопку внизу, щоб додати першу.</small></div>
