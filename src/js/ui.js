@@ -105,6 +105,7 @@ function renderTasks(tasks, selectedIds = new Set()) {
 function showTaskDialog() {
   els.dialog.hidden = false;
   document.body.classList.add("task-dialog-open");
+  syncTaskDialogViewport();
 }
 
 function hideTaskDialog() {
@@ -112,6 +113,18 @@ function hideTaskDialog() {
   els.dialog.hidden = true;
   document.body.classList.remove("task-dialog-open");
   els.dialog.dispatchEvent(new Event("taskdialogclose"));
+}
+
+function syncTaskDialogViewport() {
+  if (!window.visualViewport) return;
+  const viewport = window.visualViewport;
+  const keyboardHeight = Math.max(0, window.innerHeight - viewport.height - viewport.offsetTop);
+  els.dialog.style.setProperty("--keyboard-offset", `${keyboardHeight}px`);
+}
+
+if (window.visualViewport) {
+  window.visualViewport.addEventListener("resize", syncTaskDialogViewport);
+  window.visualViewport.addEventListener("scroll", syncTaskDialogViewport);
 }
 
 function openComposer() {
