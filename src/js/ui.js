@@ -58,18 +58,25 @@ els.toastAction.addEventListener("click", async () => {
   if (action) await action();
 });
 
-function renderTasks(tasks) {
+function renderTasks(tasks, selectedIds = new Set()) {
   const active = tasks.filter(task => !isTaskCompleted(task));
+  const selectionMode = selectedIds.size > 0;
+  els.list.classList.toggle("selection-mode", selectionMode);
   els.list.replaceChildren(...active.map(task => {
     const row = els.template.content.firstElementChild.cloneNode(true);
     row.dataset.id = task.id;
+    const selected = selectedIds.has(task.id);
+    row.classList.toggle("selected", selected);
+    row.setAttribute("aria-selected", String(selected));
     row.querySelector(".task-text").textContent = task.title;
     row.querySelector(".task-date").textContent = readableDate(task.dueDate || task.createdAt?.slice(0, 10));
     return row;
   }));
   els.list.hidden = active.length === 0;
   els.empty.hidden = active.length > 0;
-  els.count.textContent = `${active.length} ${active.length === 1 ? "задача" : active.length > 1 && active.length < 5 ? "задачі" : "задач"}`;
+  els.count.textContent = selectionMode
+    ? `Вибрано: ${selectedIds.size}`
+    : `${active.length} ${active.length === 1 ? "задача" : active.length > 1 && active.length < 5 ? "задачі" : "задач"}`;
 }
 
 function openComposer() {
@@ -80,7 +87,7 @@ function openComposer() {
   requestAnimationFrame(() => els.input.focus());
 }
 
-function enableTaskSwipe(onDelete) {
+function enableTaskSwipe({ onDelete, isSelectionMode, onLongPress }) {
   let gesture = null;
   const maxReveal = 112;
   const deleteThreshold = 72;
@@ -89,17 +96,24 @@ function enableTaskSwipe(onDelete) {
 
   els.list.addEventListener("pointerdown", event => {
     const card = event.target.closest(".task-card");
-    if (!card || event.button > 0) return;
+    if (!card || event.button > 0 || isSelectionMode()) return;
     const row = card.closest(".swipe-row");
-    gesture = { row, card, pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, dx: 0, horizontal: false };
+    gesture = { row, card, pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, dx: 0, horizontal: false, longPress: false };
     card.setPointerCapture(event.pointerId);
     row.classList.remove("settling");
+    gesture.longPressTimer = setTimeout(() => {
+      if (!gesture || gesture.pointerId !== event.pointerId || gesture.horizontal) return;
+      gesture.longPress = true;
+      row.dataset.longPressed = "true";
+      onLongPress(row.dataset.id);
+    }, 520);
   });
 
   els.list.addEventListener("pointermove", event => {
     if (!gesture || gesture.pointerId !== event.pointerId) return;
     const dx = event.clientX - gesture.startX;
     const dy = event.clientY - gesture.startY;
+    if (Math.abs(dx) > 8 || Math.abs(dy) > 8) clearTimeout(gesture.longPressTimer);
     if (!gesture.horizontal && Math.abs(dy) > Math.abs(dx) && Math.abs(dy) > 8) {
       gesture = null;
       return;
@@ -114,8 +128,10 @@ function enableTaskSwipe(onDelete) {
 
   const finishGesture = event => {
     if (!gesture || gesture.pointerId !== event.pointerId) return;
-    const { row, card, dx, horizontal } = gesture;
+    const { row, card, dx, horizontal, longPress, longPressTimer } = gesture;
     gesture = null;
+    clearTimeout(longPressTimer);
+    if (longPress) return;
     if (horizontal && Math.abs(dx) >= deleteThreshold) {
       row.classList.remove("swiping");
       row.classList.add("deleting");
