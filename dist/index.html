@@ -80,9 +80,9 @@ h1 { font-size:clamp(2.25rem,9vw,3.4rem); line-height:1; letter-spacing:-.05em; 
 .nav-item { min-width:112px; min-height:56px; border:0; border-radius:18px; background:transparent; color:var(--accent); display:grid; place-items:center; align-content:center; gap:5px; font-size:.78rem; font-weight:700; }
 .nav-item .inbox-icon { width:21px; height:18px; }
 .nav-item.active { background:#e7eaf0; }
-.task-dialog { position:fixed; z-index:30; inset:0; display:flex; align-items:flex-end; justify-content:center; padding:10px 10px calc(10px + var(--keyboard-offset, 0px)); background:var(--overlay); color:var(--text); backdrop-filter:blur(1px); }
+.task-dialog { position:fixed; z-index:30; inset:auto 0; top:var(--visual-viewport-top,0px); height:var(--visual-viewport-height,100dvh); display:flex; align-items:flex-end; justify-content:center; padding:10px; background:var(--overlay); color:var(--text); backdrop-filter:blur(1px); }
 .task-dialog[hidden] { display:none; }
-#task-form { width:min(100%,720px); max-height:calc(100dvh - 20px); overflow-y:auto; padding:10px 16px 18px; border-radius:34px; background:#f3f3f4; box-shadow:var(--shadow-sheet); }
+#task-form { width:min(100%,720px); max-height:calc(var(--visual-viewport-height,100dvh) - 20px); overflow-y:auto; padding:10px 16px 18px; border-radius:34px; background:#f3f3f4; box-shadow:var(--shadow-sheet); }
 body.task-dialog-open { overflow:hidden; }
 .sheet-handle { width:50px; height:5px; display:block; margin:0 auto 14px; border-radius:999px; background:#d8d8da; }
 .detail-header { min-height:36px; display:flex; align-items:center; justify-content:space-between; gap:16px; margin-bottom:18px; }
@@ -113,7 +113,7 @@ body.task-dialog-open { overflow:hidden; }
 .attribute-placeholders::-webkit-scrollbar { display:none; }
 .attribute-chip { flex:0 0 auto; min-height:44px; padding:0 14px; border:0; border-radius:14px; display:inline-flex; align-items:center; gap:8px; background:#efefec; color:#555; font-weight:700; opacity:1; }
 .attribute-chip:disabled { cursor:default; }
-.save-task-button { width:100%; min-height:54px; margin-top:12px; border:0; border-radius:17px; background:var(--accent); color:#fff; font-weight:760; letter-spacing:.01em; box-shadow:0 5px 14px color-mix(in srgb,var(--accent) 24%,transparent); }
+.save-task-button { position:sticky; z-index:2; bottom:0; width:100%; min-height:54px; margin-top:12px; border:0; border-radius:17px; background:var(--accent); color:#fff; font-weight:760; letter-spacing:.01em; box-shadow:0 5px 14px color-mix(in srgb,var(--accent) 24%,transparent); }
 .save-task-button:active { transform:translateY(1px); }
 .calendar-icon { width:20px; height:20px; border:2px solid currentColor; border-radius:3px; position:relative; }
 .calendar-icon::before { content:""; position:absolute; left:2px; right:2px; top:5px; border-top:2px solid currentColor; }
@@ -181,8 +181,8 @@ body.task-dialog-open { overflow:hidden; }
       <button class="attribute-chip" type="button" disabled><span aria-hidden="true">◇</span>Мітки</button>
       <button class="attribute-chip" type="button" disabled><span aria-hidden="true">◎</span>Повтор</button>
     </div>
-    <button id="save-task-button" class="save-task-button" type="submit">Створити задачу</button>
     <p class="form-hint">Enter — додати · Shift+Enter — новий рядок</p>
+    <button id="save-task-button" class="save-task-button" type="submit">Створити задачу</button>
   </form>
 </div>
 <template id="task-template"><li class="swipe-row"><div class="delete-reveal" aria-hidden="true"><span class="delete-icon"></span><span>Видалити</span></div><article class="task-card"><button class="toggle" aria-label="Позначити виконаною"><span>✓</span></button><button class="task-open" type="button" aria-label="Відкрити деталі завдання"><span class="task-copy"><span class="task-text"></span><span class="task-description-preview" hidden></span><span class="task-date"></span></span><span class="task-project">Нові <span class="inbox-icon" aria-hidden="true"></span></span></button></article></li></template>
@@ -517,8 +517,8 @@ function hideTaskDialog() {
 function syncTaskDialogViewport() {
   if (!window.visualViewport) return;
   const viewport = window.visualViewport;
-  const keyboardHeight = Math.max(0, window.innerHeight - viewport.height - viewport.offsetTop);
-  els.dialog.style.setProperty("--keyboard-offset", `${keyboardHeight}px`);
+  els.dialog.style.setProperty("--visual-viewport-height", `${viewport.height}px`);
+  els.dialog.style.setProperty("--visual-viewport-top", `${viewport.offsetTop}px`);
 }
 
 if (window.visualViewport) {

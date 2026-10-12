@@ -118,8 +118,8 @@ function hideTaskDialog() {
 function syncTaskDialogViewport() {
   if (!window.visualViewport) return;
   const viewport = window.visualViewport;
-  const keyboardHeight = Math.max(0, window.innerHeight - viewport.height - viewport.offsetTop);
-  els.dialog.style.setProperty("--keyboard-offset", `${keyboardHeight}px`);
+  els.dialog.style.setProperty("--visual-viewport-height", `${viewport.height}px`);
+  els.dialog.style.setProperty("--visual-viewport-top", `${viewport.offsetTop}px`);
 }
 
 if (window.visualViewport) {
