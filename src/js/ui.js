@@ -183,7 +183,7 @@ function enableTaskSwipe({ onDelete, isSelectionMode, onLongPress }) {
     if (dx >= 0 && !gesture.horizontal) return;
     if (Math.abs(dx) > 8) {
       gesture.horizontal = true;
-      if (!card.hasPointerCapture(event.pointerId)) card.setPointerCapture(event.pointerId);
+      if (!gesture.card.hasPointerCapture(event.pointerId)) gesture.card.setPointerCapture(event.pointerId);
     }
     if (!gesture.horizontal) return;
     gesture.dx = Math.max(-maxReveal, Math.min(0, dx));
