@@ -569,7 +569,8 @@ function enableTaskSwipe({ onDelete, isSelectionMode, onLongPress, onTap }) {
     }
     if (!horizontal && !isToggle) {
       row.dataset.pointerTapped = "true";
-      onTap(row.dataset.id);
+      const taskId = row.dataset.id;
+      setTimeout(() => onTap(taskId), 0);
     }
     row.classList.remove("swiping");
     row.classList.add("settling");
