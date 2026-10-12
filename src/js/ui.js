@@ -131,7 +131,7 @@ function openTaskDetails(task) {
   });
 }
 
-function enableTaskSwipe({ onDelete, isSelectionMode, onLongPress }) {
+function enableTaskSwipe({ onDelete, isSelectionMode, onLongPress, onTap }) {
   let gesture = null;
   const maxReveal = 112;
   const deleteThreshold = 72;
@@ -142,7 +142,7 @@ function enableTaskSwipe({ onDelete, isSelectionMode, onLongPress }) {
     const card = event.target.closest(".task-card");
     if (!card || event.button > 0 || isSelectionMode()) return;
     const row = card.closest(".swipe-row");
-    gesture = { row, card, pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, dx: 0, horizontal: false, longPress: false };
+    gesture = { row, card, pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, dx: 0, horizontal: false, longPress: false, isToggle: Boolean(event.target.closest(".toggle")) };
     card.setPointerCapture(event.pointerId);
     row.classList.remove("settling");
     gesture.longPressTimer = setTimeout(() => {
@@ -172,7 +172,7 @@ function enableTaskSwipe({ onDelete, isSelectionMode, onLongPress }) {
 
   const finishGesture = event => {
     if (!gesture || gesture.pointerId !== event.pointerId) return;
-    const { row, card, dx, horizontal, longPress, longPressTimer } = gesture;
+    const { row, card, dx, horizontal, longPress, longPressTimer, isToggle } = gesture;
     gesture = null;
     clearTimeout(longPressTimer);
     if (longPress) return;
@@ -182,6 +182,10 @@ function enableTaskSwipe({ onDelete, isSelectionMode, onLongPress }) {
       row.dataset.swiped = "true";
       setTimeout(() => onDelete(row.dataset.id), deleteDuration);
       return;
+    }
+    if (!horizontal && !isToggle) {
+      row.dataset.pointerTapped = "true";
+      onTap(row.dataset.id);
     }
     row.classList.remove("swiping");
     row.classList.add("settling");

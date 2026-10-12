@@ -111,6 +111,7 @@ els.list.addEventListener("click", async event => {
   const row = event.target.closest(".swipe-row");
   if (row?.dataset.swiped) { delete row.dataset.swiped; return; }
   if (row?.dataset.longPressed) { delete row.dataset.longPressed; return; }
+  if (row?.dataset.pointerTapped) { delete row.dataset.pointerTapped; return; }
   if (selectedTaskIds.size && row) {
     toggleTaskSelection(row.dataset.id);
     return;
@@ -144,7 +145,11 @@ els.detailToggle.addEventListener("click", async () => {
 enableTaskSwipe({
   onDelete: deleteTask,
   isSelectionMode: () => selectedTaskIds.size > 0,
-  onLongPress: selectTask
+  onLongPress: selectTask,
+  onTap: id => {
+    const task = tasks.find(item => item.id === id);
+    if (task) openTaskDetails(task);
+  }
 });
 if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("./service-worker.js"));
 refresh().catch(() => toast("Не вдалося відкрити локальне сховище"));
