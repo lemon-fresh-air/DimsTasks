@@ -32,6 +32,7 @@ function startCompletionFeedback(toggle) {
   toggle?.classList.add("completing");
   const container = toggle?.closest(".task-card, .task-title-row");
   container?.classList.add("completing");
+  container?.closest(".swipe-row")?.classList.add("completing");
   if (toggle?.animate) {
     toggle.animate([
       { transform: "scale(.72)" },
