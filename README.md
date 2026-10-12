@@ -13,3 +13,6 @@ python -m http.server 8000 --directory dist
 
 Дані зберігаються в IndexedDB поточного браузера. У меню «Дані» доступні експорт і відновлення JSON.
 
+Архітектура та правила розширення схеми описані в [`docs/data-model.md`](docs/data-model.md).
+
+
