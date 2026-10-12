@@ -550,6 +550,7 @@ function enableTaskSwipe({ onDelete, isSelectionMode, onLongPress }) {
     if (!card || event.button > 0 || isSelectionMode()) return;
     const row = card.closest(".swipe-row");
     gesture = { row, card, pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, dx: 0, horizontal: false, longPress: false };
+    card.setPointerCapture(event.pointerId);
     row.classList.remove("settling");
     gesture.longPressTimer = setTimeout(() => {
       if (!gesture || gesture.pointerId !== event.pointerId || gesture.horizontal) return;
@@ -571,9 +572,9 @@ function enableTaskSwipe({ onDelete, isSelectionMode, onLongPress }) {
     if (dx >= 0 && !gesture.horizontal) return;
     if (Math.abs(dx) > 8) {
       gesture.horizontal = true;
-      if (!gesture.card.hasPointerCapture(event.pointerId)) gesture.card.setPointerCapture(event.pointerId);
     }
     if (!gesture.horizontal) return;
+    event.preventDefault();
     gesture.dx = Math.max(-maxReveal, Math.min(0, dx));
     gesture.row.classList.add("swiping");
     gesture.card.style.transform = `translateX(${gesture.dx}px)`;
@@ -598,8 +599,19 @@ function enableTaskSwipe({ onDelete, isSelectionMode, onLongPress }) {
     setTimeout(() => row.classList.remove("settling"), settleDuration);
   };
 
+  const cancelGesture = event => {
+    if (!gesture || gesture.pointerId !== event.pointerId) return;
+    const { row, card, longPressTimer } = gesture;
+    gesture = null;
+    clearTimeout(longPressTimer);
+    row.classList.remove("swiping");
+    row.classList.add("settling");
+    card.style.transform = "translateX(0)";
+    setTimeout(() => row.classList.remove("settling"), settleDuration);
+  };
+
   els.list.addEventListener("pointerup", finishGesture);
-  els.list.addEventListener("pointercancel", finishGesture);
+  els.list.addEventListener("pointercancel", cancelGesture);
 }
 
 
@@ -710,6 +722,22 @@ async function deleteTask(id) {
   }
 }
 
+async function completeTask(task, changes = {}) {
+  if (!task) return;
+  const completedAt = new Date().toISOString();
+  const completedTask = { ...task, ...changes, status: "completed", completedAt, updatedAt: completedAt };
+  await taskDb.put(completedTask);
+  await refresh();
+  toast("Виконано", {
+    duration: 3000,
+    action: async () => {
+      await taskDb.put({ ...completedTask, status: "active", completedAt: null, updatedAt: new Date().toISOString() });
+      await refresh();
+      toast("Виконання скасовано");
+    }
+  });
+}
+
 els.add.addEventListener("click", openNewTaskEditor);
 els.editorBack.addEventListener("click", () => saveAndLeaveTaskEditor({ allowEmptyNew: true }));
 els.selectionClose.addEventListener("click", clearTaskSelection);
@@ -742,21 +770,16 @@ els.list.addEventListener("click", async event => {
   }
   if (!toggle) return;
   const task = tasks.find(item => item.id === row.dataset.id);
-  const completedAt = new Date().toISOString();
-  await taskDb.put({ ...task, status: "completed", completedAt, updatedAt: completedAt });
-  await refresh();
-  toast("Виконано");
+  await completeTask(task);
 });
 
 els.detailToggle.addEventListener("click", async () => {
   const task = tasks.find(item => item.id === els.editor.dataset.taskId);
   if (!task) return;
-  const completedAt = new Date().toISOString();
-  await taskDb.put({ ...task, title: els.input.value.trim() || task.title, description: els.description.value.trim(), dueDate: els.date.value || null, status: "completed", completedAt, updatedAt: completedAt });
+  const changes = { title: els.input.value.trim() || task.title, description: els.description.value.trim(), dueDate: els.date.value || null };
   els.editor.dataset.taskId = "";
   hideTaskEditor();
-  await refresh();
-  toast("Виконано");
+  await completeTask(task, changes);
 });
 
 enableTaskSwipe({

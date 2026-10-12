@@ -162,6 +162,7 @@ function enableTaskSwipe({ onDelete, isSelectionMode, onLongPress }) {
     if (!card || event.button > 0 || isSelectionMode()) return;
     const row = card.closest(".swipe-row");
     gesture = { row, card, pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, dx: 0, horizontal: false, longPress: false };
+    card.setPointerCapture(event.pointerId);
     row.classList.remove("settling");
     gesture.longPressTimer = setTimeout(() => {
       if (!gesture || gesture.pointerId !== event.pointerId || gesture.horizontal) return;
@@ -183,9 +184,9 @@ function enableTaskSwipe({ onDelete, isSelectionMode, onLongPress }) {
     if (dx >= 0 && !gesture.horizontal) return;
     if (Math.abs(dx) > 8) {
       gesture.horizontal = true;
-      if (!gesture.card.hasPointerCapture(event.pointerId)) gesture.card.setPointerCapture(event.pointerId);
     }
     if (!gesture.horizontal) return;
+    event.preventDefault();
     gesture.dx = Math.max(-maxReveal, Math.min(0, dx));
     gesture.row.classList.add("swiping");
     gesture.card.style.transform = `translateX(${gesture.dx}px)`;
@@ -210,6 +211,17 @@ function enableTaskSwipe({ onDelete, isSelectionMode, onLongPress }) {
     setTimeout(() => row.classList.remove("settling"), settleDuration);
   };
 
+  const cancelGesture = event => {
+    if (!gesture || gesture.pointerId !== event.pointerId) return;
+    const { row, card, longPressTimer } = gesture;
+    gesture = null;
+    clearTimeout(longPressTimer);
+    row.classList.remove("swiping");
+    row.classList.add("settling");
+    card.style.transform = "translateX(0)";
+    setTimeout(() => row.classList.remove("settling"), settleDuration);
+  };
+
   els.list.addEventListener("pointerup", finishGesture);
-  els.list.addEventListener("pointercancel", finishGesture);
+  els.list.addEventListener("pointercancel", cancelGesture);
 }

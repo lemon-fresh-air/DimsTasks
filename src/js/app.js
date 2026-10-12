@@ -105,6 +105,22 @@ async function deleteTask(id) {
   }
 }
 
+async function completeTask(task, changes = {}) {
+  if (!task) return;
+  const completedAt = new Date().toISOString();
+  const completedTask = { ...task, ...changes, status: "completed", completedAt, updatedAt: completedAt };
+  await taskDb.put(completedTask);
+  await refresh();
+  toast("Виконано", {
+    duration: 3000,
+    action: async () => {
+      await taskDb.put({ ...completedTask, status: "active", completedAt: null, updatedAt: new Date().toISOString() });
+      await refresh();
+      toast("Виконання скасовано");
+    }
+  });
+}
+
 els.add.addEventListener("click", openNewTaskEditor);
 els.editorBack.addEventListener("click", () => saveAndLeaveTaskEditor({ allowEmptyNew: true }));
 els.selectionClose.addEventListener("click", clearTaskSelection);
@@ -137,21 +153,16 @@ els.list.addEventListener("click", async event => {
   }
   if (!toggle) return;
   const task = tasks.find(item => item.id === row.dataset.id);
-  const completedAt = new Date().toISOString();
-  await taskDb.put({ ...task, status: "completed", completedAt, updatedAt: completedAt });
-  await refresh();
-  toast("Виконано");
+  await completeTask(task);
 });
 
 els.detailToggle.addEventListener("click", async () => {
   const task = tasks.find(item => item.id === els.editor.dataset.taskId);
   if (!task) return;
-  const completedAt = new Date().toISOString();
-  await taskDb.put({ ...task, title: els.input.value.trim() || task.title, description: els.description.value.trim(), dueDate: els.date.value || null, status: "completed", completedAt, updatedAt: completedAt });
+  const changes = { title: els.input.value.trim() || task.title, description: els.description.value.trim(), dueDate: els.date.value || null };
   els.editor.dataset.taskId = "";
   hideTaskEditor();
-  await refresh();
-  toast("Виконано");
+  await completeTask(task, changes);
 });
 
 enableTaskSwipe({
