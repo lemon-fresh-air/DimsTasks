@@ -1,4 +1,10 @@
 const els = {
+  shell: document.querySelector(".app-shell"),
+  normalHeader: document.querySelector("#normal-header"),
+  selectionToolbar: document.querySelector("#selection-toolbar"),
+  selectionClose: document.querySelector("#selection-close"),
+  selectionCount: document.querySelector("#selection-count"),
+  deleteSelected: document.querySelector("#delete-selected"),
   form: document.querySelector("#task-form"),
   input: document.querySelector("#task-title"),
   date: document.querySelector("#task-date"),
@@ -61,6 +67,10 @@ els.toastAction.addEventListener("click", async () => {
 function renderTasks(tasks, selectedIds = new Set()) {
   const active = tasks.filter(task => !isTaskCompleted(task));
   const selectionMode = selectedIds.size > 0;
+  els.shell.classList.toggle("selection-active", selectionMode);
+  els.normalHeader.hidden = selectionMode;
+  els.selectionToolbar.hidden = !selectionMode;
+  els.selectionCount.textContent = `Вибрано: ${selectedIds.size}`;
   els.list.classList.toggle("selection-mode", selectionMode);
   els.list.replaceChildren(...active.map(task => {
     const row = els.template.content.firstElementChild.cloneNode(true);
