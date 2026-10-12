@@ -1,8 +1,22 @@
 let tasks = [];
+let selectedTaskIds = new Set();
 
 async function refresh() {
   tasks = (await taskDb.all()).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-  renderTasks(tasks);
+  selectedTaskIds = new Set([...selectedTaskIds].filter(id => tasks.some(task => task.id === id)));
+  renderTasks(tasks, selectedTaskIds);
+}
+
+function selectTask(id) {
+  selectedTaskIds = new Set([id]);
+  renderTasks(tasks, selectedTaskIds);
+}
+
+function toggleTaskSelection(id) {
+  const next = new Set(selectedTaskIds);
+  if (next.has(id)) next.delete(id); else next.add(id);
+  selectedTaskIds = next;
+  renderTasks(tasks, selectedTaskIds);
 }
 
 async function addTask() {
@@ -18,7 +32,8 @@ async function deleteTask(id) {
   const task = tasks.find(item => item.id === id);
   if (!task) return;
   tasks = tasks.filter(item => item.id !== id);
-  renderTasks(tasks);
+  selectedTaskIds.delete(id);
+  renderTasks(tasks, selectedTaskIds);
   try {
     await taskDb.delete(id);
     toast("Завдання видалено", {
@@ -31,7 +46,7 @@ async function deleteTask(id) {
     });
   } catch (_error) {
     tasks.push(task);
-    renderTasks(tasks);
+    renderTasks(tasks, selectedTaskIds);
     toast("Не вдалося видалити завдання");
   }
 }
@@ -45,6 +60,11 @@ els.dialog.addEventListener("click", event => { const box = els.dialog.getBoundi
 els.list.addEventListener("click", async event => {
   const row = event.target.closest(".swipe-row");
   if (row?.dataset.swiped) { delete row.dataset.swiped; return; }
+  if (row?.dataset.longPressed) { delete row.dataset.longPressed; return; }
+  if (selectedTaskIds.size && row) {
+    toggleTaskSelection(row.dataset.id);
+    return;
+  }
   const toggle = event.target.closest(".toggle");
   if (!toggle) return;
   const task = tasks.find(item => item.id === row.dataset.id);
@@ -54,7 +74,11 @@ els.list.addEventListener("click", async event => {
   toast("Виконано");
 });
 
-enableTaskSwipe(deleteTask);
+enableTaskSwipe({
+  onDelete: deleteTask,
+  isSelectionMode: () => selectedTaskIds.size > 0,
+  onLongPress: selectTask
+});
 if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("./service-worker.js"));
 refresh().catch(() => toast("Не вдалося відкрити локальне сховище"));
 
