@@ -73,7 +73,7 @@ body.task-editor-open { overflow:hidden; }
 .detail-fields { display:grid; grid-template-columns:30px minmax(0,1fr); align-items:start; gap:12px; margin:0; padding:16px 0; border-bottom:1px solid var(--line); }
 .modal-field-icon { width:22px; height:18px; margin:11px 0 0 4px; color:var(--muted); }
 .description-icon { background:repeating-linear-gradient(to bottom,currentColor 0 2px,transparent 2px 6px); border-radius:1px; opacity:.8; }
-#task-description { width:100%; min-height:86px; max-height:220px; resize:none; border:0; outline:0; padding:7px 0; background:transparent; color:var(--text); font:400 1.04rem/1.5 system-ui,sans-serif; }
+#task-description { width:100%; min-height:110px; max-height:min(58dvh,620px); resize:none; overflow-y:auto; border:0; outline:0; padding:7px 0; background:transparent; color:var(--text); font:400 1.04rem/1.5 system-ui,sans-serif; }
 #task-description::placeholder { color:var(--muted); opacity:.85; }
 .meta-chip { min-height:50px; display:inline-flex; align-items:center; gap:9px; flex:0 0 auto; padding:0 15px; border:1px solid var(--line); border-radius:15px; background:#f7f7f8; color:var(--text); font-weight:700; }
 .date-chip { color:var(--date); position:relative; cursor:pointer; }

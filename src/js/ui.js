@@ -112,6 +112,12 @@ function hideTaskEditor() {
   window.scrollTo(0, 0);
 }
 
+function resizeDescription() {
+  els.description.style.height = "auto";
+  const maxHeight = Math.min(window.innerHeight * 0.58, 620);
+  els.description.style.height = `${Math.min(els.description.scrollHeight, maxHeight)}px`;
+}
+
 function openNewTaskEditor() {
   els.editor.classList.remove("detail-mode");
   els.editor.dataset.taskId = "";
@@ -122,7 +128,7 @@ function openNewTaskEditor() {
   els.date.value = localDateValue();
   els.dateLabel.textContent = "Сьогодні";
   showTaskEditor();
-  requestAnimationFrame(() => els.input.focus());
+  requestAnimationFrame(() => { resizeDescription(); els.input.focus(); });
 }
 
 function openTaskDetails(task) {
@@ -140,6 +146,7 @@ function openTaskDetails(task) {
   requestAnimationFrame(() => {
     els.input.style.height = "auto";
     els.input.style.height = `${Math.min(els.input.scrollHeight, 150)}px`;
+    resizeDescription();
   });
 }
 

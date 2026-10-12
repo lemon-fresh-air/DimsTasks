@@ -99,7 +99,7 @@ body.task-editor-open { overflow:hidden; }
 .detail-fields { display:grid; grid-template-columns:30px minmax(0,1fr); align-items:start; gap:12px; margin:0; padding:16px 0; border-bottom:1px solid var(--line); }
 .modal-field-icon { width:22px; height:18px; margin:11px 0 0 4px; color:var(--muted); }
 .description-icon { background:repeating-linear-gradient(to bottom,currentColor 0 2px,transparent 2px 6px); border-radius:1px; opacity:.8; }
-#task-description { width:100%; min-height:86px; max-height:220px; resize:none; border:0; outline:0; padding:7px 0; background:transparent; color:var(--text); font:400 1.04rem/1.5 system-ui,sans-serif; }
+#task-description { width:100%; min-height:110px; max-height:min(58dvh,620px); resize:none; overflow-y:auto; border:0; outline:0; padding:7px 0; background:transparent; color:var(--text); font:400 1.04rem/1.5 system-ui,sans-serif; }
 #task-description::placeholder { color:var(--muted); opacity:.85; }
 .meta-chip { min-height:50px; display:inline-flex; align-items:center; gap:9px; flex:0 0 auto; padding:0 15px; border:1px solid var(--line); border-radius:15px; background:#f7f7f8; color:var(--text); font-weight:700; }
 .date-chip { color:var(--date); position:relative; cursor:pointer; }
@@ -160,7 +160,7 @@ body.task-editor-open { overflow:hidden; }
     <div class="detail-fields" hidden>
       <span class="modal-field-icon description-icon" aria-hidden="true"></span>
       <label class="sr-only" for="task-description">Опис завдання</label>
-      <textarea id="task-description" name="description" rows="2" maxlength="1000" placeholder="Додати опис…"></textarea>
+      <textarea id="task-description" name="description" rows="2" maxlength="10000" placeholder="Додати опис…"></textarea>
     </div>
     <div class="composer-actions">
       <span class="meta-chip inbox-chip"><span class="inbox-icon" aria-hidden="true"></span>Нові</span>
@@ -500,6 +500,12 @@ function hideTaskEditor() {
   window.scrollTo(0, 0);
 }
 
+function resizeDescription() {
+  els.description.style.height = "auto";
+  const maxHeight = Math.min(window.innerHeight * 0.58, 620);
+  els.description.style.height = `${Math.min(els.description.scrollHeight, maxHeight)}px`;
+}
+
 function openNewTaskEditor() {
   els.editor.classList.remove("detail-mode");
   els.editor.dataset.taskId = "";
@@ -510,7 +516,7 @@ function openNewTaskEditor() {
   els.date.value = localDateValue();
   els.dateLabel.textContent = "Сьогодні";
   showTaskEditor();
-  requestAnimationFrame(() => els.input.focus());
+  requestAnimationFrame(() => { resizeDescription(); els.input.focus(); });
 }
 
 function openTaskDetails(task) {
@@ -528,6 +534,7 @@ function openTaskDetails(task) {
   requestAnimationFrame(() => {
     els.input.style.height = "auto";
     els.input.style.height = `${Math.min(els.input.scrollHeight, 150)}px`;
+    resizeDescription();
   });
 }
 
@@ -709,6 +716,7 @@ els.selectionClose.addEventListener("click", clearTaskSelection);
 els.deleteSelected.addEventListener("click", deleteSelectedTasks);
 els.date.addEventListener("change", () => { els.dateLabel.textContent = readableDate(els.date.value); });
 els.input.addEventListener("input", () => { els.input.style.height = "auto"; els.input.style.height = `${Math.min(els.input.scrollHeight, 150)}px`; });
+els.description.addEventListener("input", resizeDescription);
 els.form.addEventListener("keydown", event => {
   if (event.key === "Escape") { event.preventDefault(); saveAndLeaveTaskEditor({ allowEmptyNew: true }); return; }
   if (event.key === "Enter" && !event.shiftKey && event.target.matches("#task-title")) {
