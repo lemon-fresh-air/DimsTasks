@@ -53,7 +53,7 @@ async function addTask() {
   const title = els.input.value.trim();
   if (!title) { els.input.focus(); return; }
   await taskDb.put(createTask({ title, dueDate: els.date.value || null }));
-  els.dialog.close();
+  hideTaskDialog();
   await refresh();
   toast("Задачу додано");
 }
@@ -71,7 +71,7 @@ async function saveOpenTask() {
 async function closeTaskDetails() {
   await saveOpenTask();
   els.dialog.dataset.taskId = "";
-  els.dialog.close();
+  hideTaskDialog();
 }
 
 async function deleteTask(id) {
@@ -103,15 +103,12 @@ els.selectionClose.addEventListener("click", clearTaskSelection);
 els.deleteSelected.addEventListener("click", deleteSelectedTasks);
 els.date.addEventListener("change", () => { els.dateLabel.textContent = readableDate(els.date.value); });
 els.input.addEventListener("input", () => { els.input.style.height = "auto"; els.input.style.height = `${Math.min(els.input.scrollHeight, 150)}px`; });
-els.input.addEventListener("keydown", event => { if (event.key === "Enter" && !event.shiftKey && !els.dialog.classList.contains("detail-mode")) { event.preventDefault(); addTask(); } if (event.key === "Escape") els.dialog.close(); });
+els.input.addEventListener("keydown", event => { if (event.key === "Enter" && !event.shiftKey && !els.dialog.classList.contains("detail-mode")) { event.preventDefault(); addTask(); } if (event.key === "Escape") hideTaskDialog(); });
 els.form.addEventListener("submit", event => { event.preventDefault(); if (!els.dialog.classList.contains("detail-mode")) addTask(); });
-els.dialog.addEventListener("close", () => { if (els.dialog.dataset.taskId) saveOpenTask().catch(() => toast("Не вдалося зберегти зміни")); });
+els.dialog.addEventListener("taskdialogclose", () => { if (els.dialog.dataset.taskId) saveOpenTask().catch(() => toast("Не вдалося зберегти зміни")); });
 els.dialog.addEventListener("pointerdown", event => {
   if (event.target !== els.dialog) return;
-  const box = els.dialog.getBoundingClientRect();
-  const outside = event.clientX < box.left || event.clientX > box.right || event.clientY < box.top || event.clientY > box.bottom;
-  if (!outside) return;
-  if (els.dialog.dataset.taskId) closeTaskDetails(); else els.dialog.close();
+  if (els.dialog.dataset.taskId) closeTaskDetails(); else hideTaskDialog();
 });
 els.list.addEventListener("click", async event => {
   const row = event.target.closest(".swipe-row");
@@ -142,7 +139,7 @@ els.detailToggle.addEventListener("click", async () => {
   const completedAt = new Date().toISOString();
   await taskDb.put({ ...task, title: els.input.value.trim() || task.title, description: els.description.value.trim(), dueDate: els.date.value || null, status: "completed", completedAt, updatedAt: completedAt });
   els.dialog.dataset.taskId = "";
-  els.dialog.close();
+  hideTaskDialog();
   await refresh();
   toast("Виконано");
 });

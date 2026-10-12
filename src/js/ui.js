@@ -97,6 +97,18 @@ function renderTasks(tasks, selectedIds = new Set()) {
     : `${active.length} ${active.length === 1 ? "задача" : active.length > 1 && active.length < 5 ? "задачі" : "задач"}`;
 }
 
+function showTaskDialog() {
+  els.dialog.hidden = false;
+  document.body.classList.add("task-dialog-open");
+}
+
+function hideTaskDialog() {
+  if (els.dialog.hidden) return;
+  els.dialog.hidden = true;
+  document.body.classList.remove("task-dialog-open");
+  els.dialog.dispatchEvent(new Event("taskdialogclose"));
+}
+
 function openComposer() {
   els.dialog.classList.remove("detail-mode");
   els.dialog.dataset.taskId = "";
@@ -108,7 +120,7 @@ function openComposer() {
   els.formHint.hidden = false;
   els.date.value = localDateValue();
   els.dateLabel.textContent = "Сьогодні";
-  els.dialog.showModal();
+  showTaskDialog();
   requestAnimationFrame(() => els.input.focus());
 }
 
@@ -125,7 +137,7 @@ function openTaskDetails(task) {
   els.description.value = task.description || "";
   els.date.value = task.dueDate || "";
   els.dateLabel.textContent = readableDate(task.dueDate);
-  els.dialog.showModal();
+  showTaskDialog();
   requestAnimationFrame(() => {
     els.input.style.height = "auto";
     els.input.style.height = `${Math.min(els.input.scrollHeight, 150)}px`;

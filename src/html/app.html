@@ -16,8 +16,8 @@
   <button id="add-task-btn" class="fab" aria-label="Додати задачу"><span aria-hidden="true">＋</span></button>
   <nav class="bottom-nav" aria-label="Основна навігація"><button class="nav-item active" aria-current="page"><span class="inbox-icon" aria-hidden="true"></span><span>Нові</span></button></nav>
 </div>
-<dialog id="task-dialog" class="task-dialog">
-  <form id="task-form" method="dialog">
+<div id="task-dialog" class="task-dialog" role="dialog" aria-modal="true" aria-label="Завдання" hidden>
+  <form id="task-form">
     <div class="detail-header" hidden>
       <span class="detail-list"><span class="inbox-icon" aria-hidden="true"></span>Нові</span>
       <button id="collapse-task" class="sheet-icon-button" type="button" aria-label="Згорнути деталі завдання"><span aria-hidden="true"></span></button>
@@ -43,7 +43,7 @@
     </div>
     <p class="form-hint">Enter — додати · Shift+Enter — новий рядок</p>
   </form>
-</dialog>
+</div>
 <template id="task-template"><li class="swipe-row"><div class="delete-reveal" aria-hidden="true"><span class="delete-icon"></span><span>Видалити</span></div><article class="task-card"><button class="toggle" aria-label="Позначити виконаною"><span>✓</span></button><button class="task-open" type="button" aria-label="Відкрити деталі завдання"><span class="task-copy"><span class="task-text"></span><span class="task-date"></span></span><span class="task-project">Нові <span class="inbox-icon" aria-hidden="true"></span></span></button></article></li></template>
 <div id="toast" class="toast" role="status" aria-live="polite"><span class="toast-message"></span><button id="toast-action" class="toast-action" type="button">Відмінити</button><svg class="toast-timer" viewBox="0 0 28 28" aria-hidden="true"><circle class="toast-timer-track" cx="14" cy="14" r="11"></circle><circle class="toast-timer-progress" cx="14" cy="14" r="11"></circle></svg></div>
 
