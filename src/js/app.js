@@ -1,5 +1,55 @@
 let tasks = [];
 let selectedTaskIds = new Set();
+let completionAudioContext;
+
+function playCompletionSound() {
+  const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+  if (!AudioContextClass) return;
+  try {
+    completionAudioContext ||= new AudioContextClass();
+    const context = completionAudioContext;
+    if (context.state === "suspended") context.resume().catch(() => {});
+    const now = context.currentTime;
+    [[659.25, 0], [880, 0.09]].forEach(([frequency, offset]) => {
+      const oscillator = context.createOscillator();
+      const gain = context.createGain();
+      const start = now + offset;
+      oscillator.type = "sine";
+      oscillator.frequency.setValueAtTime(frequency, start);
+      gain.gain.setValueAtTime(0.0001, start);
+      gain.gain.exponentialRampToValueAtTime(0.055, start + 0.012);
+      gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.13);
+      oscillator.connect(gain).connect(context.destination);
+      oscillator.start(start);
+      oscillator.stop(start + 0.14);
+    });
+  } catch (_error) {
+    // Sound is optional: a browser may block audio until it is enabled by the user.
+  }
+}
+
+function startCompletionFeedback(toggle) {
+  toggle?.classList.add("completing");
+  const container = toggle?.closest(".task-card, .task-title-row");
+  container?.classList.add("completing");
+  if (toggle?.animate) {
+    toggle.animate([
+      { transform: "scale(.72)" },
+      { transform: "scale(1.14)", offset: .52 },
+      { transform: "scale(1)" }
+    ], { duration: 320, easing: "cubic-bezier(.22,1,.36,1)", fill: "both" });
+    toggle.querySelector("span")?.animate([
+      { opacity: 0, transform: "scale(.45) rotate(-18deg)" },
+      { opacity: 1, transform: "scale(1) rotate(0)" }
+    ], { duration: 230, delay: 60, easing: "cubic-bezier(.22,1,.36,1)", fill: "both" });
+    container?.animate([
+      { opacity: 1, transform: "translateX(0)" },
+      { opacity: 1, transform: "translateX(0)", offset: .7 },
+      { opacity: 0, transform: "translateX(10px)" }
+    ], { duration: 380, easing: "cubic-bezier(.22,1,.36,1)", fill: "both" });
+  }
+  playCompletionSound();
+}
 
 async function refresh() {
   tasks = (await taskDb.all()).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
@@ -105,8 +155,11 @@ async function deleteTask(id) {
   }
 }
 
-async function completeTask(task, changes = {}) {
+async function completeTask(task, changes = {}, toggle) {
   if (!task) return;
+  if (toggle) toggle.disabled = true;
+  startCompletionFeedback(toggle);
+  await new Promise(resolve => setTimeout(resolve, 380));
   const completedAt = new Date().toISOString();
   const completedTask = { ...task, ...changes, status: "completed", completedAt, updatedAt: completedAt };
   await taskDb.put(completedTask);
@@ -153,16 +206,16 @@ els.list.addEventListener("click", async event => {
   }
   if (!toggle) return;
   const task = tasks.find(item => item.id === row.dataset.id);
-  await completeTask(task);
+  await completeTask(task, {}, toggle);
 });
 
 els.detailToggle.addEventListener("click", async () => {
   const task = tasks.find(item => item.id === els.editor.dataset.taskId);
   if (!task) return;
   const changes = { title: els.input.value.trim() || task.title, description: els.description.value.trim(), dueDate: els.date.value || null };
+  await completeTask(task, changes, els.detailToggle);
   els.editor.dataset.taskId = "";
   hideTaskEditor();
-  await completeTask(task, changes);
 });
 
 enableTaskSwipe({

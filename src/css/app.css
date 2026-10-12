@@ -32,7 +32,9 @@ h1 { font-size:clamp(2.25rem,9vw,3.4rem); line-height:1; letter-spacing:-.05em; 
 .swipe-row.deleting .task-card { transition:transform .3s var(--ease-swipe); }
 .swipe-row.deleting .task-card { transform:translateX(-110%)!important; }
 .toggle { width:34px; height:34px; display:grid; place-items:center; border:2px solid #aaa; border-radius:50%; background:transparent; color:#fff; }
-.toggle span { opacity:0; }
+.toggle span { opacity:0; transform:scale(.55) rotate(-14deg); }
+.toggle.completing { border-color:var(--success); background:var(--success); box-shadow:0 0 0 6px color-mix(in srgb,var(--success) 13%,transparent); }
+.toggle.completing span { opacity:1; transform:scale(1) rotate(0); }
 .task-open { min-width:0; min-height:54px; display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:center; gap:10px; padding:0; border:0; background:transparent; color:inherit; text-align:left; font:inherit; }
 .task-open:focus-visible { outline:2px solid var(--accent); outline-offset:4px; border-radius:8px; }
 .task-copy { min-width:0; display:block; }

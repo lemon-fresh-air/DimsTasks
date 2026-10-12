@@ -9,7 +9,7 @@
   <link rel="icon" href="./icons/icon.svg" type="image/svg+xml">
   <title>DimsTasks</title>
   <style>
-:root { color-scheme: light; --bg:#f5f5f5; --surface:#fff; --text:#171717; --muted:#6f6f72; --line:#e5e5e7; --accent:#3d5268; --date:#178b40; --danger:#d92d20; --overlay:rgba(20,20,20,.5); --shadow-fab:0 12px 26px rgba(32,46,60,.25); --shadow-sheet:0 -12px 40px rgba(0,0,0,.16); --ease-swipe:cubic-bezier(.22,1,.36,1); --radius:22px; }
+:root { color-scheme: light; --bg:#f5f5f5; --surface:#fff; --text:#171717; --muted:#6f6f72; --line:#e5e5e7; --accent:#3d5268; --success:#219653; --date:#178b40; --danger:#d92d20; --overlay:rgba(20,20,20,.5); --shadow-fab:0 12px 26px rgba(32,46,60,.25); --shadow-sheet:0 -12px 40px rgba(0,0,0,.16); --ease-swipe:cubic-bezier(.22,1,.36,1); --ease-complete:cubic-bezier(.22,1,.36,1); --radius:22px; }
 
 
 
@@ -58,7 +58,9 @@ h1 { font-size:clamp(2.25rem,9vw,3.4rem); line-height:1; letter-spacing:-.05em; 
 .swipe-row.deleting .task-card { transition:transform .3s var(--ease-swipe); }
 .swipe-row.deleting .task-card { transform:translateX(-110%)!important; }
 .toggle { width:34px; height:34px; display:grid; place-items:center; border:2px solid #aaa; border-radius:50%; background:transparent; color:#fff; }
-.toggle span { opacity:0; }
+.toggle span { opacity:0; transform:scale(.55) rotate(-14deg); }
+.toggle.completing { border-color:var(--success); background:var(--success); box-shadow:0 0 0 6px color-mix(in srgb,var(--success) 13%,transparent); }
+.toggle.completing span { opacity:1; transform:scale(1) rotate(0); }
 .task-open { min-width:0; min-height:54px; display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:center; gap:10px; padding:0; border:0; background:transparent; color:inherit; text-align:left; font:inherit; }
 .task-open:focus-visible { outline:2px solid var(--accent); outline-offset:4px; border-radius:8px; }
 .task-copy { min-width:0; display:block; }
@@ -617,6 +619,56 @@ function enableTaskSwipe({ onDelete, isSelectionMode, onLongPress }) {
 
 let tasks = [];
 let selectedTaskIds = new Set();
+let completionAudioContext;
+
+function playCompletionSound() {
+  const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+  if (!AudioContextClass) return;
+  try {
+    completionAudioContext ||= new AudioContextClass();
+    const context = completionAudioContext;
+    if (context.state === "suspended") context.resume().catch(() => {});
+    const now = context.currentTime;
+    [[659.25, 0], [880, 0.09]].forEach(([frequency, offset]) => {
+      const oscillator = context.createOscillator();
+      const gain = context.createGain();
+      const start = now + offset;
+      oscillator.type = "sine";
+      oscillator.frequency.setValueAtTime(frequency, start);
+      gain.gain.setValueAtTime(0.0001, start);
+      gain.gain.exponentialRampToValueAtTime(0.055, start + 0.012);
+      gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.13);
+      oscillator.connect(gain).connect(context.destination);
+      oscillator.start(start);
+      oscillator.stop(start + 0.14);
+    });
+  } catch (_error) {
+    // Sound is optional: a browser may block audio until it is enabled by the user.
+  }
+}
+
+function startCompletionFeedback(toggle) {
+  toggle?.classList.add("completing");
+  const container = toggle?.closest(".task-card, .task-title-row");
+  container?.classList.add("completing");
+  if (toggle?.animate) {
+    toggle.animate([
+      { transform: "scale(.72)" },
+      { transform: "scale(1.14)", offset: .52 },
+      { transform: "scale(1)" }
+    ], { duration: 320, easing: "cubic-bezier(.22,1,.36,1)", fill: "both" });
+    toggle.querySelector("span")?.animate([
+      { opacity: 0, transform: "scale(.45) rotate(-18deg)" },
+      { opacity: 1, transform: "scale(1) rotate(0)" }
+    ], { duration: 230, delay: 60, easing: "cubic-bezier(.22,1,.36,1)", fill: "both" });
+    container?.animate([
+      { opacity: 1, transform: "translateX(0)" },
+      { opacity: 1, transform: "translateX(0)", offset: .7 },
+      { opacity: 0, transform: "translateX(10px)" }
+    ], { duration: 380, easing: "cubic-bezier(.22,1,.36,1)", fill: "both" });
+  }
+  playCompletionSound();
+}
 
 async function refresh() {
   tasks = (await taskDb.all()).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
@@ -722,8 +774,11 @@ async function deleteTask(id) {
   }
 }
 
-async function completeTask(task, changes = {}) {
+async function completeTask(task, changes = {}, toggle) {
   if (!task) return;
+  if (toggle) toggle.disabled = true;
+  startCompletionFeedback(toggle);
+  await new Promise(resolve => setTimeout(resolve, 380));
   const completedAt = new Date().toISOString();
   const completedTask = { ...task, ...changes, status: "completed", completedAt, updatedAt: completedAt };
   await taskDb.put(completedTask);
@@ -770,16 +825,16 @@ els.list.addEventListener("click", async event => {
   }
   if (!toggle) return;
   const task = tasks.find(item => item.id === row.dataset.id);
-  await completeTask(task);
+  await completeTask(task, {}, toggle);
 });
 
 els.detailToggle.addEventListener("click", async () => {
   const task = tasks.find(item => item.id === els.editor.dataset.taskId);
   if (!task) return;
   const changes = { title: els.input.value.trim() || task.title, description: els.description.value.trim(), dueDate: els.date.value || null };
+  await completeTask(task, changes, els.detailToggle);
   els.editor.dataset.taskId = "";
   hideTaskEditor();
-  await completeTask(task, changes);
 });
 
 enableTaskSwipe({
