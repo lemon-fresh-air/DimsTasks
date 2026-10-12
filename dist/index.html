@@ -664,18 +664,37 @@ function startCompletionFeedback(toggle) {
       { opacity: 1, transform: "scale(1) rotate(0)" }
     ], { duration: 230, delay: 60, easing: "cubic-bezier(.22,1,.36,1)", fill: "both" });
     container?.animate([
-      { opacity: 1, transform: "translateX(0)" },
-      { opacity: 1, transform: "translateX(0)", offset: .7 },
-      { opacity: 0, transform: "translateX(10px)" }
-    ], { duration: 380, easing: "cubic-bezier(.22,1,.36,1)", fill: "both" });
+      { opacity: 1, transform: "scale(1)" },
+      { opacity: .72, transform: "scale(.994)", offset: .72 },
+      { opacity: 0, transform: "scale(.98)" }
+    ], { duration: 400, easing: "cubic-bezier(.22,1,.36,1)", fill: "both" });
   }
   playCompletionSound();
 }
 
-async function refresh() {
+function captureTaskPositions() {
+  return new Map([...els.list.children].map(row => [row.dataset.id, row.getBoundingClientRect().top]));
+}
+
+function animateTaskReflow(previousPositions) {
+  for (const row of els.list.children) {
+    const previousTop = previousPositions.get(row.dataset.id);
+    if (previousTop === undefined || !row.animate) continue;
+    const distance = previousTop - row.getBoundingClientRect().top;
+    if (Math.abs(distance) < 1) continue;
+    row.animate([
+      { transform: `translateY(${distance}px)` },
+      { transform: "translateY(0)" }
+    ], { duration: 280, easing: "cubic-bezier(.22,1,.36,1)", fill: "both" });
+  }
+}
+
+async function refresh({ animateTaskReflow: shouldAnimateTaskReflow = false } = {}) {
+  const previousPositions = shouldAnimateTaskReflow ? captureTaskPositions() : null;
   tasks = (await taskDb.all()).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   selectedTaskIds = new Set([...selectedTaskIds].filter(id => tasks.some(task => task.id === id)));
   renderTasks(tasks, selectedTaskIds);
+  if (previousPositions) animateTaskReflow(previousPositions);
 }
 
 function selectTask(id) {
@@ -780,11 +799,11 @@ async function completeTask(task, changes = {}, toggle) {
   if (!task) return;
   if (toggle) toggle.disabled = true;
   startCompletionFeedback(toggle);
-  await new Promise(resolve => setTimeout(resolve, 380));
+  await new Promise(resolve => setTimeout(resolve, 400));
   const completedAt = new Date().toISOString();
   const completedTask = { ...task, ...changes, status: "completed", completedAt, updatedAt: completedAt };
   await taskDb.put(completedTask);
-  await refresh();
+  await refresh({ animateTaskReflow: Boolean(toggle?.closest(".swipe-row")) });
   toast("Виконано", {
     duration: 3000,
     action: async () => {
