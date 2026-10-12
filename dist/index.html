@@ -53,15 +53,17 @@ h1 { font-size:clamp(2.25rem,9vw,3.4rem); line-height:1; letter-spacing:-.05em; 
 .delete-icon::before { content:""; position:absolute; left:-3px; right:-3px; top:-6px; border-top:2px solid currentColor; border-radius:2px; }
 .delete-icon::after { content:""; position:absolute; width:8px; left:4px; top:-10px; border-top:2px solid currentColor; border-radius:2px; }
 .swipe-row.swiping .delete-reveal,.swipe-row.deleting .delete-reveal { opacity:1; transform:none; }
-.task-card { position:relative; z-index:1; min-height:82px; display:grid; grid-template-columns:48px minmax(0,1fr) auto; align-items:center; gap:10px; padding:14px 17px 14px 13px; background:var(--surface); touch-action:pan-y; user-select:none; will-change:transform; }
+.task-card { position:relative; z-index:1; min-height:82px; display:grid; grid-template-columns:48px minmax(0,1fr); align-items:center; gap:10px; padding:14px 17px 14px 13px; background:var(--surface); touch-action:pan-y; user-select:none; will-change:transform; }
 .swipe-row.settling .task-card { transition:transform .26s var(--ease-swipe); }
 .swipe-row.deleting .task-card { transition:transform .3s var(--ease-swipe); }
 .swipe-row.deleting .task-card { transform:translateX(-110%)!important; }
 .toggle { width:34px; height:34px; display:grid; place-items:center; border:2px solid #aaa; border-radius:50%; background:transparent; color:#fff; }
 .toggle span { opacity:0; }
-.task-copy { min-width:0; }
+.task-open { min-width:0; min-height:54px; display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:center; gap:10px; padding:0; border:0; background:transparent; color:inherit; text-align:left; font:inherit; }
+.task-open:focus-visible { outline:2px solid var(--accent); outline-offset:4px; border-radius:8px; }
+.task-copy { min-width:0; display:block; }
 .task-text { font-size:1.08rem; line-height:1.35; overflow-wrap:anywhere; }
-.task-date { margin-top:5px; color:var(--date); font-size:.88rem; font-weight:590; }
+.task-date { display:block; margin-top:5px; color:var(--date); font-size:.88rem; font-weight:590; }
 .task-project { display:inline-flex; align-items:center; gap:6px; color:var(--muted); font-size:.9rem; white-space:nowrap; align-self:end; padding-bottom:5px; }
 .inbox-icon { width:17px; height:15px; display:inline-block; border:2px solid currentColor; border-radius:3px 3px 5px 5px; position:relative; }
 .inbox-icon::after { content:""; position:absolute; width:6px; height:3px; left:50%; bottom:2px; translate:-50% 0; border-bottom:2px solid currentColor; border-radius:50%; }
@@ -170,7 +172,7 @@ h1 { font-size:clamp(2.25rem,9vw,3.4rem); line-height:1; letter-spacing:-.05em; 
     <p class="form-hint">Enter — додати · Shift+Enter — новий рядок</p>
   </form>
 </dialog>
-<template id="task-template"><li class="swipe-row"><div class="delete-reveal" aria-hidden="true"><span class="delete-icon"></span><span>Видалити</span></div><article class="task-card"><button class="toggle" aria-label="Позначити виконаною"><span>✓</span></button><div class="task-copy"><p class="task-text"></p><p class="task-date"></p></div><span class="task-project">Нові <span class="inbox-icon" aria-hidden="true"></span></span></article></li></template>
+<template id="task-template"><li class="swipe-row"><div class="delete-reveal" aria-hidden="true"><span class="delete-icon"></span><span>Видалити</span></div><article class="task-card"><button class="toggle" aria-label="Позначити виконаною"><span>✓</span></button><button class="task-open" type="button" aria-label="Відкрити деталі завдання"><span class="task-copy"><span class="task-text"></span><span class="task-date"></span></span><span class="task-project">Нові <span class="inbox-icon" aria-hidden="true"></span></span></button></article></li></template>
 <div id="toast" class="toast" role="status" aria-live="polite"><span class="toast-message"></span><button id="toast-action" class="toast-action" type="button">Відмінити</button><svg class="toast-timer" viewBox="0 0 28 28" aria-hidden="true"><circle class="toast-timer-track" cx="14" cy="14" r="11"></circle><circle class="toast-timer-progress" cx="14" cy="14" r="11"></circle></svg></div>
 
 
@@ -471,6 +473,7 @@ function renderTasks(tasks, selectedIds = new Set()) {
     row.setAttribute("aria-selected", String(selected));
     row.querySelector(".task-text").textContent = task.title;
     row.querySelector(".task-date").textContent = readableDate(task.dueDate || task.createdAt?.slice(0, 10));
+    row.querySelector(".task-open").setAttribute("aria-label", `Відкрити деталі: ${task.title}`);
     return row;
   }));
   els.list.hidden = active.length === 0;
@@ -515,7 +518,7 @@ function openTaskDetails(task) {
   });
 }
 
-function enableTaskSwipe({ onDelete, isSelectionMode, onLongPress, onTap }) {
+function enableTaskSwipe({ onDelete, isSelectionMode, onLongPress }) {
   let gesture = null;
   const maxReveal = 112;
   const deleteThreshold = 72;
@@ -526,8 +529,7 @@ function enableTaskSwipe({ onDelete, isSelectionMode, onLongPress, onTap }) {
     const card = event.target.closest(".task-card");
     if (!card || event.button > 0 || isSelectionMode()) return;
     const row = card.closest(".swipe-row");
-    gesture = { row, card, pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, dx: 0, horizontal: false, longPress: false, isToggle: Boolean(event.target.closest(".toggle")) };
-    card.setPointerCapture(event.pointerId);
+    gesture = { row, card, pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, dx: 0, horizontal: false, longPress: false };
     row.classList.remove("settling");
     gesture.longPressTimer = setTimeout(() => {
       if (!gesture || gesture.pointerId !== event.pointerId || gesture.horizontal) return;
@@ -547,7 +549,10 @@ function enableTaskSwipe({ onDelete, isSelectionMode, onLongPress, onTap }) {
       return;
     }
     if (dx >= 0 && !gesture.horizontal) return;
-    if (Math.abs(dx) > 8) gesture.horizontal = true;
+    if (Math.abs(dx) > 8) {
+      gesture.horizontal = true;
+      if (!card.hasPointerCapture(event.pointerId)) card.setPointerCapture(event.pointerId);
+    }
     if (!gesture.horizontal) return;
     gesture.dx = Math.max(-maxReveal, Math.min(0, dx));
     gesture.row.classList.add("swiping");
@@ -556,7 +561,7 @@ function enableTaskSwipe({ onDelete, isSelectionMode, onLongPress, onTap }) {
 
   const finishGesture = event => {
     if (!gesture || gesture.pointerId !== event.pointerId) return;
-    const { row, card, dx, horizontal, longPress, longPressTimer, isToggle } = gesture;
+    const { row, card, dx, horizontal, longPress, longPressTimer } = gesture;
     gesture = null;
     clearTimeout(longPressTimer);
     if (longPress) return;
@@ -566,11 +571,6 @@ function enableTaskSwipe({ onDelete, isSelectionMode, onLongPress, onTap }) {
       row.dataset.swiped = "true";
       setTimeout(() => onDelete(row.dataset.id), deleteDuration);
       return;
-    }
-    if (!horizontal && !isToggle) {
-      row.dataset.pointerTapped = "true";
-      const taskId = row.dataset.id;
-      setTimeout(() => onTap(taskId), 0);
     }
     row.classList.remove("swiping");
     row.classList.add("settling");
@@ -702,19 +702,18 @@ els.list.addEventListener("click", async event => {
   const row = event.target.closest(".swipe-row");
   if (row?.dataset.swiped) { delete row.dataset.swiped; return; }
   if (row?.dataset.longPressed) { delete row.dataset.longPressed; return; }
-  if (row?.dataset.pointerTapped) { delete row.dataset.pointerTapped; return; }
   if (selectedTaskIds.size && row) {
     toggleTaskSelection(row.dataset.id);
     return;
   }
   const toggle = event.target.closest(".toggle");
-  if (!toggle) {
-    if (row) {
-      const task = tasks.find(item => item.id === row.dataset.id);
-      if (task) openTaskDetails(task);
-    }
+  const opener = event.target.closest(".task-open");
+  if (opener && row) {
+    const task = tasks.find(item => item.id === row.dataset.id);
+    if (task) openTaskDetails(task);
     return;
   }
+  if (!toggle) return;
   const task = tasks.find(item => item.id === row.dataset.id);
   const completedAt = new Date().toISOString();
   await taskDb.put({ ...task, status: "completed", completedAt, updatedAt: completedAt });
@@ -736,11 +735,7 @@ els.detailToggle.addEventListener("click", async () => {
 enableTaskSwipe({
   onDelete: deleteTask,
   isSelectionMode: () => selectedTaskIds.size > 0,
-  onLongPress: selectTask,
-  onTap: id => {
-    const task = tasks.find(item => item.id === id);
-    if (task) openTaskDetails(task);
-  }
+  onLongPress: selectTask
 });
 if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("./service-worker.js"));
 refresh().catch(() => toast("Не вдалося відкрити локальне сховище"));

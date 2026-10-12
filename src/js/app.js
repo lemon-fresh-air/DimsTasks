@@ -117,19 +117,18 @@ els.list.addEventListener("click", async event => {
   const row = event.target.closest(".swipe-row");
   if (row?.dataset.swiped) { delete row.dataset.swiped; return; }
   if (row?.dataset.longPressed) { delete row.dataset.longPressed; return; }
-  if (row?.dataset.pointerTapped) { delete row.dataset.pointerTapped; return; }
   if (selectedTaskIds.size && row) {
     toggleTaskSelection(row.dataset.id);
     return;
   }
   const toggle = event.target.closest(".toggle");
-  if (!toggle) {
-    if (row) {
-      const task = tasks.find(item => item.id === row.dataset.id);
-      if (task) openTaskDetails(task);
-    }
+  const opener = event.target.closest(".task-open");
+  if (opener && row) {
+    const task = tasks.find(item => item.id === row.dataset.id);
+    if (task) openTaskDetails(task);
     return;
   }
+  if (!toggle) return;
   const task = tasks.find(item => item.id === row.dataset.id);
   const completedAt = new Date().toISOString();
   await taskDb.put({ ...task, status: "completed", completedAt, updatedAt: completedAt });
@@ -151,11 +150,7 @@ els.detailToggle.addEventListener("click", async () => {
 enableTaskSwipe({
   onDelete: deleteTask,
   isSelectionMode: () => selectedTaskIds.size > 0,
-  onLongPress: selectTask,
-  onTap: id => {
-    const task = tasks.find(item => item.id === id);
-    if (task) openTaskDetails(task);
-  }
+  onLongPress: selectTask
 });
 if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("./service-worker.js"));
 refresh().catch(() => toast("Не вдалося відкрити локальне сховище"));

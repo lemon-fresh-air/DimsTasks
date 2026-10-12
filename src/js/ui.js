@@ -87,6 +87,7 @@ function renderTasks(tasks, selectedIds = new Set()) {
     row.setAttribute("aria-selected", String(selected));
     row.querySelector(".task-text").textContent = task.title;
     row.querySelector(".task-date").textContent = readableDate(task.dueDate || task.createdAt?.slice(0, 10));
+    row.querySelector(".task-open").setAttribute("aria-label", `Відкрити деталі: ${task.title}`);
     return row;
   }));
   els.list.hidden = active.length === 0;
@@ -131,7 +132,7 @@ function openTaskDetails(task) {
   });
 }
 
-function enableTaskSwipe({ onDelete, isSelectionMode, onLongPress, onTap }) {
+function enableTaskSwipe({ onDelete, isSelectionMode, onLongPress }) {
   let gesture = null;
   const maxReveal = 112;
   const deleteThreshold = 72;
@@ -142,8 +143,7 @@ function enableTaskSwipe({ onDelete, isSelectionMode, onLongPress, onTap }) {
     const card = event.target.closest(".task-card");
     if (!card || event.button > 0 || isSelectionMode()) return;
     const row = card.closest(".swipe-row");
-    gesture = { row, card, pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, dx: 0, horizontal: false, longPress: false, isToggle: Boolean(event.target.closest(".toggle")) };
-    card.setPointerCapture(event.pointerId);
+    gesture = { row, card, pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, dx: 0, horizontal: false, longPress: false };
     row.classList.remove("settling");
     gesture.longPressTimer = setTimeout(() => {
       if (!gesture || gesture.pointerId !== event.pointerId || gesture.horizontal) return;
@@ -163,7 +163,10 @@ function enableTaskSwipe({ onDelete, isSelectionMode, onLongPress, onTap }) {
       return;
     }
     if (dx >= 0 && !gesture.horizontal) return;
-    if (Math.abs(dx) > 8) gesture.horizontal = true;
+    if (Math.abs(dx) > 8) {
+      gesture.horizontal = true;
+      if (!card.hasPointerCapture(event.pointerId)) card.setPointerCapture(event.pointerId);
+    }
     if (!gesture.horizontal) return;
     gesture.dx = Math.max(-maxReveal, Math.min(0, dx));
     gesture.row.classList.add("swiping");
@@ -172,7 +175,7 @@ function enableTaskSwipe({ onDelete, isSelectionMode, onLongPress, onTap }) {
 
   const finishGesture = event => {
     if (!gesture || gesture.pointerId !== event.pointerId) return;
-    const { row, card, dx, horizontal, longPress, longPressTimer, isToggle } = gesture;
+    const { row, card, dx, horizontal, longPress, longPressTimer } = gesture;
     gesture = null;
     clearTimeout(longPressTimer);
     if (longPress) return;
@@ -182,11 +185,6 @@ function enableTaskSwipe({ onDelete, isSelectionMode, onLongPress, onTap }) {
       row.dataset.swiped = "true";
       setTimeout(() => onDelete(row.dataset.id), deleteDuration);
       return;
-    }
-    if (!horizontal && !isToggle) {
-      row.dataset.pointerTapped = "true";
-      const taskId = row.dataset.id;
-      setTimeout(() => onTap(taskId), 0);
     }
     row.classList.remove("swiping");
     row.classList.add("settling");
