@@ -84,6 +84,8 @@ function enableTaskSwipe(onDelete) {
   let gesture = null;
   const maxReveal = 112;
   const deleteThreshold = 72;
+  const settleDuration = 260;
+  const deleteDuration = 300;
 
   els.list.addEventListener("pointerdown", event => {
     const card = event.target.closest(".task-card");
@@ -118,13 +120,13 @@ function enableTaskSwipe(onDelete) {
       row.classList.remove("swiping");
       row.classList.add("deleting");
       row.dataset.swiped = "true";
-      setTimeout(() => onDelete(row.dataset.id), 180);
+      setTimeout(() => onDelete(row.dataset.id), deleteDuration);
       return;
     }
     row.classList.remove("swiping");
     row.classList.add("settling");
     card.style.transform = "translateX(0)";
-    setTimeout(() => row.classList.remove("settling"), 180);
+    setTimeout(() => row.classList.remove("settling"), settleDuration);
   };
 
   els.list.addEventListener("pointerup", finishGesture);
