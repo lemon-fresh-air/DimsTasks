@@ -71,10 +71,19 @@ function animateTaskReflow(previousPositions) {
 
 async function refresh({ animateTaskReflow: shouldAnimateTaskReflow = false } = {}) {
   const previousPositions = shouldAnimateTaskReflow ? captureTaskPositions() : null;
-  tasks = (await taskDb.all()).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  tasks = (await taskDb.all()).sort(compareTasks);
   selectedTaskIds = new Set([...selectedTaskIds].filter(id => tasks.some(task => task.id === id)));
   renderTasks(tasks, selectedTaskIds);
   if (previousPositions) animateTaskReflow(previousPositions);
+}
+
+async function loadAndNormalizeTaskOrder() {
+  const loaded = await taskDb.all();
+  const normalized = normalizeTaskOrder(loaded);
+  const changed = normalized.filter((task, index) => task !== loaded[index]);
+  if (changed.length) await taskDb.putMany(changed);
+  tasks = normalized.sort(compareTasks);
+  renderTasks(tasks, selectedTaskIds);
 }
 
 function selectTask(id) {
@@ -122,9 +131,33 @@ async function deleteSelectedTasks() {
 async function addTask() {
   const title = els.input.value.trim();
   if (!title) { els.input.focus(); return false; }
-  await taskDb.put(createTask({ title, description: els.description.value.trim(), dueDate: els.date.value || null }));
+  const task = createTask({ title, description: els.description.value.trim(), dueDate: els.date.value || null, position: 0 });
+  const scope = taskOrderScope(task);
+  const shifted = tasks.filter(item => taskOrderScope(item) === scope).map(item => ({ ...item, position: item.position + 1 }));
+  await taskDb.putMany([task, ...shifted]);
   await refresh();
   return true;
+}
+
+async function reorderSelectedTasks({ beforeId }) {
+  const selected = tasks.filter(task => selectedTaskIds.has(task.id)).sort(compareTasks);
+  if (!selected.length) return false;
+  const previous = tasks;
+  const scope = taskOrderScope(selected[0]);
+  const reordered = reorderTaskBlock(tasks, selectedTaskIds, beforeId, scope);
+  const changed = reordered.filter((task, index) => task !== tasks[index]);
+  if (!changed.length) return false;
+  tasks = reordered.sort(compareTasks);
+  renderTasks(tasks, selectedTaskIds);
+  try {
+    await taskDb.putMany(changed);
+    return true;
+  } catch (_error) {
+    tasks = previous;
+    renderTasks(tasks, selectedTaskIds);
+    toast("Не вдалося зберегти порядок");
+    return false;
+  }
 }
 
 async function saveOpenTask() {
@@ -196,6 +229,7 @@ async function completeTask(task, changes = {}, toggle) {
 
 els.add.addEventListener("click", openNewTaskEditor);
 els.editorBack.addEventListener("click", () => saveAndLeaveTaskEditor({ allowEmptyNew: true }));
+els.desktopSaveTask.addEventListener("click", () => saveAndLeaveTaskEditor({ allowEmptyNew: true }));
 els.selectionClose.addEventListener("click", clearTaskSelection);
 els.deleteSelected.addEventListener("click", deleteSelectedTasks);
 els.datePickerOpen.addEventListener("click", openDatePicker);
@@ -220,10 +254,12 @@ els.calendarNext.addEventListener("click", () => { visibleCalendarMonth.setMonth
 els.datePickerSave.addEventListener("click", () => {
   els.date.value = pendingDateValue;
   els.dateLabel.textContent = readableDate(pendingDateValue);
+  applyDateTone(els.datePickerOpen, pendingDateValue);
+  updateDesktopSaveState();
   closeDatePicker();
 });
-els.input.addEventListener("input", () => { els.input.style.height = "auto"; els.input.style.height = `${Math.min(els.input.scrollHeight, 150)}px`; });
-els.description.addEventListener("input", resizeDescription);
+els.input.addEventListener("input", () => { els.input.style.height = "auto"; els.input.style.height = `${Math.min(els.input.scrollHeight, 150)}px`; updateDesktopSaveState(); });
+els.description.addEventListener("input", () => { resizeDescription(); updateDesktopSaveState(); });
 els.form.addEventListener("keydown", event => {
   if (event.key === "Escape") { event.preventDefault(); saveAndLeaveTaskEditor({ allowEmptyNew: true }); return; }
   if (event.key === "Enter" && !event.shiftKey && event.target.matches("#task-title")) {
@@ -241,15 +277,16 @@ els.list.addEventListener("click", async event => {
     return;
   }
   const toggle = event.target.closest(".toggle");
-  const opener = event.target.closest(".task-open");
-  if (opener && row) {
+  if (toggle && row) {
     const task = tasks.find(item => item.id === row.dataset.id);
-    if (task) openTaskDetails(task);
+    await completeTask(task, {}, toggle);
     return;
   }
-  if (!toggle) return;
-  const task = tasks.find(item => item.id === row.dataset.id);
-  await completeTask(task, {}, toggle);
+  const card = event.target.closest(".task-card");
+  if (card && row) {
+    const task = tasks.find(item => item.id === row.dataset.id);
+    if (task) openTaskDetails(task);
+  }
 });
 
 els.detailToggle.addEventListener("click", async () => {
@@ -261,10 +298,14 @@ els.detailToggle.addEventListener("click", async () => {
   hideTaskEditor();
 });
 
-enableTaskSwipe({
+enableTaskGestures({
   onDelete: deleteTask,
   isSelectionMode: () => selectedTaskIds.size > 0,
-  onLongPress: selectTask
+  isSelected: id => selectedTaskIds.has(id),
+  onLongPress: selectTask,
+  onSelectOnly: selectTask,
+  getSelectedIds: () => new Set(selectedTaskIds),
+  onReorder: reorderSelectedTasks
 });
 if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("./service-worker.js"));
-refresh().catch(() => toast("Не вдалося відкрити локальне сховище"));
+loadAndNormalizeTaskOrder().catch(() => toast("Не вдалося відкрити локальне сховище"));

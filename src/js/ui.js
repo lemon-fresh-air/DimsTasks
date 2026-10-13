@@ -25,6 +25,7 @@ const els = {
   editor: document.querySelector("#task-editor"),
   detailFields: document.querySelector(".detail-fields"),
   attributePlaceholders: document.querySelector(".attribute-placeholders"),
+  desktopSaveTask: document.querySelector("#desktop-save-task"),
   detailToggle: document.querySelector("#detail-toggle"),
   editorBack: document.querySelector("#task-editor-back"),
   add: document.querySelector("#add-task-btn"),
@@ -58,9 +59,39 @@ function readableDate(value) {
   return dateFormatter.format(new Date(`${value}T12:00:00`));
 }
 
+function dateTone(value) {
+  if (!value) return "none";
+  if (value === localDateValue()) return "today";
+  const tomorrow = new Date();
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  if (value === localDateValue(tomorrow)) return "tomorrow";
+  return "future";
+}
+
+function applyDateTone(element, value) {
+  element.dataset.dateTone = dateTone(value);
+}
+
+function editorState() {
+  return JSON.stringify({ title: els.input.value, description: els.description.value, dueDate: els.date.value });
+}
+
+function rememberEditorState() {
+  els.editor.dataset.initialState = editorState();
+  updateDesktopSaveState();
+}
+
+function updateDesktopSaveState() {
+  const editing = Boolean(els.editor.dataset.taskId);
+  const hasTitle = Boolean(els.input.value.trim());
+  const isDirty = els.editor.dataset.initialState !== editorState();
+  els.desktopSaveTask.disabled = editing ? !isDirty : !hasTitle;
+}
+
 let pendingDateValue = null;
 let visibleCalendarMonth = null;
 let datePickerReturnFocus = null;
+let editorCloseTimer;
 
 function dateFromValue(value) {
   return value ? new Date(`${value}T12:00:00`) : null;
@@ -182,7 +213,10 @@ function renderTasks(tasks, selectedIds = new Set()) {
     const preview = row.querySelector(".task-description-preview");
     preview.hidden = !description;
     preview.textContent = description || "";
-    row.querySelector(".task-date").textContent = readableDate(task.dueDate || task.createdAt?.slice(0, 10));
+    const displayedDate = task.dueDate || task.createdAt?.slice(0, 10);
+    const taskDate = row.querySelector(".task-date");
+    taskDate.textContent = readableDate(displayedDate);
+    applyDateTone(taskDate, displayedDate);
     row.querySelector(".task-open").setAttribute("aria-label", `Відкрити деталі: ${task.title}`);
     return row;
   }));
@@ -194,16 +228,23 @@ function renderTasks(tasks, selectedIds = new Set()) {
 }
 
 function showTaskEditor() {
+  clearTimeout(editorCloseTimer);
   els.shell.hidden = true;
   els.editor.hidden = false;
+  els.editor.classList.remove("is-closing");
   document.body.classList.add("task-editor-open");
 }
 
 function hideTaskEditor() {
-  els.editor.hidden = true;
   els.shell.hidden = false;
   document.body.classList.remove("task-editor-open");
   window.scrollTo(0, 0);
+  els.editor.classList.add("is-closing");
+  clearTimeout(editorCloseTimer);
+  editorCloseTimer = setTimeout(() => {
+    els.editor.hidden = true;
+    els.editor.classList.remove("is-closing");
+  }, 180);
 }
 
 function resizeDescription() {
@@ -217,10 +258,12 @@ function openNewTaskEditor() {
   els.editor.dataset.taskId = "";
   els.form.reset();
   els.detailFields.hidden = false;
-  els.attributePlaceholders.hidden = true;
+  els.attributePlaceholders.hidden = false;
   els.detailToggle.hidden = true;
   els.date.value = localDateValue();
   els.dateLabel.textContent = "Сьогодні";
+  applyDateTone(els.datePickerOpen, els.date.value);
+  rememberEditorState();
   showTaskEditor();
   requestAnimationFrame(() => { resizeDescription(); els.input.focus(); });
 }
@@ -236,6 +279,8 @@ function openTaskDetails(task) {
   els.description.value = task.description || "";
   els.date.value = task.dueDate || "";
   els.dateLabel.textContent = readableDate(task.dueDate);
+  applyDateTone(els.datePickerOpen, els.date.value);
+  rememberEditorState();
   showTaskEditor();
   requestAnimationFrame(() => {
     els.input.style.height = "auto";
@@ -244,7 +289,7 @@ function openTaskDetails(task) {
   });
 }
 
-function enableTaskSwipe({ onDelete, isSelectionMode, onLongPress }) {
+function enableTaskGestures({ onDelete, isSelectionMode, isSelected, onLongPress, onSelectOnly, getSelectedIds, onReorder }) {
   let gesture = null;
   const maxReveal = 112;
   const deleteThreshold = 72;
@@ -253,26 +298,147 @@ function enableTaskSwipe({ onDelete, isSelectionMode, onLongPress }) {
 
   els.list.addEventListener("pointerdown", event => {
     const card = event.target.closest(".task-card");
-    if (!card || event.button > 0 || isSelectionMode()) return;
+    if (!card || event.button > 0) return;
     const row = card.closest(".swipe-row");
-    gesture = { row, card, pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, dx: 0, horizontal: false, longPress: false };
+    gesture = { row, card, id: row.dataset.id, pointerId: event.pointerId, pointerType: event.pointerType, startX: event.clientX, startY: event.clientY, lastY: event.clientY, dx: 0, horizontal: false, scrolling: false, longPress: false, dragging: false };
     card.setPointerCapture(event.pointerId);
     row.classList.remove("settling");
+    if (event.pointerType === "mouse") {
+      gesture.longPress = true;
+    }
     gesture.longPressTimer = setTimeout(() => {
       if (!gesture || gesture.pointerId !== event.pointerId || gesture.horizontal) return;
       gesture.longPress = true;
       row.dataset.longPressed = "true";
       onLongPress(row.dataset.id);
-    }, 520);
+      gesture.row = els.list.querySelector(`[data-id="${CSS.escape(gesture.id)}"]`);
+      gesture.card = gesture.row?.querySelector(".task-card");
+      gesture.row?.classList.add("lifted");
+    }, 450);
   });
+
+  function captureRows() {
+    return new Map([...els.list.children].filter(row => row.dataset.id).map(row => [row.dataset.id, row.getBoundingClientRect().top]));
+  }
+
+  function animateRows(previous) {
+    if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    for (const row of els.list.children) {
+      const top = previous.get(row.dataset.id);
+      if (top === undefined) continue;
+      const delta = top - row.getBoundingClientRect().top;
+      if (Math.abs(delta) > 1) row.animate([{ transform: `translateY(${delta}px)` }, { transform: "translateY(0)" }], { duration: 240, easing: "cubic-bezier(.2,.8,.2,1)" });
+    }
+  }
+
+  function startDrag(event) {
+    clearTimeout(gesture.longPressTimer);
+    if (!isSelected(gesture.id)) {
+      onSelectOnly(gesture.id);
+      gesture.row = els.list.querySelector(`[data-id="${CSS.escape(gesture.id)}"]`);
+      gesture.card = gesture.row?.querySelector(".task-card");
+    }
+    const selectedIds = getSelectedIds();
+    const rows = [...els.list.children].filter(row => selectedIds.has(row.dataset.id));
+    if (!rows.length) return;
+    const sourceRect = gesture.row.getBoundingClientRect();
+    const totalHeight = rows.reduce((sum, row) => sum + row.getBoundingClientRect().height, 0);
+    const placeholder = document.createElement("li");
+    placeholder.className = "drag-placeholder";
+    placeholder.style.height = `${totalHeight}px`;
+    rows[0].before(placeholder);
+    rows.forEach(row => row.classList.add("drag-source"));
+    const preview = document.createElement("div");
+    preview.className = "drag-preview";
+    preview.style.width = `${sourceRect.width}px`;
+    preview.append(gesture.card.cloneNode(true));
+    if (rows.length > 1) {
+      const badge = document.createElement("span");
+      badge.className = "drag-count";
+      badge.textContent = rows.length;
+      preview.append(badge);
+    }
+    document.body.append(preview);
+    gesture = {
+      ...gesture, dragging: true, selectedIds, rows, placeholder, preview, moved: false, lastBeforeId: null,
+      offsetX: event.clientX - sourceRect.left, offsetY: event.clientY - sourceRect.top,
+      currentX: sourceRect.left, currentY: sourceRect.top, targetX: sourceRect.left, targetY: sourceRect.top
+    };
+    els.list.classList.add("dragging");
+    positionPreview(event.clientX, event.clientY);
+    gesture.followFrame = requestAnimationFrame(renderPreview);
+    gesture.scrollFrame = requestAnimationFrame(autoScroll);
+  }
+
+  function positionPreview(clientX, clientY) {
+    gesture.lastX = clientX;
+    gesture.lastY = clientY;
+    gesture.targetX = clientX - gesture.offsetX;
+    gesture.targetY = clientY - gesture.offsetY;
+  }
+
+  function renderPreview() {
+    if (!gesture?.dragging) return;
+    const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const follow = reducedMotion ? 1 : .42;
+    gesture.currentX += (gesture.targetX - gesture.currentX) * follow;
+    gesture.currentY += (gesture.targetY - gesture.currentY) * follow;
+    gesture.preview.style.transform = `translate3d(${gesture.currentX}px,${gesture.currentY}px,0)`;
+    gesture.followFrame = requestAnimationFrame(renderPreview);
+  }
+
+  function updateInsertion(clientY) {
+    const candidates = [...els.list.children].filter(row => row.dataset.id && !gesture.selectedIds.has(row.dataset.id));
+    const before = candidates.find(row => clientY < row.getBoundingClientRect().top + row.getBoundingClientRect().height / 2) || null;
+    const beforeId = before?.dataset.id || null;
+    if (beforeId === gesture.lastBeforeId) return;
+    const previous = captureRows();
+    if (before) before.before(gesture.placeholder); else els.list.append(gesture.placeholder);
+    gesture.lastBeforeId = beforeId;
+    gesture.moved = true;
+    animateRows(previous);
+  }
+
+  function autoScroll() {
+    if (!gesture?.dragging) return;
+    const clientY = gesture.lastY;
+    const edge = 72;
+    const speed = clientY < edge ? -Math.min(14, (edge - clientY) / 4) : clientY > innerHeight - edge ? Math.min(14, (clientY - innerHeight + edge) / 4) : 0;
+    if (speed) {
+      window.scrollBy(0, speed);
+      updateInsertion(clientY);
+    }
+    gesture.scrollFrame = requestAnimationFrame(autoScroll);
+  }
 
   els.list.addEventListener("pointermove", event => {
     if (!gesture || gesture.pointerId !== event.pointerId) return;
     const dx = event.clientX - gesture.startX;
     const dy = event.clientY - gesture.startY;
+    if (gesture.dragging) {
+      event.preventDefault();
+      positionPreview(event.clientX, event.clientY);
+      updateInsertion(event.clientY);
+      return;
+    }
+    if (gesture.longPress && Math.hypot(dx, dy) > 6) {
+      event.preventDefault();
+      startDrag(event);
+      return;
+    }
+    if (isSelectionMode() && Math.hypot(dx, dy) > 8) {
+      event.preventDefault();
+      clearTimeout(gesture.longPressTimer);
+      startDrag(event);
+      return;
+    }
     if (Math.abs(dx) > 8 || Math.abs(dy) > 8) clearTimeout(gesture.longPressTimer);
     if (!gesture.horizontal && Math.abs(dy) > Math.abs(dx) && Math.abs(dy) > 8) {
-      gesture = null;
+      event.preventDefault();
+      gesture.scrolling = true;
+      gesture.row.dataset.swiped = "true";
+      window.scrollBy(0, gesture.lastY - event.clientY);
+      gesture.lastY = event.clientY;
       return;
     }
     if (dx >= 0 && !gesture.horizontal) return;
@@ -288,10 +454,23 @@ function enableTaskSwipe({ onDelete, isSelectionMode, onLongPress }) {
 
   const finishGesture = event => {
     if (!gesture || gesture.pointerId !== event.pointerId) return;
-    const { row, card, dx, horizontal, longPress, longPressTimer } = gesture;
+    if (gesture.dragging) {
+      const finished = gesture;
+      gesture = null;
+      cancelAnimationFrame(finished.scrollFrame);
+      cancelAnimationFrame(finished.followFrame);
+      finished.preview.remove();
+      finished.placeholder.remove();
+      finished.rows.forEach(row => row.classList.remove("drag-source", "lifted"));
+      els.list.classList.remove("dragging");
+      if (finished.moved) onReorder({ beforeId: finished.lastBeforeId });
+      return;
+    }
+    const { row, card, dx, horizontal, scrolling, longPress, longPressTimer } = gesture;
     gesture = null;
     clearTimeout(longPressTimer);
-    if (longPress) return;
+    row?.classList.remove("lifted");
+    if (longPress || scrolling) return;
     if (horizontal && Math.abs(dx) >= deleteThreshold) {
       row.classList.remove("swiping");
       row.classList.add("deleting");
@@ -307,9 +486,18 @@ function enableTaskSwipe({ onDelete, isSelectionMode, onLongPress }) {
 
   const cancelGesture = event => {
     if (!gesture || gesture.pointerId !== event.pointerId) return;
-    const { row, card, longPressTimer } = gesture;
+    const { row, card, longPressTimer, dragging, preview, placeholder, rows = [], scrollFrame, followFrame } = gesture;
     gesture = null;
     clearTimeout(longPressTimer);
+    if (dragging) {
+      cancelAnimationFrame(scrollFrame);
+      cancelAnimationFrame(followFrame);
+      preview.remove();
+      placeholder.remove();
+      rows.forEach(item => item.classList.remove("drag-source", "lifted"));
+      els.list.classList.remove("dragging");
+      return;
+    }
     row.classList.remove("swiping");
     row.classList.add("settling");
     card.style.transform = "translateX(0)";

@@ -17,6 +17,43 @@ function createTask(values = {}) {
   return { ...baseRecord(values), ...values, listId: values.listId || INBOX_LIST_ID, sectionId: values.sectionId || null, projectId: values.projectId || null, title: String(values.title || "").trim(), description: values.description || "", status: values.status || "active", completedAt: values.completedAt || null, dueDate: values.dueDate || null, dueTime: values.dueTime || null, position: Number.isFinite(values.position) ? values.position : 0, projectPosition: Number.isFinite(values.projectPosition) ? values.projectPosition : null };
 }
 function isTaskCompleted(task) { return task.status === "completed" || task.done === true; }
+function taskOrderScope(task) {
+  return `${task.listId || INBOX_LIST_ID}\u0000${task.sectionId || ""}`;
+}
+function compareTasks(a, b) {
+  const positionA = Number.isFinite(a.position) ? a.position : Number.MAX_SAFE_INTEGER;
+  const positionB = Number.isFinite(b.position) ? b.position : Number.MAX_SAFE_INTEGER;
+  return positionA - positionB || String(b.createdAt || "").localeCompare(String(a.createdAt || "")) || String(a.id).localeCompare(String(b.id));
+}
+function normalizeTaskOrder(records) {
+  const groups = new Map();
+  for (const task of records) {
+    const scope = taskOrderScope(task);
+    if (!groups.has(scope)) groups.set(scope, []);
+    groups.get(scope).push(task);
+  }
+  const normalized = [];
+  for (const group of groups.values()) {
+    group.sort(compareTasks).forEach((task, position) => {
+      normalized.push(task.position === position ? task : { ...task, position });
+    });
+  }
+  return normalized;
+}
+function reorderTaskBlock(records, selectedIds, beforeId, scope) {
+  const inScope = records.filter(task => taskOrderScope(task) === scope).sort(compareTasks);
+  const selected = inScope.filter(task => selectedIds.has(task.id));
+  if (!selected.length) return records;
+  const remaining = inScope.filter(task => !selectedIds.has(task.id));
+  const insertionIndex = beforeId ? remaining.findIndex(task => task.id === beforeId) : remaining.length;
+  const ordered = remaining.slice();
+  ordered.splice(insertionIndex < 0 ? remaining.length : insertionIndex, 0, ...selected);
+  const now = nowIso();
+  const replacements = new Map(ordered.map((task, position) => [task.id,
+    task.position === position ? task : { ...task, position, updatedAt: now }
+  ]));
+  return records.map(task => replacements.get(task.id) || task);
+}
 function currentProjectTask(tasks, projectId) {
   return tasks.filter(task => task.projectId === projectId && !isTaskCompleted(task)).sort((a, b) => (a.projectPosition ?? Number.MAX_SAFE_INTEGER) - (b.projectPosition ?? Number.MAX_SAFE_INTEGER))[0] || null;
 }
