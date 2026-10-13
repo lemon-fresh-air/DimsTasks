@@ -32,9 +32,23 @@ const els = {
   mainMenu: document.querySelector("#main-menu"),
   mainMenuOpen: document.querySelector("#main-menu-open"),
   mainMenuClose: document.querySelector("#main-menu-close"),
-  mainMenuInbox: document.querySelector("#main-menu-inbox"),
+  mainMenuLists: document.querySelector("#main-menu-lists"),
   mainMenuSwipeZone: document.querySelector("#main-menu-swipe-zone"),
+  newListOpen: document.querySelector("#new-list-open"),
+  newListForm: document.querySelector("#new-list-form"),
+  newListTitle: document.querySelector("#new-list-title"),
+  newListCancel: document.querySelector("#new-list-cancel"),
+  settingsOpen: document.querySelector("#settings-open"),
+  settingsScreen: document.querySelector("#settings-screen"),
+  settingsClose: document.querySelector("#settings-close"),
+  themeToggle: document.querySelector("#theme-toggle"),
+  themeLabel: document.querySelector("#theme-label"),
   listSwipeZone: document.querySelector("#list-swipe-zone"),
+  currentListHeading: document.querySelector("#current-list-heading"),
+  inboxTitle: document.querySelector("#inbox-title"),
+  bottomListLabel: document.querySelector("#bottom-list-label"),
+  editorListLabel: document.querySelector("#editor-list-label"),
+  composerListLabel: document.querySelector("#composer-list-label"),
   add: document.querySelector("#add-task-btn"),
   list: document.querySelector("#task-list"),
   empty: document.querySelector("#empty-state"),
@@ -101,6 +115,63 @@ let datePickerReturnFocus = null;
 let editorCloseTimer;
 let menuCloseTimer;
 let menuOpenFrame;
+let settingsCloseTimer;
+let settingsOpenFrame;
+
+function applyTheme(theme) {
+  const normalizedTheme = theme === "dark" ? "dark" : "light";
+  document.documentElement.dataset.theme = normalizedTheme;
+  els.themeToggle.checked = normalizedTheme === "dark";
+  els.themeLabel.textContent = normalizedTheme === "dark" ? "Нічна" : "Денна";
+  els.themeToggle.setAttribute("aria-label", normalizedTheme === "dark" ? "Увімкнено нічну тему" : "Увімкнути нічну тему");
+}
+
+function renderMainMenuLists(lists, activeListId, selectedIds = new Set()) {
+  els.mainMenuLists.classList.toggle("selection-mode", selectedIds.size > 0);
+  els.mainMenuLists.replaceChildren(...lists.map(list => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "main-menu-item";
+    button.dataset.listId = list.id;
+    button.dataset.listKind = list.kind;
+    const active = list.id === activeListId;
+    const selected = selectedIds.has(list.id);
+    button.classList.toggle("active", active);
+    button.classList.toggle("selected", selected);
+    if (active) button.setAttribute("aria-current", "page");
+    button.setAttribute("aria-selected", String(selected));
+    const icon = document.createElement("span");
+    icon.className = list.kind === "inbox" ? "inbox-icon" : "list-menu-icon";
+    icon.setAttribute("aria-hidden", "true");
+    const label = document.createElement("span");
+    label.textContent = displayListTitle(list);
+    button.append(icon, label);
+    return button;
+  }));
+}
+
+function setActiveListUI(list) {
+  const title = displayListTitle(list);
+  els.currentListHeading.textContent = title;
+  els.inboxTitle.textContent = title;
+  els.bottomListLabel.textContent = title;
+  els.editorListLabel.textContent = title;
+  els.composerListLabel.textContent = title;
+}
+
+function showNewListForm() {
+  els.newListForm.hidden = false;
+  els.newListOpen.setAttribute("aria-expanded", "true");
+  els.newListTitle.value = "";
+  requestAnimationFrame(() => els.newListTitle.focus());
+}
+
+function hideNewListForm({ returnFocus = true } = {}) {
+  els.newListForm.hidden = true;
+  els.newListOpen.setAttribute("aria-expanded", "false");
+  els.newListTitle.value = "";
+  if (returnFocus) els.newListOpen.focus({ preventScroll: true });
+}
 
 function openMainMenu() {
   clearTimeout(menuCloseTimer);
@@ -126,9 +197,39 @@ function closeMainMenu({ fromHistory = false } = {}) {
   document.body.classList.remove("main-menu-open");
   menuCloseTimer = setTimeout(() => {
     els.mainMenu.hidden = true;
+    hideNewListForm({ returnFocus: false });
     els.mainMenuOpen.focus();
   }, matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 240);
   if (!fromHistory && history.state?.mainMenu) history.back();
+}
+
+function openSettings() {
+  clearTimeout(settingsCloseTimer);
+  cancelAnimationFrame(settingsOpenFrame);
+  els.settingsScreen.hidden = false;
+  els.settingsScreen.classList.remove("is-open");
+  els.settingsOpen.setAttribute("aria-expanded", "true");
+  document.body.classList.add("settings-open");
+  settingsOpenFrame = requestAnimationFrame(() => {
+    settingsOpenFrame = requestAnimationFrame(() => {
+      els.settingsScreen.classList.add("is-open");
+      els.settingsClose.focus({ preventScroll: true });
+    });
+  });
+  history.pushState({ settings: true }, "");
+}
+
+function closeSettings({ fromHistory = false } = {}) {
+  if (els.settingsScreen.hidden) return;
+  cancelAnimationFrame(settingsOpenFrame);
+  els.settingsScreen.classList.remove("is-open");
+  els.settingsOpen.setAttribute("aria-expanded", "false");
+  document.body.classList.remove("settings-open");
+  settingsCloseTimer = setTimeout(() => {
+    els.settingsScreen.hidden = true;
+    els.settingsOpen.focus({ preventScroll: true });
+  }, matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 240);
+  if (!fromHistory && history.state?.settings) history.back();
 }
 
 function enableHorizontalSwipe(element, { direction, onSwipe }) {
@@ -156,6 +257,147 @@ function enableHorizontalSwipe(element, { direction, onSwipe }) {
   };
   element.addEventListener("pointercancel", cancel);
   element.addEventListener("lostpointercapture", cancel);
+}
+
+function enableListReordering({ onReorder, isSelectionMode, isSelected, onLongPress, onSelectOnly, getSelectedIds }) {
+  let gesture = null;
+  const container = els.mainMenuLists;
+
+  function capturePositions() {
+    return new Map([...container.querySelectorAll("[data-list-id]")].map(item => [item.dataset.listId, item.getBoundingClientRect().top]));
+  }
+
+  function animatePositions(previous) {
+    if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    for (const item of container.querySelectorAll("[data-list-id]")) {
+      const top = previous.get(item.dataset.listId);
+      if (top === undefined) continue;
+      const delta = top - item.getBoundingClientRect().top;
+      if (Math.abs(delta) > 1) item.animate([{ transform: `translateY(${delta}px)` }, { transform: "translateY(0)" }], { duration: 240, easing: "cubic-bezier(.2,.8,.2,1)" });
+    }
+  }
+
+  function positionPreview(clientX, clientY) {
+    gesture.lastX = clientX;
+    gesture.lastY = clientY;
+    gesture.targetX = clientX - gesture.offsetX;
+    gesture.targetY = clientY - gesture.offsetY;
+  }
+
+  function renderPreview() {
+    if (!gesture?.dragging) return;
+    const follow = matchMedia("(prefers-reduced-motion: reduce)").matches ? 1 : .42;
+    gesture.currentX += (gesture.targetX - gesture.currentX) * follow;
+    gesture.currentY += (gesture.targetY - gesture.currentY) * follow;
+    gesture.preview.style.transform = `translate3d(${gesture.currentX}px,${gesture.currentY}px,0)`;
+    gesture.followFrame = requestAnimationFrame(renderPreview);
+  }
+
+  function updateInsertion(clientY) {
+    const candidates = [...container.querySelectorAll('[data-list-kind="regular"]')]
+      .filter(item => !gesture.selectedIds.has(item.dataset.listId));
+    const before = candidates.find(item => clientY < item.getBoundingClientRect().top + item.getBoundingClientRect().height / 2) || null;
+    const beforeId = before?.dataset.listId || null;
+    if (beforeId === gesture.lastBeforeId) return;
+    const previous = capturePositions();
+    if (before) before.before(gesture.placeholder); else container.append(gesture.placeholder);
+    gesture.lastBeforeId = beforeId;
+    gesture.moved = true;
+    animatePositions(previous);
+  }
+
+  function startDrag(event) {
+    clearTimeout(gesture.longPressTimer);
+    if (!isSelected(gesture.id)) onSelectOnly(gesture.id);
+    gesture.item = container.querySelector(`[data-list-id="${CSS.escape(gesture.id)}"]`);
+    if (!gesture.item) return;
+    const selectedIds = getSelectedIds();
+    const selectedItems = [...container.querySelectorAll('[data-list-kind="regular"]')]
+      .filter(item => selectedIds.has(item.dataset.listId));
+    const rect = gesture.item.getBoundingClientRect();
+    const placeholder = document.createElement("div");
+    placeholder.className = "list-drag-placeholder";
+    placeholder.style.height = `${selectedItems.reduce((height, item) => height + item.getBoundingClientRect().height, 0) + Math.max(0, selectedItems.length - 1) * 4}px`;
+    gesture.item.before(placeholder);
+    selectedItems.forEach(item => item.classList.add("drag-source"));
+    const preview = document.createElement("div");
+    preview.className = "list-drag-preview";
+    preview.style.width = `${rect.width}px`;
+    const previewItem = gesture.item.cloneNode(true);
+    if (selectedIds.size > 1) {
+      const count = document.createElement("span");
+      count.className = "drag-count";
+      count.textContent = selectedIds.size;
+      previewItem.append(count);
+    }
+    preview.append(previewItem);
+    document.body.append(preview);
+    gesture = {
+      ...gesture, item: gesture.item, selectedIds, selectedItems, dragging: true, placeholder, preview, moved: false, lastBeforeId: gesture.id,
+      offsetX: event.clientX - rect.left, offsetY: event.clientY - rect.top,
+      currentX: rect.left, currentY: rect.top, targetX: rect.left, targetY: rect.top
+    };
+    container.classList.add("dragging");
+    positionPreview(event.clientX, event.clientY);
+    gesture.followFrame = requestAnimationFrame(renderPreview);
+  }
+
+  container.addEventListener("pointerdown", event => {
+    const item = event.target.closest('[data-list-kind="regular"]');
+    if (!item || !event.isPrimary || (event.pointerType === "mouse" && event.button !== 0)) return;
+    gesture = { item, id: item.dataset.listId, pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, ready: event.pointerType === "mouse", dragging: false };
+    item.setPointerCapture?.(event.pointerId);
+    gesture.longPressTimer = setTimeout(() => {
+      if (!gesture || gesture.pointerId !== event.pointerId) return;
+      gesture.ready = true;
+      container.dataset.suppressListClick = gesture.id;
+      if (!isSelected(gesture.id)) onLongPress(gesture.id);
+      gesture.item = container.querySelector(`[data-list-id="${CSS.escape(gesture.id)}"]`);
+      gesture.item?.classList.add("lifted");
+    }, 450);
+  });
+
+  container.addEventListener("pointermove", event => {
+    if (!gesture || gesture.pointerId !== event.pointerId) return;
+    const distance = Math.hypot(event.clientX - gesture.startX, event.clientY - gesture.startY);
+    if (gesture.dragging) {
+      event.preventDefault();
+      positionPreview(event.clientX, event.clientY);
+      updateInsertion(event.clientY);
+      return;
+    }
+    if (gesture.ready && distance > 6) {
+      event.preventDefault();
+      container.dataset.suppressListClick = gesture.id;
+      startDrag(event);
+      return;
+    }
+    if (isSelectionMode() && isSelected(gesture.id) && distance > 8) {
+      event.preventDefault();
+      container.dataset.suppressListClick = gesture.id;
+      startDrag(event);
+      return;
+    }
+    if (!gesture.ready && distance > 8) clearTimeout(gesture.longPressTimer);
+  });
+
+  function finish(event, cancelled = false) {
+    if (!gesture || gesture.pointerId !== event.pointerId) return;
+    const finished = gesture;
+    gesture = null;
+    clearTimeout(finished.longPressTimer);
+    finished.item?.classList.remove("lifted");
+    if (!finished.dragging) return;
+    cancelAnimationFrame(finished.followFrame);
+    finished.preview.remove();
+    finished.placeholder.remove();
+    finished.selectedItems.forEach(item => item.classList.remove("drag-source"));
+    container.classList.remove("dragging");
+    if (!cancelled && finished.moved) onReorder({ selectedIds: finished.selectedIds, beforeId: finished.lastBeforeId });
+  }
+
+  container.addEventListener("pointerup", event => finish(event));
+  container.addEventListener("pointercancel", event => finish(event, true));
 }
 
 function dateFromValue(value) {
@@ -282,6 +524,7 @@ function renderTasks(tasks, selectedIds = new Set()) {
     const taskDate = row.querySelector(".task-date");
     taskDate.textContent = readableDate(displayedDate);
     applyDateTone(taskDate, displayedDate);
+    row.querySelector(".task-project-name").textContent = els.currentListHeading.textContent;
     row.querySelector(".task-open").setAttribute("aria-label", `Відкрити деталі: ${task.title}`);
     return row;
   }));

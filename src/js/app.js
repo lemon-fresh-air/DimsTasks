@@ -1,7 +1,33 @@
 let tasks = [];
+let lists = [];
+let activeListId = INBOX_LIST_ID;
 let selectedTaskIds = new Set();
+let selectedListIds = new Set();
 let completionAudioContext;
 let editingSelectedTaskDates = false;
+
+function activeList() {
+  return lists.find(list => list.id === activeListId) || lists.find(list => list.kind === "inbox");
+}
+
+function visibleTasks() {
+  return tasks.filter(task => (task.listId || INBOX_LIST_ID) === activeListId);
+}
+
+function renderCurrentTasks() {
+  renderTasks(visibleTasks(), selectedTaskIds);
+}
+
+function renderListNavigation() {
+  const current = activeList();
+  if (!current) return;
+  setActiveListUI(current);
+  renderListMenu();
+}
+
+function renderListMenu() {
+  renderMainMenuLists(lists, activeListId, selectedListIds);
+}
 
 function playCompletionSound() {
   const AudioContextClass = window.AudioContext || window.webkitAudioContext;
@@ -87,7 +113,7 @@ async function refresh({ animateTaskReflow: shouldAnimateTaskReflow = false } = 
   const previousPositions = shouldAnimateTaskReflow ? captureTaskPositions() : null;
   tasks = (await taskDb.all()).sort(compareTasks);
   selectedTaskIds = new Set([...selectedTaskIds].filter(id => tasks.some(task => task.id === id)));
-  renderTasks(tasks, selectedTaskIds);
+  renderCurrentTasks();
   if (previousPositions) animateTaskReflow(previousPositions);
 }
 
@@ -97,24 +123,115 @@ async function loadAndNormalizeTaskOrder() {
   const changed = normalized.filter((task, index) => task !== loaded[index]);
   if (changed.length) await taskDb.putMany(changed);
   tasks = normalized.sort(compareTasks);
-  renderTasks(tasks, selectedTaskIds);
+  renderCurrentTasks();
+}
+
+async function loadLists() {
+  lists = (await listDb.all()).sort(compareLists);
+  selectedListIds = new Set([...selectedListIds].filter(id => lists.some(list => list.id === id && list.kind === "regular")));
+  if (!lists.some(list => list.id === activeListId)) {
+    activeListId = lists.find(list => list.kind === "inbox")?.id || INBOX_LIST_ID;
+  }
+  renderListNavigation();
+}
+
+async function initializeApp() {
+  await loadLists();
+  await loadAndNormalizeTaskOrder();
+}
+
+function openList(listId) {
+  if (!lists.some(list => list.id === listId)) return;
+  activeListId = listId;
+  selectedTaskIds = new Set();
+  selectedListIds = new Set();
+  renderListNavigation();
+  renderCurrentTasks();
+  closeMainMenu();
+  window.scrollTo(0, 0);
+}
+
+async function addList(title) {
+  const normalizedTitle = title.trim();
+  if (!normalizedTitle) return false;
+  if (lists.some(list => displayListTitle(list).localeCompare(normalizedTitle, "uk", { sensitivity: "accent" }) === 0)) {
+    toast("Список із такою назвою вже існує");
+    els.newListTitle.focus();
+    return false;
+  }
+  const nextPosition = Math.max(-1, ...lists.filter(list => list.kind !== "inbox").map(list => Number.isFinite(list.position) ? list.position : -1)) + 1;
+  const list = createList({ title: normalizedTitle, kind: "regular", position: nextPosition });
+  try {
+    await listDb.put(list);
+    lists = [...lists, list].sort(compareLists);
+    renderListMenu();
+    hideNewListForm();
+    toast("Список додано");
+    return true;
+  } catch (_error) {
+    toast("Не вдалося додати список");
+    return false;
+  }
+}
+
+function selectList(id) {
+  if (!lists.some(list => list.id === id && list.kind === "regular")) return;
+  selectedListIds = new Set([id]);
+  renderListMenu();
+}
+
+function toggleListSelection(id) {
+  if (!lists.some(list => list.id === id && list.kind === "regular")) return;
+  const next = new Set(selectedListIds);
+  if (next.has(id)) next.delete(id); else next.add(id);
+  selectedListIds = next;
+  renderListMenu();
+}
+
+function clearListSelection() {
+  selectedListIds = new Set();
+  renderListMenu();
+}
+
+async function reorderTaskLists({ selectedIds, beforeId }) {
+  const previous = lists;
+  const reordered = reorderLists(lists, selectedIds, beforeId);
+  const changed = reordered.filter(list => {
+    const old = lists.find(item => item.id === list.id);
+    return old && old !== list;
+  });
+  if (!changed.length) {
+    renderListMenu();
+    return false;
+  }
+  lists = reordered;
+  renderListMenu();
+  try {
+    await listDb.putMany(changed);
+    return true;
+  } catch (_error) {
+    lists = previous;
+    renderListMenu();
+    toast("Не вдалося зберегти порядок списків");
+    return false;
+  }
 }
 
 function selectTask(id) {
   selectedTaskIds = new Set([id]);
-  renderTasks(tasks, selectedTaskIds);
+  renderCurrentTasks();
 }
 
 function toggleTaskSelection(id) {
   const next = new Set(selectedTaskIds);
   if (next.has(id)) next.delete(id); else next.add(id);
   selectedTaskIds = next;
-  renderTasks(tasks, selectedTaskIds);
+  renderCurrentTasks();
 }
 
 function clearTaskSelection() {
   selectedTaskIds = new Set();
-  renderTasks(tasks, selectedTaskIds);
+  renderCurrentTasks();
 }
 
 async function deleteSelectedTasks() {
@@ -123,7 +240,7 @@ async function deleteSelectedTasks() {
   const deletedIds = deletedTasks.map(task => task.id);
   tasks = tasks.filter(task => !selectedTaskIds.has(task.id));
   selectedTaskIds = new Set();
-  renderTasks(tasks, selectedTaskIds);
+  renderCurrentTasks();
   try {
     await taskDb.deleteMany(deletedIds);
     const message = deletedTasks.length === 1 ? "Завдання видалено" : `Видалено завдань: ${deletedTasks.length}`;
@@ -161,7 +278,7 @@ async function updateSelectedTaskDates(dueDate) {
   try {
     await taskDb.putMany(changed);
     tasks = updatedTasks.sort(compareTasks);
-    renderTasks(tasks, selectedTaskIds);
+    renderCurrentTasks();
     await animateBulkDateChange(selectedIds, previousPositions);
     clearTaskSelection();
     toast(changed.length === 1 ? "Дату завдання змінено" : `Змінено дату завдань: ${changed.length}`);
@@ -174,7 +291,7 @@ async function updateSelectedTaskDates(dueDate) {
 async function addTask() {
   const title = els.input.value.trim();
   if (!title) { els.input.focus(); return false; }
-  const task = createTask({ title, description: els.description.value.trim(), dueDate: els.date.value || null, position: 0 });
+  const task = createTask({ listId: activeListId, title, description: els.description.value.trim(), dueDate: els.date.value || null, position: 0 });
   const scope = taskOrderScope(task);
   const shifted = tasks.filter(item => taskOrderScope(item) === scope).map(item => ({ ...item, position: item.position + 1 }));
   await taskDb.putMany([task, ...shifted]);
@@ -191,13 +308,13 @@ async function reorderSelectedTasks({ beforeId }) {
   const changed = reordered.filter((task, index) => task !== tasks[index]);
   if (!changed.length) return false;
   tasks = reordered.sort(compareTasks);
-  renderTasks(tasks, selectedTaskIds);
+  renderCurrentTasks();
   try {
     await taskDb.putMany(changed);
     return true;
   } catch (_error) {
     tasks = previous;
-    renderTasks(tasks, selectedTaskIds);
+    renderCurrentTasks();
     toast("Не вдалося зберегти порядок");
     return false;
   }
@@ -233,7 +350,7 @@ async function deleteTask(id) {
   if (!task) return;
   tasks = tasks.filter(item => item.id !== id);
   selectedTaskIds.delete(id);
-  renderTasks(tasks, selectedTaskIds);
+  renderCurrentTasks();
   try {
     await taskDb.delete(id);
     toast("Завдання видалено", {
@@ -246,7 +363,7 @@ async function deleteTask(id) {
     });
   } catch (_error) {
     tasks.push(task);
-    renderTasks(tasks, selectedTaskIds);
+    renderCurrentTasks();
     toast("Не вдалося видалити завдання");
   }
 }
@@ -275,9 +392,43 @@ els.mainMenuOpen.addEventListener("click", () => {
   if (selectedTaskIds.size) clearTaskSelection();
   openMainMenu();
 });
-els.mainMenuClose.addEventListener("click", () => closeMainMenu());
-els.mainMenuInbox.addEventListener("click", () => closeMainMenu());
+els.mainMenuClose.addEventListener("click", () => {
+  if (selectedListIds.size) clearListSelection();
+  closeMainMenu();
+});
+els.mainMenuLists.addEventListener("click", event => {
+  const button = event.target.closest("[data-list-id]");
+  if (els.mainMenuLists.dataset.suppressListClick === button?.dataset.listId) {
+    delete els.mainMenuLists.dataset.suppressListClick;
+    return;
+  }
+  delete els.mainMenuLists.dataset.suppressListClick;
+  if (!button) return;
+  if (selectedListIds.size && button.dataset.listKind === "regular") {
+    toggleListSelection(button.dataset.listId);
+    return;
+  }
+  openList(button.dataset.listId);
+});
+els.newListOpen.addEventListener("click", showNewListForm);
+els.newListCancel.addEventListener("click", () => hideNewListForm());
+els.newListForm.addEventListener("submit", event => {
+  event.preventDefault();
+  addList(els.newListTitle.value);
+});
+els.newListTitle.addEventListener("keydown", event => {
+  if (event.key === "Escape") {
+    event.preventDefault();
+    hideNewListForm();
+  }
+});
+els.settingsOpen.addEventListener("click", openSettings);
+els.settingsClose.addEventListener("click", () => closeSettings());
 window.addEventListener("popstate", () => {
+  if (!els.settingsScreen.hidden) {
+    closeSettings({ fromHistory: true });
+    return;
+  }
   if (!els.mainMenu.hidden) closeMainMenu({ fromHistory: true });
 });
 enableHorizontalSwipe(els.listSwipeZone, {
@@ -289,7 +440,29 @@ enableHorizontalSwipe(els.listSwipeZone, {
 });
 enableHorizontalSwipe(els.mainMenuSwipeZone, {
   direction: "left",
-  onSwipe: () => closeMainMenu()
+  onSwipe: () => {
+    if (selectedListIds.size) clearListSelection();
+    closeMainMenu();
+  }
+});
+enableListReordering({
+  onReorder: reorderTaskLists,
+  isSelectionMode: () => selectedListIds.size > 0,
+  isSelected: id => selectedListIds.has(id),
+  onLongPress: selectList,
+  onSelectOnly: selectList,
+  getSelectedIds: () => new Set(selectedListIds)
+});
+els.themeToggle.addEventListener("change", async () => {
+  const previousTheme = document.documentElement.dataset.theme === "dark" ? "dark" : "light";
+  const theme = els.themeToggle.checked ? "dark" : "light";
+  applyTheme(theme);
+  try {
+    await settingsDb.setTheme(theme);
+  } catch (_error) {
+    applyTheme(previousTheme);
+    toast("Не вдалося зберегти тему");
+  }
 });
 els.editorBack.addEventListener("click", () => saveAndLeaveTaskEditor({ allowEmptyNew: true }));
 els.desktopSaveTask.addEventListener("click", () => saveAndLeaveTaskEditor({ allowEmptyNew: true }));
@@ -297,8 +470,17 @@ els.selectionClose.addEventListener("click", clearTaskSelection);
 els.dateSelected.addEventListener("click", openSelectedTaskDatePicker);
 els.deleteSelected.addEventListener("click", deleteSelectedTasks);
 document.addEventListener("keydown", event => {
+  if (event.key === "Escape" && !els.settingsScreen.hidden) {
+    event.preventDefault();
+    closeSettings();
+    return;
+  }
   if (event.key === "Escape" && !els.mainMenu.hidden) {
     event.preventDefault();
+    if (selectedListIds.size) {
+      clearListSelection();
+      return;
+    }
     closeMainMenu();
     return;
   }
@@ -312,6 +494,10 @@ els.datePickerClose.addEventListener("click", () => { editingSelectedTaskDates =
 els.datePickerBackdrop.addEventListener("click", event => { if (event.target === els.datePickerBackdrop) { editingSelectedTaskDates = false; closeDatePicker(); } });
 els.datePicker.addEventListener("keydown", event => {
   if (event.key === "Escape") { event.preventDefault(); editingSelectedTaskDates = false; closeDatePicker(); }
+  if (event.key === "Enter" && event.target !== els.datePickerSave && editingSelectedTaskDates && matchMedia("(min-width: 760px)").matches) {
+    event.preventDefault();
+    savePendingDateSelection();
+  }
 });
 document.querySelectorAll("[data-date-shortcut]").forEach(button => button.addEventListener("click", () => {
   const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate() + 1);
@@ -326,19 +512,21 @@ els.calendarGrid.addEventListener("click", event => {
 });
 els.calendarPrevious.addEventListener("click", () => { visibleCalendarMonth.setMonth(visibleCalendarMonth.getMonth() - 1); renderCalendar(); });
 els.calendarNext.addEventListener("click", () => { visibleCalendarMonth.setMonth(visibleCalendarMonth.getMonth() + 1); renderCalendar(); });
-els.datePickerSave.addEventListener("click", async () => {
+async function savePendingDateSelection() {
   if (editingSelectedTaskDates) {
     editingSelectedTaskDates = false;
     closeDatePicker();
     await updateSelectedTaskDates(pendingDateValue);
-    return;
+    return true;
   }
   els.date.value = pendingDateValue;
   els.dateLabel.textContent = readableDate(pendingDateValue);
   applyDateTone(els.datePickerOpen, pendingDateValue);
   updateDesktopSaveState();
   closeDatePicker();
-});
+  return true;
+}
+els.datePickerSave.addEventListener("click", savePendingDateSelection);
 els.input.addEventListener("input", () => { els.input.style.height = "auto"; els.input.style.height = `${Math.min(els.input.scrollHeight, 150)}px`; updateDesktopSaveState(); });
 els.description.addEventListener("input", () => { resizeDescription(); updateDesktopSaveState(); });
 els.form.addEventListener("keydown", event => {
@@ -389,4 +577,5 @@ enableTaskGestures({
   onReorder: reorderSelectedTasks
 });
 if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("./service-worker.js"));
-loadAndNormalizeTaskOrder().catch(() => toast("Не вдалося відкрити локальне сховище"));
+settingsDb.theme().then(applyTheme).catch(() => toast("Не вдалося завантажити тему"));
+initializeApp().catch(() => toast("Не вдалося відкрити локальне сховище"));

@@ -1,6 +1,6 @@
 <div class="app-shell">
   <header class="page-header">
-    <div id="normal-header"><h1>Нові</h1><p id="task-count">0 задач</p></div>
+    <div id="normal-header"><h1 id="current-list-heading">Нові</h1><p id="task-count">0 задач</p></div>
     <div id="selection-toolbar" class="selection-toolbar" hidden>
       <button id="selection-close" class="toolbar-action" type="button" aria-label="Завершити виділення"><span class="back-icon" aria-hidden="true"></span></button>
       <p id="selection-count">Вибрано: 0</p>
@@ -12,35 +12,60 @@
   </header>
   <main><section class="task-section" aria-labelledby="inbox-title">
     <h2 id="inbox-title">Нові</h2><ul id="task-list" aria-live="polite"></ul>
-    <div id="empty-state" class="empty"><span class="empty-icon" aria-hidden="true">✓</span><p>Нових задач поки немає</p><small>Натисніть кнопку внизу, щоб додати першу.</small></div>
+    <div id="empty-state" class="empty"><span class="empty-icon" aria-hidden="true">✓</span><p>У цьому списку поки немає задач</p><small>Натисніть кнопку внизу, щоб додати першу.</small></div>
   </section><div id="list-swipe-zone" class="list-swipe-zone" aria-hidden="true"></div></main>
   <button id="add-task-btn" class="fab" aria-label="Додати задачу"><span aria-hidden="true">＋</span></button>
   <nav class="bottom-nav" aria-label="Основна навігація"><div class="bottom-nav-inner">
     <button id="main-menu-open" class="nav-item menu-nav-item" type="button" aria-label="Відкрити головне меню" aria-controls="main-menu" aria-expanded="false"><span class="menu-icon" aria-hidden="true"></span><span>Меню</span></button>
-    <button class="nav-item active" type="button" aria-current="page"><span class="inbox-icon" aria-hidden="true"></span><span>Нові</span></button>
+    <button class="nav-item active" type="button" aria-current="page"><span class="inbox-icon" aria-hidden="true"></span><span id="bottom-list-label">Нові</span></button>
   </div></nav>
 </div>
 <section id="main-menu" class="main-menu" aria-label="Головне меню" hidden>
   <div class="main-menu-panel">
     <header class="main-menu-header">
-      <h2>Головне меню</h2>
       <button id="main-menu-close" class="main-menu-close" type="button" aria-label="Повернутися до списку"><span aria-hidden="true"></span></button>
+      <h2>Головне меню</h2>
     </header>
-    <nav class="main-menu-list" aria-label="Розділи">
-      <button id="main-menu-inbox" class="main-menu-item active" type="button" aria-current="page"><span class="inbox-icon" aria-hidden="true"></span><span>Нові</span></button>
-      <button class="main-menu-item" type="button" disabled><span class="menu-placeholder-icon" aria-hidden="true"></span><span>Плейсхолдер 1</span></button>
-      <button class="main-menu-item" type="button" disabled><span class="menu-placeholder-icon" aria-hidden="true"></span><span>Плейсхолдер 2</span></button>
-      <button class="main-menu-item" type="button" disabled><span class="menu-placeholder-icon" aria-hidden="true"></span><span>Плейсхолдер 3</span></button>
-      <button class="main-menu-item" type="button" disabled><span class="menu-placeholder-icon" aria-hidden="true"></span><span>Плейсхолдер 4</span></button>
-    </nav>
+    <nav id="main-menu-lists" class="main-menu-list" aria-label="Списки задач"></nav>
+    <form id="new-list-form" class="new-list-form" hidden>
+      <span class="list-menu-icon" aria-hidden="true"></span>
+      <label class="sr-only" for="new-list-title">Назва нового списку</label>
+      <input id="new-list-title" type="text" maxlength="80" autocomplete="off" placeholder="Назва списку" required>
+      <button id="new-list-cancel" type="button" aria-label="Скасувати створення списку">×</button>
+    </form>
     <div id="main-menu-swipe-zone" class="main-menu-swipe-zone" aria-hidden="true"></div>
-    <button class="main-menu-item main-menu-settings" type="button" disabled><span class="settings-icon" aria-hidden="true"></span><span>Налаштування</span></button>
+    <div class="main-menu-footer">
+      <button id="new-list-open" class="menu-icon-action add-list-action" type="button" aria-controls="new-list-form" aria-expanded="false"><span class="add-list-icon" aria-hidden="true"></span><span class="menu-action-label">Додати список</span></button>
+      <button id="settings-open" class="menu-icon-action" type="button" aria-label="Відкрити налаштування" aria-controls="settings-screen" aria-expanded="false"><span class="settings-icon" aria-hidden="true"></span></button>
+    </div>
+  </div>
+</section>
+<section id="settings-screen" class="settings-screen" aria-labelledby="settings-title" hidden>
+  <div class="settings-panel">
+    <header class="settings-header">
+      <button id="settings-close" class="settings-close" type="button" aria-label="Повернутися до головного меню"><span aria-hidden="true"></span></button>
+      <h2 id="settings-title">Налаштування</h2>
+    </header>
+    <div class="settings-list">
+      <div class="settings-row theme-setting">
+        <span class="theme-icon" aria-hidden="true"></span>
+        <span class="settings-copy"><strong>Тема</strong><small id="theme-label">Денна</small></span>
+        <label class="theme-switch">
+          <input id="theme-toggle" type="checkbox" role="switch" aria-label="Увімкнути нічну тему">
+          <span aria-hidden="true"></span>
+        </label>
+      </div>
+      <button class="settings-row" type="button" disabled><span class="menu-placeholder-icon" aria-hidden="true"></span><span>Плейсхолдер 1</span></button>
+      <button class="settings-row" type="button" disabled><span class="menu-placeholder-icon" aria-hidden="true"></span><span>Плейсхолдер 2</span></button>
+      <button class="settings-row" type="button" disabled><span class="menu-placeholder-icon" aria-hidden="true"></span><span>Плейсхолдер 3</span></button>
+      <button class="settings-row" type="button" disabled><span class="menu-placeholder-icon" aria-hidden="true"></span><span>Плейсхолдер 4</span></button>
+    </div>
   </div>
 </section>
 <section id="task-editor" class="task-editor" aria-label="Редактор завдання" hidden>
   <header class="task-editor-header">
     <button id="task-editor-back" class="editor-back" type="button" aria-label="Зберегти й повернутися до списку"><span aria-hidden="true"></span></button>
-    <span class="editor-context"><span class="inbox-icon" aria-hidden="true"></span>Нові</span>
+    <span class="editor-context"><span class="inbox-icon" aria-hidden="true"></span><span id="editor-list-label">Нові</span></span>
   </header>
   <form id="task-form" class="task-editor-form">
     <div class="task-title-row">
@@ -54,7 +79,7 @@
       <textarea id="task-description" name="description" rows="2" maxlength="10000" placeholder="Додати опис…"></textarea>
     </div>
     <div class="composer-actions">
-      <span class="meta-chip inbox-chip"><span class="inbox-icon" aria-hidden="true"></span>Нові</span>
+      <span class="meta-chip inbox-chip"><span class="inbox-icon" aria-hidden="true"></span><span id="composer-list-label">Нові</span></span>
       <button id="date-picker-open" class="meta-chip date-chip" type="button" aria-haspopup="dialog"><span class="calendar-icon" aria-hidden="true"></span><span id="date-label">Сьогодні</span></button>
       <input id="task-date" name="date" type="hidden">
     </div>
@@ -92,7 +117,7 @@
     <button id="date-picker-save" class="date-picker-save" type="button">Зберегти</button>
   </section>
 </div>
-<template id="task-template"><li class="swipe-row"><div class="delete-reveal" aria-hidden="true"><span class="delete-icon"></span><span>Видалити</span></div><article class="task-card"><button class="toggle" aria-label="Позначити виконаною"><span>✓</span></button><button class="task-open" type="button" aria-label="Відкрити деталі завдання"><span class="task-copy"><span class="task-text"></span><span class="task-description-preview" hidden></span><span class="task-date"></span></span><span class="task-project">Нові <span class="inbox-icon" aria-hidden="true"></span></span></button></article></li></template>
+<template id="task-template"><li class="swipe-row"><div class="delete-reveal" aria-hidden="true"><span class="delete-icon"></span><span>Видалити</span></div><article class="task-card"><button class="toggle" aria-label="Позначити виконаною"><span>✓</span></button><button class="task-open" type="button" aria-label="Відкрити деталі завдання"><span class="task-copy"><span class="task-text"></span><span class="task-description-preview" hidden></span><span class="task-date"></span></span><span class="task-project"><span class="task-project-name">Нові</span><span class="inbox-icon" aria-hidden="true"></span></span></button></article></li></template>
 <div id="toast" class="toast" role="status" aria-live="polite"><span class="toast-message"></span><button id="toast-action" class="toast-action" type="button">Відмінити</button><svg class="toast-timer" viewBox="0 0 28 28" aria-hidden="true"><circle class="toast-timer-track" cx="14" cy="14" r="11"></circle><circle class="toast-timer-progress" cx="14" cy="14" r="11"></circle></svg></div>
 
 

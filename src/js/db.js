@@ -1,7 +1,8 @@
 const DB_NAME = "dims-tasks-db";
-const DB_VERSION = 2;
-const STORE_NAMES = ["lists", "sections", "projects", "tasks"];
+const DB_VERSION = 3;
+const STORE_NAMES = ["lists", "sections", "projects", "tasks", "settings"];
 const INBOX_LIST_ID = "system-list-inbox";
+const APPEARANCE_SETTINGS_ID = "appearance";
 
 function ensureIndex(store, name, keyPath, options = {}) {
   if (!store.indexNames.contains(name)) store.createIndex(name, keyPath, options);
@@ -145,5 +146,31 @@ const taskDb = {
     stores.tasks.clear();
     for (const task of tasks) stores.tasks.put(task);
   })
+};
+
+const listDb = {
+  all: () => appDb.all("lists"),
+  put: list => appDb.put("lists", list),
+  putMany: lists => transact("lists", "readwrite", (_tx, stores) => {
+    for (const list of lists) stores.lists.put(list);
+  })
+};
+
+const settingsDb = {
+  theme: async () => {
+    const settings = await appDb.get("settings", APPEARANCE_SETTINGS_ID);
+    return settings?.theme === "dark" ? "dark" : "light";
+  },
+  setTheme: async theme => {
+    const current = await appDb.get("settings", APPEARANCE_SETTINGS_ID);
+    const now = new Date().toISOString();
+    await appDb.put("settings", {
+      id: APPEARANCE_SETTINGS_ID,
+      entityVersion: 1,
+      theme: theme === "dark" ? "dark" : "light",
+      createdAt: current?.createdAt || now,
+      updatedAt: now
+    });
+  }
 };
 

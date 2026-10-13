@@ -7,6 +7,28 @@ function baseRecord(values = {}) {
 function createList(values = {}) {
   return { ...baseRecord(values), ...values, title: String(values.title || "").trim(), description: values.description || "", kind: values.kind || "regular", position: Number.isFinite(values.position) ? values.position : 0 };
 }
+function displayListTitle(list) { return list?.kind === "inbox" ? "Нові" : String(list?.title || "").trim(); }
+function compareLists(a, b) {
+  if (a.kind === "inbox" && b.kind !== "inbox") return -1;
+  if (b.kind === "inbox" && a.kind !== "inbox") return 1;
+  return (a.position ?? Number.MAX_SAFE_INTEGER) - (b.position ?? Number.MAX_SAFE_INTEGER)
+    || String(a.createdAt || "").localeCompare(String(b.createdAt || ""))
+    || String(a.id).localeCompare(String(b.id));
+}
+function reorderLists(records, selectedIds, beforeId) {
+  const regular = records.filter(list => list.kind !== "inbox").sort(compareLists);
+  const selected = regular.filter(list => selectedIds.has(list.id));
+  if (!selected.length) return records;
+  const remaining = regular.filter(list => !selectedIds.has(list.id));
+  const insertionIndex = beforeId ? remaining.findIndex(list => list.id === beforeId) : remaining.length;
+  const ordered = remaining.slice();
+  ordered.splice(insertionIndex < 0 ? remaining.length : insertionIndex, 0, ...selected);
+  const now = nowIso();
+  const replacements = new Map(ordered.map((list, position) => [list.id,
+    list.position === position ? list : { ...list, position, updatedAt: now }
+  ]));
+  return records.map(list => replacements.get(list.id) || list).sort(compareLists);
+}
 function createSection(values = {}) {
   return { ...baseRecord(values), ...values, listId: values.listId, title: String(values.title || "").trim(), description: values.description || "", position: Number.isFinite(values.position) ? values.position : 0 };
 }
