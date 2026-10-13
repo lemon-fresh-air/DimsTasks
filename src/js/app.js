@@ -1,6 +1,7 @@
 let tasks = [];
 let selectedTaskIds = new Set();
 let completionAudioContext;
+let editingSelectedTaskDates = false;
 
 function playCompletionSound() {
   const AudioContextClass = window.AudioContext || window.webkitAudioContext;
@@ -69,6 +70,19 @@ function animateTaskReflow(previousPositions) {
   }
 }
 
+async function animateBulkDateChange(selectedIds, previousPositions) {
+  animateTaskReflow(previousPositions);
+  if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  const animations = [...els.list.children]
+    .filter(row => selectedIds.has(row.dataset.id))
+    .map(row => row.querySelector(".task-card")?.animate([
+      { opacity: .72, transform: "scale(.985)" },
+      { opacity: 1, transform: "scale(1)" }
+    ], { duration: 240, easing: "cubic-bezier(.22,1,.36,1)" }))
+    .filter(Boolean);
+  await Promise.all(animations.map(animation => animation.finished.catch(() => {})));
+}
+
 async function refresh({ animateTaskReflow: shouldAnimateTaskReflow = false } = {}) {
   const previousPositions = shouldAnimateTaskReflow ? captureTaskPositions() : null;
   tasks = (await taskDb.all()).sort(compareTasks);
@@ -125,6 +139,35 @@ async function deleteSelectedTasks() {
     tasks.push(...deletedTasks);
     await refresh();
     toast("Не вдалося видалити завдання");
+  }
+}
+
+function openSelectedTaskDatePicker() {
+  const selected = tasks.filter(task => selectedTaskIds.has(task.id));
+  if (!selected.length) return;
+  const firstDate = selected[0].dueDate || "";
+  const sharedDate = selected.every(task => (task.dueDate || "") === firstDate) ? firstDate : "";
+  editingSelectedTaskDates = true;
+  openDatePicker(sharedDate);
+}
+
+async function updateSelectedTaskDates(dueDate) {
+  const selectedIds = new Set(selectedTaskIds);
+  const previousPositions = captureTaskPositions();
+  const updatedAt = new Date().toISOString();
+  const updatedTasks = tasks.map(task => selectedIds.has(task.id) ? { ...task, dueDate: dueDate || null, updatedAt } : task);
+  const changed = updatedTasks.filter(task => selectedIds.has(task.id));
+  if (!changed.length) return;
+  try {
+    await taskDb.putMany(changed);
+    tasks = updatedTasks.sort(compareTasks);
+    renderTasks(tasks, selectedTaskIds);
+    await animateBulkDateChange(selectedIds, previousPositions);
+    clearTaskSelection();
+    toast(changed.length === 1 ? "Дату завдання змінено" : `Змінено дату завдань: ${changed.length}`);
+  } catch (_error) {
+    await refresh();
+    toast("Не вдалося змінити дату");
   }
 }
 
@@ -231,12 +274,19 @@ els.add.addEventListener("click", openNewTaskEditor);
 els.editorBack.addEventListener("click", () => saveAndLeaveTaskEditor({ allowEmptyNew: true }));
 els.desktopSaveTask.addEventListener("click", () => saveAndLeaveTaskEditor({ allowEmptyNew: true }));
 els.selectionClose.addEventListener("click", clearTaskSelection);
+els.dateSelected.addEventListener("click", openSelectedTaskDatePicker);
 els.deleteSelected.addEventListener("click", deleteSelectedTasks);
-els.datePickerOpen.addEventListener("click", openDatePicker);
-els.datePickerClose.addEventListener("click", closeDatePicker);
-els.datePickerBackdrop.addEventListener("click", event => { if (event.target === els.datePickerBackdrop) closeDatePicker(); });
+document.addEventListener("keydown", event => {
+  if (event.key !== "Escape" || !selectedTaskIds.size || !matchMedia("(min-width: 760px)").matches) return;
+  if (!els.editor.hidden || !els.datePickerBackdrop.hidden) return;
+  event.preventDefault();
+  clearTaskSelection();
+});
+els.datePickerOpen.addEventListener("click", () => { editingSelectedTaskDates = false; openDatePicker(); });
+els.datePickerClose.addEventListener("click", () => { editingSelectedTaskDates = false; closeDatePicker(); });
+els.datePickerBackdrop.addEventListener("click", event => { if (event.target === els.datePickerBackdrop) { editingSelectedTaskDates = false; closeDatePicker(); } });
 els.datePicker.addEventListener("keydown", event => {
-  if (event.key === "Escape") { event.preventDefault(); closeDatePicker(); }
+  if (event.key === "Escape") { event.preventDefault(); editingSelectedTaskDates = false; closeDatePicker(); }
 });
 document.querySelectorAll("[data-date-shortcut]").forEach(button => button.addEventListener("click", () => {
   const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate() + 1);
@@ -251,7 +301,13 @@ els.calendarGrid.addEventListener("click", event => {
 });
 els.calendarPrevious.addEventListener("click", () => { visibleCalendarMonth.setMonth(visibleCalendarMonth.getMonth() - 1); renderCalendar(); });
 els.calendarNext.addEventListener("click", () => { visibleCalendarMonth.setMonth(visibleCalendarMonth.getMonth() + 1); renderCalendar(); });
-els.datePickerSave.addEventListener("click", () => {
+els.datePickerSave.addEventListener("click", async () => {
+  if (editingSelectedTaskDates) {
+    editingSelectedTaskDates = false;
+    closeDatePicker();
+    await updateSelectedTaskDates(pendingDateValue);
+    return;
+  }
   els.date.value = pendingDateValue;
   els.dateLabel.textContent = readableDate(pendingDateValue);
   applyDateTone(els.datePickerOpen, pendingDateValue);

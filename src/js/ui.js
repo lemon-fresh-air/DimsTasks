@@ -4,6 +4,7 @@ const els = {
   selectionToolbar: document.querySelector("#selection-toolbar"),
   selectionClose: document.querySelector("#selection-close"),
   selectionCount: document.querySelector("#selection-count"),
+  dateSelected: document.querySelector("#date-selected"),
   deleteSelected: document.querySelector("#delete-selected"),
   form: document.querySelector("#task-form"),
   input: document.querySelector("#task-title"),
@@ -146,9 +147,9 @@ function renderCalendar() {
   els.calendarGrid.replaceChildren(...cells);
 }
 
-function openDatePicker() {
+function openDatePicker(initialValue = els.date.value) {
   datePickerReturnFocus = document.activeElement;
-  const initial = els.date.value || localDateValue();
+  const initial = initialValue || localDateValue();
   const initialDate = dateFromValue(initial);
   const today = new Date();
   visibleCalendarMonth = new Date(Math.max(initialDate.getTime(), today.getTime()));
@@ -158,7 +159,7 @@ function openDatePicker() {
   els.tomorrowWeekday.textContent = weekdayFormatter.format(tomorrow);
   els.datePickerBackdrop.hidden = false;
   document.body.classList.add("date-picker-open");
-  setPendingDate(els.date.value);
+  setPendingDate(initialValue);
   requestAnimationFrame(() => els.datePicker.focus());
 }
 
