@@ -16,6 +16,8 @@ function visibleTasks() {
 
 function renderCurrentTasks() {
   renderTasks(visibleTasks(), selectedTaskIds);
+  updateMainMenuTaskCounts(tasks);
+  renderSelectedListOptions(lists, activeListId);
 }
 
 function renderListNavigation() {
@@ -26,7 +28,8 @@ function renderListNavigation() {
 }
 
 function renderListMenu() {
-  renderMainMenuLists(lists, activeListId, selectedListIds);
+  renderMainMenuLists(lists, activeListId, selectedListIds, tasks);
+  renderTaskListOptions(lists);
 }
 
 function playCompletionSound() {
@@ -151,13 +154,13 @@ function openList(listId) {
   window.scrollTo(0, 0);
 }
 
-async function addList(title) {
+async function addList(title, { fromMainMenu = true } = {}) {
   const normalizedTitle = title.trim();
-  if (!normalizedTitle) return false;
+  if (!normalizedTitle) return null;
   if (lists.some(list => displayListTitle(list).localeCompare(normalizedTitle, "uk", { sensitivity: "accent" }) === 0)) {
     toast("Список із такою назвою вже існує");
-    els.newListTitle.focus();
-    return false;
+    if (fromMainMenu) els.newListTitle.focus();
+    return null;
   }
   const nextPosition = Math.max(-1, ...lists.filter(list => list.kind !== "inbox").map(list => Number.isFinite(list.position) ? list.position : -1)) + 1;
   const list = createList({ title: normalizedTitle, kind: "regular", position: nextPosition });
@@ -165,12 +168,12 @@ async function addList(title) {
     await listDb.put(list);
     lists = [...lists, list].sort(compareLists);
     renderListMenu();
-    hideNewListForm();
+    if (fromMainMenu) hideNewListForm();
     toast("Список додано");
-    return true;
+    return list;
   } catch (_error) {
     toast("Не вдалося додати список");
-    return false;
+    return null;
   }
 }
 
@@ -231,6 +234,7 @@ function toggleTaskSelection(id) {
 
 function clearTaskSelection() {
   selectedTaskIds = new Set();
+  closeSelectedListDropdown();
   renderCurrentTasks();
 }
 
@@ -288,10 +292,134 @@ async function updateSelectedTaskDates(dueDate) {
   }
 }
 
+async function animateSelectedTasksToList(selectedIds, previousPositions) {
+  if (!matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    const animations = [...els.list.children]
+      .filter(row => selectedIds.has(row.dataset.id))
+      .map(row => {
+        row.classList.add("bulk-moving");
+        return row.querySelector(".task-card")?.animate([
+          { opacity: 1, transform: "translateX(0) scale(1)" },
+          { opacity: 0, transform: "translateX(36px) scale(.985)" }
+        ], { duration: 260, easing: "cubic-bezier(.22,1,.36,1)", fill: "forwards" });
+      })
+      .filter(Boolean);
+    await Promise.all(animations.map(animation => animation.finished.catch(() => {})));
+  }
+  renderCurrentTasks();
+  animateTaskReflow(previousPositions);
+}
+
+async function moveSelectedTasksToList(listId) {
+  if (listId === activeListId || !lists.some(list => list.id === listId)) {
+    closeSelectedListDropdown({ returnFocus: true });
+    return;
+  }
+  const selectedIds = new Set(selectedTaskIds);
+  const selected = tasks.filter(task => selectedIds.has(task.id)).sort(compareTasks);
+  if (!selected.length) return;
+  const updatedAt = new Date().toISOString();
+  const movedTasks = selected.map((task, position) => ({ ...task, listId, sectionId: null, position, updatedAt }));
+  const movedById = new Map(movedTasks.map(task => [task.id, task]));
+  const targetCount = movedTasks.length;
+  const shiftedTasks = tasks
+    .filter(task => !selectedIds.has(task.id) && (task.listId || INBOX_LIST_ID) === listId && !task.sectionId)
+    .map(task => ({ ...task, position: (Number.isFinite(task.position) ? task.position : 0) + targetCount, updatedAt }));
+  const shiftedById = new Map(shiftedTasks.map(task => [task.id, task]));
+  const previousPositions = captureTaskPositions();
+  closeSelectedListDropdown();
+  try {
+    await taskDb.putMany([...movedTasks, ...shiftedTasks]);
+    tasks = tasks.map(task => movedById.get(task.id) || shiftedById.get(task.id) || task).sort(compareTasks);
+    selectedTaskIds = new Set();
+    await animateSelectedTasksToList(selectedIds, previousPositions);
+    const target = lists.find(list => list.id === listId);
+    toast(selected.length === 1 ? `Завдання переміщено до «${displayListTitle(target)}»` : `Переміщено завдань: ${selected.length}`);
+  } catch (_error) {
+    closeSelectedListDropdown();
+    toast("Не вдалося перемістити завдання");
+  }
+}
+
+async function moveOpenTaskImmediatelyToList(listId) {
+  const task = tasks.find(item => item.id === els.editor.dataset.taskId);
+  if (!task || task.listId === listId) {
+    setTaskEditorListUI(listId);
+    updateDesktopSaveState();
+    return;
+  }
+  const updatedAt = new Date().toISOString();
+  const movedTask = { ...task, listId, sectionId: null, position: 0, updatedAt };
+  const shiftedTasks = tasks
+    .filter(item => item.id !== task.id && taskOrderScope(item) === taskOrderScope(movedTask))
+    .map(item => ({ ...item, position: (Number.isFinite(item.position) ? item.position : 0) + 1, updatedAt }));
+  const replacements = new Map([movedTask, ...shiftedTasks].map(item => [item.id, item]));
+  try {
+    await taskDb.putMany([movedTask, ...shiftedTasks]);
+    tasks = tasks.map(item => replacements.get(item.id) || item).sort(compareTasks);
+    setTaskEditorListUI(listId);
+    updateDesktopSaveState();
+    renderCurrentTasks();
+  } catch (_error) {
+    toast("Не вдалося перемістити завдання");
+  }
+}
+
+async function createListFromDropdown(container) {
+  const creator = container.querySelector("[data-list-creator]");
+  const input = creator?.querySelector(".list-dropdown-create-input");
+  if (!creator || !input) return;
+  const list = await addList(input.value, { fromMainMenu: false });
+  if (!list) { input.focus(); return; }
+  if (creator.dataset.listCreator === "selection") {
+    await moveSelectedTasksToList(list.id);
+    return;
+  }
+  if (els.editor.dataset.taskId) await moveOpenTaskImmediatelyToList(list.id);
+  else {
+    setTaskEditorListUI(list.id);
+    updateDesktopSaveState();
+  }
+  closeTaskListDropdown({ returnFocus: true });
+}
+
+function handleDropdownListCreation(event, container) {
+  if (event.target.closest("[data-list-create-open]")) {
+    showDropdownListCreator(container);
+    return true;
+  }
+  if (event.target.closest("[data-list-create-cancel]")) {
+    hideDropdownListCreator(container);
+    return true;
+  }
+  if (event.target.closest("[data-list-create-submit]")) {
+    createListFromDropdown(container);
+    return true;
+  }
+  return false;
+}
+
+function handleDropdownListCreationKeydown(event, container) {
+  if (!event.target.matches(".list-dropdown-create-input")) return false;
+  if (event.key === "Enter") {
+    event.preventDefault();
+    event.stopPropagation();
+    createListFromDropdown(container);
+    return true;
+  }
+  if (event.key === "Escape") {
+    event.preventDefault();
+    event.stopPropagation();
+    hideDropdownListCreator(container);
+    return true;
+  }
+  return false;
+}
+
 async function addTask() {
   const title = els.input.value.trim();
   if (!title) { els.input.focus(); return false; }
-  const task = createTask({ listId: activeListId, title, description: els.description.value.trim(), dueDate: els.date.value || null, position: 0 });
+  const task = createTask({ listId: els.taskListSelect.value || activeListId, title, description: els.description.value.trim(), dueDate: els.date.value || null, position: 0 });
   const scope = taskOrderScope(task);
   const shifted = tasks.filter(item => taskOrderScope(item) === scope).map(item => ({ ...item, position: item.position + 1 }));
   await taskDb.putMany([task, ...shifted]);
@@ -326,7 +454,13 @@ async function saveOpenTask() {
   const task = tasks.find(item => item.id === id);
   const title = els.input.value.trim();
   if (!task || !title) return false;
-  await taskDb.put({ ...task, title, description: els.description.value.trim(), dueDate: els.date.value || null, updatedAt: new Date().toISOString() });
+  const listId = lists.some(list => list.id === els.taskListSelect.value) ? els.taskListSelect.value : task.listId;
+  const changedList = listId !== task.listId;
+  const updatedTask = { ...task, listId, sectionId: changedList ? null : task.sectionId, position: changedList ? 0 : task.position, title, description: els.description.value.trim(), dueDate: els.date.value || null, updatedAt: new Date().toISOString() };
+  const shiftedTasks = changedList
+    ? tasks.filter(item => item.id !== task.id && taskOrderScope(item) === taskOrderScope(updatedTask)).map(item => ({ ...item, position: (Number.isFinite(item.position) ? item.position : 0) + 1 }))
+    : [];
+  await taskDb.putMany([updatedTask, ...shiftedTasks]);
   await refresh();
   return true;
 }
@@ -387,7 +521,7 @@ async function completeTask(task, changes = {}, toggle) {
   });
 }
 
-els.add.addEventListener("click", openNewTaskEditor);
+els.add.addEventListener("click", () => openNewTaskEditor(activeListId));
 els.mainMenuOpen.addEventListener("click", () => {
   if (selectedTaskIds.size) clearTaskSelection();
   openMainMenu();
@@ -468,6 +602,20 @@ els.editorBack.addEventListener("click", () => saveAndLeaveTaskEditor({ allowEmp
 els.desktopSaveTask.addEventListener("click", () => saveAndLeaveTaskEditor({ allowEmptyNew: true }));
 els.selectionClose.addEventListener("click", clearTaskSelection);
 els.dateSelected.addEventListener("click", openSelectedTaskDatePicker);
+els.listSelected.addEventListener("click", () => els.selectedListOptions.hidden ? openSelectedListDropdown() : closeSelectedListDropdown());
+els.selectedListOptions.addEventListener("click", event => {
+  if (handleDropdownListCreation(event, els.selectedListOptions)) return;
+  const option = event.target.closest("[data-list-id]");
+  if (option) moveSelectedTasksToList(option.dataset.listId);
+});
+els.selectedListOptions.addEventListener("keydown", event => {
+  if (handleDropdownListCreationKeydown(event, els.selectedListOptions)) return;
+  if (event.key === "Escape") {
+    event.preventDefault();
+    event.stopPropagation();
+    closeSelectedListDropdown({ returnFocus: true });
+  }
+});
 els.deleteSelected.addEventListener("click", deleteSelectedTasks);
 document.addEventListener("keydown", event => {
   if (event.key === "Escape" && !els.settingsScreen.hidden) {
@@ -490,11 +638,18 @@ document.addEventListener("keydown", event => {
   clearTaskSelection();
 });
 els.datePickerOpen.addEventListener("click", () => { editingSelectedTaskDates = false; openDatePicker(); });
-els.datePickerClose.addEventListener("click", () => { editingSelectedTaskDates = false; closeDatePicker(); });
+els.datePickerClose.addEventListener("click", () => {
+  if (matchMedia("(max-width: 759px)").matches) {
+    savePendingDateSelection();
+    return;
+  }
+  editingSelectedTaskDates = false;
+  closeDatePicker();
+});
 els.datePickerBackdrop.addEventListener("click", event => { if (event.target === els.datePickerBackdrop) { editingSelectedTaskDates = false; closeDatePicker(); } });
 els.datePicker.addEventListener("keydown", event => {
   if (event.key === "Escape") { event.preventDefault(); editingSelectedTaskDates = false; closeDatePicker(); }
-  if (event.key === "Enter" && event.target !== els.datePickerSave && editingSelectedTaskDates && matchMedia("(min-width: 760px)").matches) {
+  if (event.key === "Enter" && event.target !== els.datePickerSave && matchMedia("(min-width: 760px)").matches) {
     event.preventDefault();
     savePendingDateSelection();
   }
@@ -529,6 +684,23 @@ async function savePendingDateSelection() {
 els.datePickerSave.addEventListener("click", savePendingDateSelection);
 els.input.addEventListener("input", () => { els.input.style.height = "auto"; els.input.style.height = `${Math.min(els.input.scrollHeight, 150)}px`; updateDesktopSaveState(); });
 els.description.addEventListener("input", () => { resizeDescription(); updateDesktopSaveState(); });
+els.taskListTrigger.addEventListener("click", () => els.taskListOptions.hidden ? openTaskListDropdown() : closeTaskListDropdown());
+els.taskListOptions.addEventListener("click", event => {
+  if (handleDropdownListCreation(event, els.taskListOptions)) return;
+  const option = event.target.closest("[data-list-id]");
+  if (!option) return;
+  setTaskEditorListUI(option.dataset.listId);
+  closeTaskListDropdown({ returnFocus: true });
+  updateDesktopSaveState();
+});
+els.taskListOptions.addEventListener("keydown", event => {
+  if (handleDropdownListCreationKeydown(event, els.taskListOptions)) return;
+  if (event.key === "Escape") { event.preventDefault(); closeTaskListDropdown({ returnFocus: true }); }
+});
+document.addEventListener("pointerdown", event => {
+  if (!els.taskListOptions.hidden && !event.target.closest(".list-dropdown")) closeTaskListDropdown();
+  if (!els.selectedListOptions.hidden && !event.target.closest(".bulk-list-dropdown")) closeSelectedListDropdown();
+});
 els.form.addEventListener("keydown", event => {
   if (event.key === "Escape") { event.preventDefault(); saveAndLeaveTaskEditor({ allowEmptyNew: true }); return; }
   if (event.key === "Enter" && !event.shiftKey && event.target.matches("#task-title")) {

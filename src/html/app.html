@@ -6,6 +6,10 @@
       <p id="selection-count">Вибрано: 0</p>
       <div class="selection-actions" aria-label="Дії з вибраними завданнями">
         <button id="date-selected" class="toolbar-action" type="button" aria-label="Змінити дату вибраних завдань" aria-haspopup="dialog"><span class="calendar-icon" aria-hidden="true"></span></button>
+        <span class="bulk-list-dropdown">
+          <button id="list-selected" class="toolbar-action" type="button" aria-label="Редагувати список вибраних завдань" aria-haspopup="listbox" aria-expanded="false" aria-controls="selected-list-options"><span class="list-action-icon" aria-hidden="true"></span></button>
+          <span id="selected-list-options" class="list-dropdown-options bulk-list-options" role="listbox" aria-label="Призначити список" hidden></span>
+        </span>
         <button id="delete-selected" class="toolbar-action destructive" type="button" aria-label="Видалити вибрані завдання"><span class="trash-icon" aria-hidden="true"></span></button>
       </div>
     </div>
@@ -83,11 +87,15 @@
       <button id="date-picker-open" class="meta-chip date-chip" type="button" aria-haspopup="dialog"><span class="calendar-icon" aria-hidden="true"></span><span id="date-label">Сьогодні</span></button>
       <input id="task-date" name="date" type="hidden">
     </div>
-    <div class="attribute-placeholders" hidden aria-label="Атрибути завдання">
-      <button class="attribute-chip" type="button" disabled><span aria-hidden="true">⚑</span>Пріоритет</button>
-      <button class="attribute-chip" type="button" disabled><span aria-hidden="true">◷</span>Нагадування</button>
-      <button class="attribute-chip" type="button" disabled><span aria-hidden="true">◇</span>Мітки</button>
-      <button class="attribute-chip" type="button" disabled><span aria-hidden="true">◎</span>Повтор</button>
+    <div class="task-attributes" aria-label="Атрибути завдання">
+      <div class="list-attribute">
+        <span class="list-menu-icon" aria-hidden="true"></span>
+        <span class="list-attribute-copy"><span>Список</span><span class="list-dropdown">
+          <input id="task-list-select" name="list" type="hidden">
+          <button id="task-list-trigger" class="list-dropdown-trigger" type="button" aria-haspopup="listbox" aria-expanded="false" aria-controls="task-list-options"><span id="task-list-value"></span><span class="dropdown-chevron" aria-hidden="true"></span></button>
+          <span id="task-list-options" class="list-dropdown-options" role="listbox" aria-label="Список завдання" hidden></span>
+        </span></span>
+      </div>
       <button id="desktop-save-task" class="desktop-save-task" type="button" disabled>Зберегти</button>
     </div>
   </form>

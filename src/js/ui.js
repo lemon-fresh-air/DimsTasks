@@ -5,6 +5,8 @@ const els = {
   selectionClose: document.querySelector("#selection-close"),
   selectionCount: document.querySelector("#selection-count"),
   dateSelected: document.querySelector("#date-selected"),
+  listSelected: document.querySelector("#list-selected"),
+  selectedListOptions: document.querySelector("#selected-list-options"),
   deleteSelected: document.querySelector("#delete-selected"),
   form: document.querySelector("#task-form"),
   input: document.querySelector("#task-title"),
@@ -25,7 +27,10 @@ const els = {
   tomorrowWeekday: document.querySelector("#tomorrow-weekday"),
   editor: document.querySelector("#task-editor"),
   detailFields: document.querySelector(".detail-fields"),
-  attributePlaceholders: document.querySelector(".attribute-placeholders"),
+  taskListSelect: document.querySelector("#task-list-select"),
+  taskListTrigger: document.querySelector("#task-list-trigger"),
+  taskListValue: document.querySelector("#task-list-value"),
+  taskListOptions: document.querySelector("#task-list-options"),
   desktopSaveTask: document.querySelector("#desktop-save-task"),
   detailToggle: document.querySelector("#detail-toggle"),
   editorBack: document.querySelector("#task-editor-back"),
@@ -94,7 +99,7 @@ function applyDateTone(element, value) {
 }
 
 function editorState() {
-  return JSON.stringify({ title: els.input.value, description: els.description.value, dueDate: els.date.value });
+  return JSON.stringify({ title: els.input.value, description: els.description.value, dueDate: els.date.value, listId: els.taskListSelect.value });
 }
 
 function rememberEditorState() {
@@ -126,7 +131,18 @@ function applyTheme(theme) {
   els.themeToggle.setAttribute("aria-label", normalizedTheme === "dark" ? "Увімкнено нічну тему" : "Увімкнути нічну тему");
 }
 
-function renderMainMenuLists(lists, activeListId, selectedIds = new Set()) {
+function taskCountsByList(tasks) {
+  const counts = new Map();
+  for (const task of tasks) {
+    if (isTaskCompleted(task)) continue;
+    const listId = task.listId || INBOX_LIST_ID;
+    counts.set(listId, (counts.get(listId) || 0) + 1);
+  }
+  return counts;
+}
+
+function renderMainMenuLists(lists, activeListId, selectedIds = new Set(), tasks = []) {
+  const counts = taskCountsByList(tasks);
   els.mainMenuLists.classList.toggle("selection-mode", selectedIds.size > 0);
   els.mainMenuLists.replaceChildren(...lists.map(list => {
     const button = document.createElement("button");
@@ -143,11 +159,26 @@ function renderMainMenuLists(lists, activeListId, selectedIds = new Set()) {
     const icon = document.createElement("span");
     icon.className = list.kind === "inbox" ? "inbox-icon" : "list-menu-icon";
     icon.setAttribute("aria-hidden", "true");
+    const count = document.createElement("span");
+    count.className = "main-menu-count";
+    count.textContent = String(counts.get(list.id) || 0);
+    count.setAttribute("aria-label", `Завдань: ${count.textContent}`);
     const label = document.createElement("span");
+    label.className = "main-menu-label";
     label.textContent = displayListTitle(list);
-    button.append(icon, label);
+    button.append(icon, count, label);
     return button;
   }));
+}
+
+function updateMainMenuTaskCounts(tasks) {
+  const counts = taskCountsByList(tasks);
+  for (const item of els.mainMenuLists.querySelectorAll("[data-list-id]")) {
+    const count = item.querySelector(".main-menu-count");
+    if (!count) continue;
+    count.textContent = String(counts.get(item.dataset.listId) || 0);
+    count.setAttribute("aria-label", `Завдань: ${count.textContent}`);
+  }
 }
 
 function setActiveListUI(list) {
@@ -157,6 +188,131 @@ function setActiveListUI(list) {
   els.bottomListLabel.textContent = title;
   els.editorListLabel.textContent = title;
   els.composerListLabel.textContent = title;
+}
+
+function createListDropdownOption(list) {
+    const option = document.createElement("button");
+    option.type = "button";
+    option.className = "list-dropdown-option";
+    option.dataset.listId = list.id;
+    option.setAttribute("role", "option");
+    const icon = document.createElement("span");
+    icon.className = list.kind === "inbox" ? "inbox-icon" : "list-menu-icon";
+    icon.setAttribute("aria-hidden", "true");
+    const label = document.createElement("span");
+    label.textContent = displayListTitle(list);
+    option.append(icon, label);
+    return option;
+}
+
+function createListDropdownCreator(context) {
+  const wrapper = document.createElement("span");
+  wrapper.className = "list-dropdown-create";
+  wrapper.dataset.listCreator = context;
+  wrapper.setAttribute("role", "group");
+  const open = document.createElement("button");
+  open.type = "button";
+  open.className = "list-dropdown-add";
+  open.dataset.listCreateOpen = "";
+  open.innerHTML = '<span class="list-dropdown-plus" aria-hidden="true">＋</span><span>Додати список</span>';
+  const row = document.createElement("span");
+  row.className = "list-dropdown-create-row";
+  row.hidden = true;
+  const input = document.createElement("input");
+  input.className = "list-dropdown-create-input";
+  input.type = "text";
+  input.maxLength = 80;
+  input.autocomplete = "off";
+  input.setAttribute("aria-label", "Назва нового списку");
+  const submit = document.createElement("button");
+  submit.type = "button";
+  submit.className = "list-dropdown-create-submit";
+  submit.dataset.listCreateSubmit = "";
+  submit.setAttribute("aria-label", "Створити список");
+  submit.textContent = "✓";
+  const cancel = document.createElement("button");
+  cancel.type = "button";
+  cancel.className = "list-dropdown-create-cancel";
+  cancel.dataset.listCreateCancel = "";
+  cancel.setAttribute("aria-label", "Скасувати створення списку");
+  cancel.textContent = "×";
+  row.append(input, submit, cancel);
+  wrapper.append(open, row);
+  return wrapper;
+}
+
+function showDropdownListCreator(container) {
+  const creator = container.querySelector("[data-list-creator]");
+  if (!creator) return;
+  creator.querySelector("[data-list-create-open]").hidden = true;
+  creator.querySelector(".list-dropdown-create-row").hidden = false;
+  requestAnimationFrame(() => creator.querySelector(".list-dropdown-create-input").focus());
+}
+
+function hideDropdownListCreator(container, { returnFocus = true } = {}) {
+  const creator = container.querySelector("[data-list-creator]");
+  if (!creator) return;
+  const input = creator.querySelector(".list-dropdown-create-input");
+  input.value = "";
+  creator.querySelector(".list-dropdown-create-row").hidden = true;
+  const open = creator.querySelector("[data-list-create-open]");
+  open.hidden = false;
+  if (returnFocus) open.focus({ preventScroll: true });
+}
+
+function renderTaskListOptions(lists) {
+  const selectedListId = els.taskListSelect.value;
+  els.taskListOptions.replaceChildren(...lists.map(createListDropdownOption), createListDropdownCreator("task"));
+  if (lists.some(list => list.id === selectedListId)) els.taskListSelect.value = selectedListId;
+  setTaskEditorListUI(els.taskListSelect.value || lists[0]?.id);
+}
+
+function renderSelectedListOptions(lists, currentListId) {
+  els.selectedListOptions.replaceChildren(...lists.map(createListDropdownOption), createListDropdownCreator("selection"));
+  for (const option of els.selectedListOptions.children) {
+    const selected = option.dataset.listId === currentListId;
+    option.classList.toggle("is-selected", selected);
+    option.setAttribute("aria-selected", String(selected));
+  }
+}
+
+function closeSelectedListDropdown({ returnFocus = false } = {}) {
+  els.selectedListOptions.hidden = true;
+  els.listSelected.setAttribute("aria-expanded", "false");
+  if (returnFocus) els.listSelected.focus({ preventScroll: true });
+}
+
+function openSelectedListDropdown() {
+  els.selectedListOptions.hidden = false;
+  els.listSelected.setAttribute("aria-expanded", "true");
+  requestAnimationFrame(() => els.selectedListOptions.querySelector(".is-selected")?.focus({ preventScroll: true }));
+}
+
+function setTaskEditorListUI(listId) {
+  const option = els.taskListOptions.querySelector(`[data-list-id="${CSS.escape(listId)}"]`);
+  if (!option) return;
+  els.taskListSelect.value = listId;
+  const title = option.querySelector("span:nth-child(2)").textContent;
+  els.taskListValue.textContent = title;
+  els.editorListLabel.textContent = title;
+  els.composerListLabel.textContent = title;
+  for (const item of els.taskListOptions.children) {
+    const selected = item.dataset.listId === listId;
+    item.classList.toggle("is-selected", selected);
+    item.setAttribute("aria-selected", String(selected));
+  }
+}
+
+function closeTaskListDropdown({ returnFocus = false } = {}) {
+  els.taskListOptions.hidden = true;
+  els.taskListTrigger.setAttribute("aria-expanded", "false");
+  if (returnFocus) els.taskListTrigger.focus({ preventScroll: true });
+}
+
+function openTaskListDropdown() {
+  els.taskListOptions.hidden = false;
+  els.taskListTrigger.setAttribute("aria-expanded", "true");
+  requestAnimationFrame(() => els.taskListOptions.querySelector(".is-selected")?.focus({ preventScroll: true }));
 }
 
 function showNewListForm() {
@@ -561,13 +717,13 @@ function resizeDescription() {
   els.description.style.height = `${Math.min(els.description.scrollHeight, maxHeight)}px`;
 }
 
-function openNewTaskEditor() {
+function openNewTaskEditor(listId) {
   els.editor.classList.remove("detail-mode");
   els.editor.dataset.taskId = "";
   els.form.reset();
   els.detailFields.hidden = false;
-  els.attributePlaceholders.hidden = false;
   els.detailToggle.hidden = true;
+  setTaskEditorListUI(listId);
   els.date.value = localDateValue();
   els.dateLabel.textContent = "Сьогодні";
   applyDateTone(els.datePickerOpen, els.date.value);
@@ -581,8 +737,8 @@ function openTaskDetails(task) {
   els.editor.dataset.taskId = task.id;
   els.form.reset();
   els.detailFields.hidden = false;
-  els.attributePlaceholders.hidden = false;
   els.detailToggle.hidden = false;
+  setTaskEditorListUI(task.listId || INBOX_LIST_ID);
   els.input.value = task.title;
   els.description.value = task.description || "";
   els.date.value = task.dueDate || "";
