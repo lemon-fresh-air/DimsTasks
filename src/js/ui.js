@@ -29,6 +29,12 @@ const els = {
   desktopSaveTask: document.querySelector("#desktop-save-task"),
   detailToggle: document.querySelector("#detail-toggle"),
   editorBack: document.querySelector("#task-editor-back"),
+  mainMenu: document.querySelector("#main-menu"),
+  mainMenuOpen: document.querySelector("#main-menu-open"),
+  mainMenuClose: document.querySelector("#main-menu-close"),
+  mainMenuInbox: document.querySelector("#main-menu-inbox"),
+  mainMenuSwipeZone: document.querySelector("#main-menu-swipe-zone"),
+  listSwipeZone: document.querySelector("#list-swipe-zone"),
   add: document.querySelector("#add-task-btn"),
   list: document.querySelector("#task-list"),
   empty: document.querySelector("#empty-state"),
@@ -93,6 +99,64 @@ let pendingDateValue = null;
 let visibleCalendarMonth = null;
 let datePickerReturnFocus = null;
 let editorCloseTimer;
+let menuCloseTimer;
+let menuOpenFrame;
+
+function openMainMenu() {
+  clearTimeout(menuCloseTimer);
+  cancelAnimationFrame(menuOpenFrame);
+  els.mainMenu.hidden = false;
+  els.mainMenu.classList.remove("is-open");
+  els.mainMenuOpen.setAttribute("aria-expanded", "true");
+  document.body.classList.add("main-menu-open");
+  menuOpenFrame = requestAnimationFrame(() => {
+    menuOpenFrame = requestAnimationFrame(() => {
+      els.mainMenu.classList.add("is-open");
+      els.mainMenuClose.focus({ preventScroll: true });
+    });
+  });
+  history.pushState({ mainMenu: true }, "");
+}
+
+function closeMainMenu({ fromHistory = false } = {}) {
+  if (els.mainMenu.hidden) return;
+  cancelAnimationFrame(menuOpenFrame);
+  els.mainMenu.classList.remove("is-open");
+  els.mainMenuOpen.setAttribute("aria-expanded", "false");
+  document.body.classList.remove("main-menu-open");
+  menuCloseTimer = setTimeout(() => {
+    els.mainMenu.hidden = true;
+    els.mainMenuOpen.focus();
+  }, matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 240);
+  if (!fromHistory && history.state?.mainMenu) history.back();
+}
+
+function enableHorizontalSwipe(element, { direction, onSwipe }) {
+  let gesture = null;
+
+  element.addEventListener("pointerdown", event => {
+    if (!event.isPrimary || (event.pointerType === "mouse" && event.button !== 0)) return;
+    gesture = { pointerId: event.pointerId, startX: event.clientX, startY: event.clientY };
+    element.setPointerCapture?.(event.pointerId);
+  });
+
+  element.addEventListener("pointerup", event => {
+    if (!gesture || gesture.pointerId !== event.pointerId) return;
+    const dx = event.clientX - gesture.startX;
+    const dy = event.clientY - gesture.startY;
+    const requiredDistance = Math.min(120, Math.max(80, innerWidth * .22));
+    const movesInDirection = direction === "right" ? dx >= requiredDistance : dx <= -requiredDistance;
+    const isClearlyHorizontal = Math.abs(dx) >= Math.abs(dy) * 1.5;
+    gesture = null;
+    if (movesInDirection && isClearlyHorizontal) onSwipe();
+  });
+
+  const cancel = event => {
+    if (gesture?.pointerId === event.pointerId) gesture = null;
+  };
+  element.addEventListener("pointercancel", cancel);
+  element.addEventListener("lostpointercapture", cancel);
+}
 
 function dateFromValue(value) {
   return value ? new Date(`${value}T12:00:00`) : null;

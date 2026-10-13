@@ -271,12 +271,37 @@ async function completeTask(task, changes = {}, toggle) {
 }
 
 els.add.addEventListener("click", openNewTaskEditor);
+els.mainMenuOpen.addEventListener("click", () => {
+  if (selectedTaskIds.size) clearTaskSelection();
+  openMainMenu();
+});
+els.mainMenuClose.addEventListener("click", () => closeMainMenu());
+els.mainMenuInbox.addEventListener("click", () => closeMainMenu());
+window.addEventListener("popstate", () => {
+  if (!els.mainMenu.hidden) closeMainMenu({ fromHistory: true });
+});
+enableHorizontalSwipe(els.listSwipeZone, {
+  direction: "right",
+  onSwipe: () => {
+    if (selectedTaskIds.size) clearTaskSelection();
+    openMainMenu();
+  }
+});
+enableHorizontalSwipe(els.mainMenuSwipeZone, {
+  direction: "left",
+  onSwipe: () => closeMainMenu()
+});
 els.editorBack.addEventListener("click", () => saveAndLeaveTaskEditor({ allowEmptyNew: true }));
 els.desktopSaveTask.addEventListener("click", () => saveAndLeaveTaskEditor({ allowEmptyNew: true }));
 els.selectionClose.addEventListener("click", clearTaskSelection);
 els.dateSelected.addEventListener("click", openSelectedTaskDatePicker);
 els.deleteSelected.addEventListener("click", deleteSelectedTasks);
 document.addEventListener("keydown", event => {
+  if (event.key === "Escape" && !els.mainMenu.hidden) {
+    event.preventDefault();
+    closeMainMenu();
+    return;
+  }
   if (event.key !== "Escape" || !selectedTaskIds.size || !matchMedia("(min-width: 760px)").matches) return;
   if (!els.editor.hidden || !els.datePickerBackdrop.hidden) return;
   event.preventDefault();

@@ -13,10 +13,30 @@
   <main><section class="task-section" aria-labelledby="inbox-title">
     <h2 id="inbox-title">Нові</h2><ul id="task-list" aria-live="polite"></ul>
     <div id="empty-state" class="empty"><span class="empty-icon" aria-hidden="true">✓</span><p>Нових задач поки немає</p><small>Натисніть кнопку внизу, щоб додати першу.</small></div>
-  </section></main>
+  </section><div id="list-swipe-zone" class="list-swipe-zone" aria-hidden="true"></div></main>
   <button id="add-task-btn" class="fab" aria-label="Додати задачу"><span aria-hidden="true">＋</span></button>
-  <nav class="bottom-nav" aria-label="Основна навігація"><button class="nav-item active" aria-current="page"><span class="inbox-icon" aria-hidden="true"></span><span>Нові</span></button></nav>
+  <nav class="bottom-nav" aria-label="Основна навігація"><div class="bottom-nav-inner">
+    <button id="main-menu-open" class="nav-item menu-nav-item" type="button" aria-label="Відкрити головне меню" aria-controls="main-menu" aria-expanded="false"><span class="menu-icon" aria-hidden="true"></span><span>Меню</span></button>
+    <button class="nav-item active" type="button" aria-current="page"><span class="inbox-icon" aria-hidden="true"></span><span>Нові</span></button>
+  </div></nav>
 </div>
+<section id="main-menu" class="main-menu" aria-label="Головне меню" hidden>
+  <div class="main-menu-panel">
+    <header class="main-menu-header">
+      <h2>Головне меню</h2>
+      <button id="main-menu-close" class="main-menu-close" type="button" aria-label="Повернутися до списку"><span aria-hidden="true"></span></button>
+    </header>
+    <nav class="main-menu-list" aria-label="Розділи">
+      <button id="main-menu-inbox" class="main-menu-item active" type="button" aria-current="page"><span class="inbox-icon" aria-hidden="true"></span><span>Нові</span></button>
+      <button class="main-menu-item" type="button" disabled><span class="menu-placeholder-icon" aria-hidden="true"></span><span>Плейсхолдер 1</span></button>
+      <button class="main-menu-item" type="button" disabled><span class="menu-placeholder-icon" aria-hidden="true"></span><span>Плейсхолдер 2</span></button>
+      <button class="main-menu-item" type="button" disabled><span class="menu-placeholder-icon" aria-hidden="true"></span><span>Плейсхолдер 3</span></button>
+      <button class="main-menu-item" type="button" disabled><span class="menu-placeholder-icon" aria-hidden="true"></span><span>Плейсхолдер 4</span></button>
+    </nav>
+    <div id="main-menu-swipe-zone" class="main-menu-swipe-zone" aria-hidden="true"></div>
+    <button class="main-menu-item main-menu-settings" type="button" disabled><span class="settings-icon" aria-hidden="true"></span><span>Налаштування</span></button>
+  </div>
+</section>
 <section id="task-editor" class="task-editor" aria-label="Редактор завдання" hidden>
   <header class="task-editor-header">
     <button id="task-editor-back" class="editor-back" type="button" aria-label="Зберегти й повернутися до списку"><span aria-hidden="true"></span></button>
