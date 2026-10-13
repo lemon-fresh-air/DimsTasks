@@ -10,6 +10,18 @@ const els = {
   description: document.querySelector("#task-description"),
   date: document.querySelector("#task-date"),
   dateLabel: document.querySelector("#date-label"),
+  datePickerOpen: document.querySelector("#date-picker-open"),
+  datePickerBackdrop: document.querySelector("#date-picker-backdrop"),
+  datePicker: document.querySelector("#date-picker"),
+  datePickerClose: document.querySelector("#date-picker-close"),
+  datePickerValue: document.querySelector("#date-picker-value span:last-child"),
+  datePickerSave: document.querySelector("#date-picker-save"),
+  calendarPrevious: document.querySelector("#calendar-previous"),
+  calendarNext: document.querySelector("#calendar-next"),
+  calendarMonth: document.querySelector("#calendar-month"),
+  calendarGrid: document.querySelector("#calendar-grid"),
+  todayWeekday: document.querySelector("#today-weekday"),
+  tomorrowWeekday: document.querySelector("#tomorrow-weekday"),
   editor: document.querySelector("#task-editor"),
   detailFields: document.querySelector(".detail-fields"),
   attributePlaceholders: document.querySelector(".attribute-placeholders"),
@@ -26,6 +38,9 @@ const els = {
 };
 
 const dateFormatter = new Intl.DateTimeFormat("uk-UA", { day: "numeric", month: "short" });
+const fullDateFormatter = new Intl.DateTimeFormat("uk-UA", { day: "numeric", month: "long", year: "numeric" });
+const monthFormatter = new Intl.DateTimeFormat("uk-UA", { month: "long", year: "numeric" });
+const weekdayFormatter = new Intl.DateTimeFormat("uk-UA", { weekday: "short" });
 let toastTimer;
 let toastAction;
 
@@ -41,6 +56,85 @@ function readableDate(value) {
   tomorrow.setDate(tomorrow.getDate() + 1);
   if (value === localDateValue(tomorrow)) return "Завтра";
   return dateFormatter.format(new Date(`${value}T12:00:00`));
+}
+
+let pendingDateValue = null;
+let visibleCalendarMonth = null;
+let datePickerReturnFocus = null;
+
+function dateFromValue(value) {
+  return value ? new Date(`${value}T12:00:00`) : null;
+}
+
+function setPendingDate(value) {
+  pendingDateValue = value || "";
+  els.datePickerValue.textContent = value ? fullDateFormatter.format(dateFromValue(value)) : "Без дати";
+  document.querySelectorAll("[data-date-shortcut]").forEach(button => {
+    const shortcutValue = button.dataset.dateShortcut === "today" ? localDateValue()
+      : button.dataset.dateShortcut === "tomorrow" ? localDateValue(new Date(Date.now() + 86400000)) : "";
+    button.classList.toggle("selected", shortcutValue === pendingDateValue);
+    button.setAttribute("aria-pressed", String(shortcutValue === pendingDateValue));
+  });
+  renderCalendar();
+}
+
+function renderCalendar() {
+  if (!visibleCalendarMonth) return;
+  const todayValue = localDateValue();
+  const today = dateFromValue(todayValue);
+  const year = visibleCalendarMonth.getFullYear();
+  const month = visibleCalendarMonth.getMonth();
+  const isCurrentMonth = year === today.getFullYear() && month === today.getMonth();
+  els.calendarPrevious.disabled = isCurrentMonth;
+  els.calendarMonth.textContent = monthFormatter.format(visibleCalendarMonth);
+  const firstWeekday = (new Date(year, month, 1).getDay() + 6) % 7;
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const cells = Array.from({ length: firstWeekday }, () => {
+    const spacer = document.createElement("span");
+    spacer.className = "calendar-spacer";
+    return spacer;
+  });
+  for (let day = 1; day <= daysInMonth; day += 1) {
+    const value = localDateValue(new Date(year, month, day, 12));
+    if (isCurrentMonth && value < todayValue) {
+      const hidden = document.createElement("span");
+      hidden.className = "calendar-spacer past-day";
+      cells.push(hidden);
+      continue;
+    }
+    const button = document.createElement("button");
+    button.type = "button";
+    button.dataset.date = value;
+    button.textContent = day;
+    button.setAttribute("role", "gridcell");
+    button.setAttribute("aria-label", fullDateFormatter.format(dateFromValue(value)));
+    if (value === todayValue) { button.classList.add("today"); button.setAttribute("aria-current", "date"); }
+    if (value === pendingDateValue) { button.classList.add("selected"); button.setAttribute("aria-selected", "true"); }
+    cells.push(button);
+  }
+  els.calendarGrid.replaceChildren(...cells);
+}
+
+function openDatePicker() {
+  datePickerReturnFocus = document.activeElement;
+  const initial = els.date.value || localDateValue();
+  const initialDate = dateFromValue(initial);
+  const today = new Date();
+  visibleCalendarMonth = new Date(Math.max(initialDate.getTime(), today.getTime()));
+  visibleCalendarMonth.setDate(1);
+  els.todayWeekday.textContent = weekdayFormatter.format(today);
+  const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate() + 1);
+  els.tomorrowWeekday.textContent = weekdayFormatter.format(tomorrow);
+  els.datePickerBackdrop.hidden = false;
+  document.body.classList.add("date-picker-open");
+  setPendingDate(els.date.value);
+  requestAnimationFrame(() => els.datePicker.focus());
+}
+
+function closeDatePicker() {
+  els.datePickerBackdrop.hidden = true;
+  document.body.classList.remove("date-picker-open");
+  datePickerReturnFocus?.focus();
 }
 
 function hideToast() {

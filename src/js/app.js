@@ -198,7 +198,30 @@ els.add.addEventListener("click", openNewTaskEditor);
 els.editorBack.addEventListener("click", () => saveAndLeaveTaskEditor({ allowEmptyNew: true }));
 els.selectionClose.addEventListener("click", clearTaskSelection);
 els.deleteSelected.addEventListener("click", deleteSelectedTasks);
-els.date.addEventListener("change", () => { els.dateLabel.textContent = readableDate(els.date.value); });
+els.datePickerOpen.addEventListener("click", openDatePicker);
+els.datePickerClose.addEventListener("click", closeDatePicker);
+els.datePickerBackdrop.addEventListener("click", event => { if (event.target === els.datePickerBackdrop) closeDatePicker(); });
+els.datePicker.addEventListener("keydown", event => {
+  if (event.key === "Escape") { event.preventDefault(); closeDatePicker(); }
+});
+document.querySelectorAll("[data-date-shortcut]").forEach(button => button.addEventListener("click", () => {
+  const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate() + 1);
+  const value = button.dataset.dateShortcut === "today" ? localDateValue()
+    : button.dataset.dateShortcut === "tomorrow" ? localDateValue(tomorrow) : "";
+  if (value) { const date = dateFromValue(value); visibleCalendarMonth = new Date(date.getFullYear(), date.getMonth(), 1); }
+  setPendingDate(value);
+}));
+els.calendarGrid.addEventListener("click", event => {
+  const button = event.target.closest("[data-date]");
+  if (button) setPendingDate(button.dataset.date);
+});
+els.calendarPrevious.addEventListener("click", () => { visibleCalendarMonth.setMonth(visibleCalendarMonth.getMonth() - 1); renderCalendar(); });
+els.calendarNext.addEventListener("click", () => { visibleCalendarMonth.setMonth(visibleCalendarMonth.getMonth() + 1); renderCalendar(); });
+els.datePickerSave.addEventListener("click", () => {
+  els.date.value = pendingDateValue;
+  els.dateLabel.textContent = readableDate(pendingDateValue);
+  closeDatePicker();
+});
 els.input.addEventListener("input", () => { els.input.style.height = "auto"; els.input.style.height = `${Math.min(els.input.scrollHeight, 150)}px`; });
 els.description.addEventListener("input", resizeDescription);
 els.form.addEventListener("keydown", event => {

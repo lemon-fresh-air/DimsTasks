@@ -79,14 +79,44 @@ body.task-editor-open { overflow:hidden; }
 #task-description { width:100%; min-height:110px; max-height:min(58dvh,620px); resize:none; overflow-y:auto; border:0; outline:0; padding:7px 0; background:transparent; color:var(--text); font:400 1.04rem/1.5 system-ui,sans-serif; }
 #task-description::placeholder { color:var(--muted); opacity:.85; }
 .meta-chip { min-height:50px; display:inline-flex; align-items:center; gap:9px; flex:0 0 auto; padding:0 15px; border:1px solid var(--line); border-radius:15px; background:#f7f7f8; color:var(--text); font-weight:700; }
-.date-chip { color:var(--date); position:relative; cursor:pointer; }
-.date-chip input { position:absolute; inset:0; opacity:0; width:100%; cursor:pointer; }
+.date-chip { color:var(--date); cursor:pointer; }
 .attribute-placeholders { display:flex; gap:9px; margin:18px 0 0; overflow-x:auto; padding:0 0 4px; scrollbar-width:none; }
 .attribute-placeholders::-webkit-scrollbar { display:none; }
 .attribute-chip { flex:0 0 auto; min-height:44px; padding:0 14px; border:0; border-radius:14px; display:inline-flex; align-items:center; gap:8px; background:#efefec; color:#555; font-weight:700; opacity:1; }
 .attribute-chip:disabled { cursor:default; }
 .calendar-icon { width:20px; height:20px; border:2px solid currentColor; border-radius:3px; position:relative; }
 .calendar-icon::before { content:""; position:absolute; left:2px; right:2px; top:5px; border-top:2px solid currentColor; }
+.date-picker-backdrop { position:fixed; z-index:50; inset:0; display:flex; align-items:flex-end; justify-content:center; padding-top:24px; background:var(--overlay); }
+.date-picker { width:min(100%,520px); max-height:calc(100dvh - 24px); overflow-y:auto; padding:8px 14px calc(14px + env(safe-area-inset-bottom)); border-radius:28px 28px 0 0; background:#f7f7f8; color:var(--text); box-shadow:var(--shadow-sheet); outline:0; animation:date-sheet-in .22s var(--ease-swipe); }
+body.date-picker-open { overflow:hidden; }
+.sheet-handle { width:38px; height:4px; margin:0 auto 8px; border-radius:999px; background:#d7d7da; }
+.date-picker-header { min-height:48px; display:flex; align-items:center; justify-content:space-between; padding:0 4px; }
+.date-picker-header h2 { font-size:1.25rem; }
+.date-picker-close { width:42px; height:42px; border:0; border-radius:50%; background:transparent; color:var(--muted); font-size:1.8rem; line-height:1; }
+.date-picker-value { min-height:54px; display:flex; align-items:center; gap:12px; margin:4px 0 12px; padding:0 16px; border-radius:18px; background:#ececef; color:#343438; font-weight:650; }
+.date-picker-value .calendar-icon { flex:0 0 auto; }
+.date-shortcuts,.calendar-panel { overflow:hidden; border-radius:18px; background:var(--surface); }
+.date-shortcuts { margin-bottom:10px; }
+.date-shortcuts button { width:100%; min-height:56px; display:grid; grid-template-columns:30px minmax(0,1fr) auto; align-items:center; gap:10px; padding:0 16px; border:0; border-bottom:1px solid var(--line); background:transparent; color:var(--text); text-align:left; font-weight:680; }
+.date-shortcuts button:last-child { border-bottom:0; }
+.date-shortcuts button.selected { background:#eef1f4; }
+.date-shortcuts small { color:var(--muted); font-size:.88rem; font-weight:500; text-transform:capitalize; }
+.shortcut-icon { width:22px; text-align:center; color:#59616a; font-size:1.55rem; }
+.no-date-icon { height:20px; border:2px solid currentColor; border-radius:50%; position:relative; }
+.no-date-icon::after { content:""; position:absolute; left:2px; right:2px; top:7px; border-top:2px solid currentColor; transform:rotate(-45deg); }
+.calendar-panel { padding:8px 12px 14px; }
+.calendar-toolbar { min-height:48px; display:grid; grid-template-columns:44px 1fr 44px; align-items:center; }
+.calendar-toolbar h3 { margin:0; text-align:center; font-size:1rem; text-transform:capitalize; }
+.calendar-toolbar button { width:40px; height:40px; border:0; border-radius:12px; background:transparent; color:var(--text); font-size:1.9rem; }
+.calendar-toolbar button:disabled { opacity:.22; cursor:default; }
+.calendar-weekdays,.calendar-grid { display:grid; grid-template-columns:repeat(7,1fr); gap:4px; }
+.calendar-weekdays span { padding:7px 0; color:var(--muted); text-align:center; font-size:.72rem; font-weight:650; }
+.calendar-grid button,.calendar-spacer { aspect-ratio:1; min-width:0; }
+.calendar-grid button { display:grid; place-items:center; border:0; border-radius:50%; background:transparent; color:var(--text); font-size:.95rem; font-variant-numeric:tabular-nums; }
+.calendar-grid button.today { background:var(--accent); color:#fff; font-weight:760; }
+.calendar-grid button.selected:not(.today) { box-shadow:inset 0 0 0 2px var(--accent); color:var(--accent); font-weight:760; }
+.date-picker-save { min-height:48px; display:block; margin:14px 0 0 auto; padding:0 20px; border:0; border-radius:14px; background:var(--accent); color:#fff; font-weight:760; }
+@keyframes date-sheet-in { from { opacity:0; transform:translateY(28px); } }
 .toast { position:fixed; z-index:20; left:50%; bottom:calc(88px + env(safe-area-inset-bottom)); translate:-50% 16px; opacity:0; pointer-events:none; min-height:48px; display:flex; align-items:center; gap:14px; padding:8px 10px 8px 18px; border-radius:999px; background:var(--text); color:var(--surface); box-shadow:0 10px 30px rgba(0,0,0,.22); transition:opacity .18s,translate .18s; white-space:nowrap; }
 .toast.show { opacity:1; translate:-50% 0; pointer-events:auto; }
 .toast-action { min-height:36px; padding:0 4px; border:0; background:transparent; color:#9fc4ff; font-weight:760; }
@@ -97,7 +127,7 @@ body.task-editor-open { overflow:hidden; }
 .toast-timer-progress { stroke:#fff; stroke-linecap:round; stroke-dasharray:69.12; stroke-dashoffset:0; }
 .toast.show.undoable .toast-timer-progress { animation:toast-countdown var(--toast-duration,3s) linear forwards; }
 @keyframes toast-countdown { to { stroke-dashoffset:69.12; } }
-@media (min-width:760px) { .app-shell { padding-inline:28px; } .fab { right:max(32px,calc((100vw - 700px)/2)); } .task-editor-form { padding-inline:28px; } }
+@media (min-width:760px) { .app-shell { padding-inline:28px; } .fab { right:max(32px,calc((100vw - 700px)/2)); } .task-editor-form { padding-inline:28px; } .date-picker-backdrop { align-items:center; padding:24px; } .date-picker { border-radius:28px; max-height:calc(100dvh - 48px); } }
 @media (prefers-reduced-motion:reduce) { *,*::before,*::after { scroll-behavior:auto!important; transition-duration:.01ms!important; animation-duration:.01ms!important; } }
 
 
