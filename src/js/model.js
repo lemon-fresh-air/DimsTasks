@@ -40,9 +40,36 @@ function createProject(values = {}) {
   return { ...baseRecord(values), ...values, title: String(values.title || "").trim(), goal: values.goal || "", description: values.description || "", status: values.status || "active", dueDate: values.dueDate || null, dueTime: values.dueDate && values.dueTime ? values.dueTime : null, completedAt: values.completedAt || null, position: Number.isFinite(values.position) ? values.position : 0 };
 }
 function createTask(values = {}) {
-  return { ...baseRecord(values), ...values, listId: values.listId || INBOX_LIST_ID, sectionId: values.sectionId || null, projectId: values.projectId || null, title: String(values.title || "").trim(), description: values.description || "", status: values.status || "active", completedAt: values.completedAt || null, dueDate: values.dueDate || null, dueTime: values.dueDate && values.dueTime ? values.dueTime : null, position: Number.isFinite(values.position) ? values.position : 0, projectPosition: Number.isFinite(values.projectPosition) ? values.projectPosition : null };
+  return { ...baseRecord(values), ...values, listId: values.listId || INBOX_LIST_ID, sectionId: values.sectionId || null, projectId: values.projectId || null, title: String(values.title || "").trim(), description: values.description || "", status: values.status || "active", completedAt: values.completedAt || null, dueDate: values.dueDate || null, dueTime: values.dueDate && values.dueTime ? values.dueTime : null, position: Number.isFinite(values.position) ? values.position : 0, projectPosition: Number.isFinite(values.projectPosition) ? values.projectPosition : null, returnedToInboxAt: values.returnedToInboxAt || null };
 }
 function isTaskCompleted(task) { return task.status === "completed" || task.done === true; }
+function isTaskOverdue(task, localDate, localTime) {
+  if (!task.dueDate || task.status !== "active" || isTaskCompleted(task)) return false;
+  if (task.dueDate < localDate) return true;
+  return task.dueDate === localDate && Boolean(task.dueTime) && task.dueTime <= localTime;
+}
+function compareOverdueTasks(a, b) {
+  return String(a.dueDate || "").localeCompare(String(b.dueDate || ""))
+    || String(a.dueTime || "23:59").localeCompare(String(b.dueTime || "23:59"))
+    || String(a.createdAt || "").localeCompare(String(b.createdAt || ""))
+    || String(a.id).localeCompare(String(b.id));
+}
+function returnOverdueTasksToInbox(records, { enabled, localDate, localTime, returnedAt }) {
+  if (!enabled) return records;
+  const returning = records.filter(task => (task.listId || INBOX_LIST_ID) !== INBOX_LIST_ID
+    && !task.returnedToInboxAt && isTaskOverdue(task, localDate, localTime)).sort(compareOverdueTasks);
+  if (!returning.length) return records;
+  const returningIds = new Set(returning.map(task => task.id));
+  const positions = new Map(returning.map((task, position) => [task.id, position]));
+  const offset = returning.length;
+  return records.map(task => {
+    if (returningIds.has(task.id)) return { ...task, listId: INBOX_LIST_ID, sectionId: null, position: positions.get(task.id), returnedToInboxAt: returnedAt, updatedAt: returnedAt };
+    if ((task.listId || INBOX_LIST_ID) === INBOX_LIST_ID && !task.sectionId) {
+      return { ...task, position: (Number.isFinite(task.position) ? task.position : 0) + offset, updatedAt: returnedAt };
+    }
+    return task;
+  });
+}
 function taskOrderScope(task) {
   return `${task.listId || INBOX_LIST_ID}\u0000${task.sectionId || ""}`;
 }

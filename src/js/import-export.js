@@ -1,6 +1,6 @@
 const BACKUP_FORMAT = "local-first-pwa-backup";
 const APP_ID = "dims-tasks";
-const BACKUP_FORMAT_VERSION = 4;
+const BACKUP_FORMAT_VERSION = 5;
 
 async function downloadBackup() {
   const payload = { format: BACKUP_FORMAT, appId: APP_ID, formatVersion: BACKUP_FORMAT_VERSION, databaseVersion: DB_VERSION, exportedAt: new Date().toISOString(), data: await appDb.exportAll() };
@@ -23,7 +23,7 @@ async function parseBackup(file) {
     if (!["lists", "sections", "projects", "tasks"].every(name => value.data[name].every(isRecord))) throw new Error("Копія містить пошкоджені записи");
     return { ...value.data, settings: [] };
   }
-  if (![3, BACKUP_FORMAT_VERSION].includes(value.formatVersion)) throw new Error("Цю версію резервної копії ще не підтримано");
+  if (![3, 4, BACKUP_FORMAT_VERSION].includes(value.formatVersion)) throw new Error("Цю версію резервної копії ще не підтримано");
   if (!STORE_NAMES.every(name => Array.isArray(value?.data?.[name]))) throw new Error("Копія має неповну структуру даних");
   if (!STORE_NAMES.every(name => value.data[name].every(isRecord))) throw new Error("Копія містить пошкоджені записи");
   return value.data;

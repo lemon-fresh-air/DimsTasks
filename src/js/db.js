@@ -5,6 +5,7 @@ const INBOX_LIST_ID = "system-list-inbox";
 const TODAY_LIST_ID = "system-list-today";
 const APPEARANCE_SETTINGS_ID = "appearance";
 const TASK_DEFAULTS_SETTINGS_ID = "task-defaults";
+const WORKFLOW_SETTINGS_ID = "workflow";
 
 function ensureIndex(store, name, keyPath, options = {}) {
   if (!store.indexNames.contains(name)) store.createIndex(name, keyPath, options);
@@ -57,7 +58,8 @@ function migrateLegacyTasks(store) {
       completedAt: completed ? (task.completedAt || task.updatedAt || new Date().toISOString()) : null,
       dueTime: task.dueTime ?? null,
       position: Number.isFinite(task.position) ? task.position : 0,
-      projectPosition: Number.isFinite(task.projectPosition) ? task.projectPosition : null
+      projectPosition: Number.isFinite(task.projectPosition) ? task.projectPosition : null,
+      returnedToInboxAt: task.returnedToInboxAt ?? null
     });
     cursor.continue();
   };
@@ -204,6 +206,21 @@ const settingsDb = {
       id: TASK_DEFAULTS_SETTINGS_ID,
       entityVersion: 1,
       todayListId: typeof listId === "string" ? listId : INBOX_LIST_ID,
+      createdAt: current?.createdAt || now,
+      updatedAt: now
+    });
+  },
+  returnOverdueToInbox: async () => {
+    const settings = await appDb.get("settings", WORKFLOW_SETTINGS_ID);
+    return settings?.returnOverdueToInbox === true;
+  },
+  setReturnOverdueToInbox: async enabled => {
+    const current = await appDb.get("settings", WORKFLOW_SETTINGS_ID);
+    const now = new Date().toISOString();
+    await appDb.put("settings", {
+      id: WORKFLOW_SETTINGS_ID,
+      entityVersion: 1,
+      returnOverdueToInbox: enabled === true,
       createdAt: current?.createdAt || now,
       updatedAt: now
     });

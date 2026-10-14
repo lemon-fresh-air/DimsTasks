@@ -2,12 +2,14 @@ let tasks = [];
 let lists = [];
 let activeListId = INBOX_LIST_ID;
 let todayDefaultListId = INBOX_LIST_ID;
+let returnOverdueToInbox = false;
 let selectedTaskIds = new Set();
 let selectedListIds = new Set();
 let completionAudioContext;
 let editingSelectedTaskDates = false;
 let currentLocalDate = localDateValue();
-let currentLocalMinute = new Date().toISOString().slice(0, 16);
+let currentLocalMinute = localTimeValue();
+let overdueProcessing;
 let dateChangeTimer;
 let listEditorCloseTimer;
 let listEditorOpenFrame;
@@ -21,7 +23,8 @@ function activeList() {
 function visibleTasks() {
   if (activeListId === TODAY_LIST_ID) {
     const today = localDateValue();
-    return tasks.filter(task => task.dueDate === today).sort(compareTodayTasks);
+    const time = localTimeValue();
+    return tasks.filter(task => task.dueDate === today && !isTaskOverdue(task, today, time)).sort(compareTodayTasks);
   }
   return tasks.filter(task => (task.listId || INBOX_LIST_ID) === activeListId);
 }
@@ -156,21 +159,44 @@ async function loadLists() {
 async function initializeApp() {
   await loadLists();
   todayDefaultListId = await settingsDb.todayListId() || INBOX_LIST_ID;
+  returnOverdueToInbox = await settingsDb.returnOverdueToInbox();
+  els.returnOverdueToggle.checked = returnOverdueToInbox;
   await loadAndNormalizeTaskOrder();
+  await processOverdueTasks();
 }
 
 function validTodayDefaultListId() {
   return lists.some(list => list.id === todayDefaultListId) ? todayDefaultListId : INBOX_LIST_ID;
 }
 
-function refreshDateDependentUI() {
+function localTimeValue(date = new Date()) {
+  return `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
+}
+
+async function processOverdueTasks() {
+  if (overdueProcessing) return overdueProcessing;
+  overdueProcessing = (async () => {
+    const returnedAt = new Date().toISOString();
+    const updated = returnOverdueTasksToInbox(tasks, { enabled: returnOverdueToInbox, localDate: localDateValue(), localTime: localTimeValue(), returnedAt });
+    const changed = updated.filter((task, index) => task !== tasks[index]);
+    if (!changed.length) return false;
+    await taskDb.putMany(changed);
+    tasks = updated.sort(compareTasks);
+    renderCurrentTasks();
+    return true;
+  })().finally(() => { overdueProcessing = null; });
+  return overdueProcessing;
+}
+
+async function refreshDateDependentUI() {
   const today = localDateValue();
-  const minute = new Date().toISOString().slice(0, 16);
+  const minute = localTimeValue();
   if (today === currentLocalDate && minute === currentLocalMinute) return;
   const dayChanged = today !== currentLocalDate;
   currentLocalDate = today;
   currentLocalMinute = minute;
   if (dayChanged && activeListId === TODAY_LIST_ID) selectedTaskIds = new Set();
+  await processOverdueTasks();
   renderCurrentTasks();
   if (!els.editor.hidden) {
     els.dateLabel.textContent = readableDueDate(els.date.value, els.time.value);
@@ -783,6 +809,18 @@ els.themeToggle.addEventListener("change", async () => {
   } catch (_error) {
     applyTheme(previousTheme);
     toast("Не вдалося зберегти тему");
+  }
+});
+els.returnOverdueToggle.addEventListener("change", async () => {
+  const previous = returnOverdueToInbox;
+  returnOverdueToInbox = els.returnOverdueToggle.checked;
+  try {
+    await settingsDb.setReturnOverdueToInbox(returnOverdueToInbox);
+    await processOverdueTasks();
+  } catch (_error) {
+    returnOverdueToInbox = previous;
+    els.returnOverdueToggle.checked = previous;
+    toast("Не вдалося зберегти налаштування");
   }
 });
 els.editorBack.addEventListener("click", () => saveAndLeaveTaskEditor({ allowEmptyNew: true }));

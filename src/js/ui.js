@@ -75,6 +75,7 @@ const els = {
   listDeleteConfirmButton: document.querySelector("#list-delete-confirm-button"),
   themeToggle: document.querySelector("#theme-toggle"),
   themeLabel: document.querySelector("#theme-label"),
+  returnOverdueToggle: document.querySelector("#return-overdue-toggle"),
   listSwipeZone: document.querySelector("#list-swipe-zone"),
   currentListHeading: document.querySelector("#current-list-heading"),
   inboxTitle: document.querySelector("#inbox-title"),
@@ -176,11 +177,12 @@ function taskCountsByList(tasks) {
   const counts = new Map();
   let todayCount = 0;
   const today = localDateValue();
+  const localTime = `${String(new Date().getHours()).padStart(2, "0")}:${String(new Date().getMinutes()).padStart(2, "0")}`;
   for (const task of tasks) {
     if (isTaskCompleted(task)) continue;
     const listId = task.listId || INBOX_LIST_ID;
     counts.set(listId, (counts.get(listId) || 0) + 1);
-    if (task.dueDate === today) todayCount += 1;
+    if (task.dueDate === today && !isTaskOverdue(task, today, localTime)) todayCount += 1;
   }
   counts.set(TODAY_LIST_ID, todayCount);
   return counts;
