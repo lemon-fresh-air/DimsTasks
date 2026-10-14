@@ -5,12 +5,21 @@ let selectedTaskIds = new Set();
 let selectedListIds = new Set();
 let completionAudioContext;
 let editingSelectedTaskDates = false;
+let currentLocalDate = localDateValue();
+let currentLocalMinute = new Date().toISOString().slice(0, 16);
+let dateChangeTimer;
+const todayList = { id: TODAY_LIST_ID, title: "Сьогодні", kind: "today" };
 
 function activeList() {
+  if (activeListId === TODAY_LIST_ID) return todayList;
   return lists.find(list => list.id === activeListId) || lists.find(list => list.kind === "inbox");
 }
 
 function visibleTasks() {
+  if (activeListId === TODAY_LIST_ID) {
+    const today = localDateValue();
+    return tasks.filter(task => task.dueDate === today);
+  }
   return tasks.filter(task => (task.listId || INBOX_LIST_ID) === activeListId);
 }
 
@@ -28,7 +37,10 @@ function renderListNavigation() {
 }
 
 function renderListMenu() {
-  renderMainMenuLists(lists, activeListId, selectedListIds, tasks);
+  const inboxIndex = lists.findIndex(list => list.kind === "inbox");
+  const menuLists = lists.slice();
+  menuLists.splice(inboxIndex < 0 ? 0 : inboxIndex + 1, 0, todayList);
+  renderMainMenuLists(menuLists, activeListId, selectedListIds, tasks);
   renderTaskListOptions(lists);
 }
 
@@ -132,7 +144,7 @@ async function loadAndNormalizeTaskOrder() {
 async function loadLists() {
   lists = (await listDb.all()).sort(compareLists);
   selectedListIds = new Set([...selectedListIds].filter(id => lists.some(list => list.id === id && list.kind === "regular")));
-  if (!lists.some(list => list.id === activeListId)) {
+  if (activeListId !== TODAY_LIST_ID && !lists.some(list => list.id === activeListId)) {
     activeListId = lists.find(list => list.kind === "inbox")?.id || INBOX_LIST_ID;
   }
   renderListNavigation();
@@ -143,8 +155,47 @@ async function initializeApp() {
   await loadAndNormalizeTaskOrder();
 }
 
+function refreshDateDependentUI() {
+  const today = localDateValue();
+  const minute = new Date().toISOString().slice(0, 16);
+  if (today === currentLocalDate && minute === currentLocalMinute) return;
+  const dayChanged = today !== currentLocalDate;
+  currentLocalDate = today;
+  currentLocalMinute = minute;
+  if (dayChanged && activeListId === TODAY_LIST_ID) selectedTaskIds = new Set();
+  renderCurrentTasks();
+  if (!els.editor.hidden) {
+    els.dateLabel.textContent = readableDueDate(els.date.value, els.time.value);
+    applyDateTone(els.datePickerOpen, els.date.value, els.time.value);
+  }
+  if (!els.datePickerBackdrop.hidden) {
+    const now = new Date();
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    els.todayWeekday.textContent = weekdayFormatter.format(now);
+    els.tomorrowWeekday.textContent = weekdayFormatter.format(tomorrow);
+    setPendingDate(pendingDateValue);
+  }
+}
+
+function scheduleDateChangeCheck() {
+  clearTimeout(dateChangeTimer);
+  const now = new Date();
+  const nextMinute = new Date(now);
+  nextMinute.setSeconds(60, 0);
+  dateChangeTimer = setTimeout(() => {
+    refreshDateDependentUI();
+    scheduleDateChangeCheck();
+  }, nextMinute.getTime() - now.getTime() + 50);
+}
+
+function checkForDateChange() {
+  refreshDateDependentUI();
+  scheduleDateChangeCheck();
+}
+
 function openList(listId) {
-  if (!lists.some(list => list.id === listId)) return;
+  if (listId !== TODAY_LIST_ID && !lists.some(list => list.id === listId)) return;
   activeListId = listId;
   selectedTaskIds = new Set();
   selectedListIds = new Set();
@@ -268,15 +319,17 @@ function openSelectedTaskDatePicker() {
   if (!selected.length) return;
   const firstDate = selected[0].dueDate || "";
   const sharedDate = selected.every(task => (task.dueDate || "") === firstDate) ? firstDate : "";
+  const firstTime = selected[0].dueTime || "";
+  const sharedTime = sharedDate && selected.every(task => (task.dueTime || "") === firstTime) ? firstTime : "";
   editingSelectedTaskDates = true;
-  openDatePicker(sharedDate);
+  openDatePicker(sharedDate, sharedTime);
 }
 
-async function updateSelectedTaskDates(dueDate) {
+async function updateSelectedTaskDates(dueDate, dueTime) {
   const selectedIds = new Set(selectedTaskIds);
   const previousPositions = captureTaskPositions();
   const updatedAt = new Date().toISOString();
-  const updatedTasks = tasks.map(task => selectedIds.has(task.id) ? { ...task, dueDate: dueDate || null, updatedAt } : task);
+  const updatedTasks = tasks.map(task => selectedIds.has(task.id) ? { ...task, dueDate: dueDate || null, dueTime: dueDate && dueTime ? dueTime : null, updatedAt } : task);
   const changed = updatedTasks.filter(task => selectedIds.has(task.id));
   if (!changed.length) return;
   try {
@@ -419,7 +472,7 @@ function handleDropdownListCreationKeydown(event, container) {
 async function addTask() {
   const title = els.input.value.trim();
   if (!title) { els.input.focus(); return false; }
-  const task = createTask({ listId: els.taskListSelect.value || activeListId, title, description: els.description.value.trim(), dueDate: els.date.value || null, position: 0 });
+  const task = createTask({ listId: els.taskListSelect.value || activeListId, title, description: els.description.value.trim(), dueDate: els.date.value || null, dueTime: els.date.value && els.time.value ? els.time.value : null, position: 0 });
   const scope = taskOrderScope(task);
   const shifted = tasks.filter(item => taskOrderScope(item) === scope).map(item => ({ ...item, position: item.position + 1 }));
   await taskDb.putMany([task, ...shifted]);
@@ -428,6 +481,7 @@ async function addTask() {
 }
 
 async function reorderSelectedTasks({ beforeId }) {
+  if (activeListId === TODAY_LIST_ID) return false;
   const selected = tasks.filter(task => selectedTaskIds.has(task.id)).sort(compareTasks);
   if (!selected.length) return false;
   const previous = tasks;
@@ -456,7 +510,7 @@ async function saveOpenTask() {
   if (!task || !title) return false;
   const listId = lists.some(list => list.id === els.taskListSelect.value) ? els.taskListSelect.value : task.listId;
   const changedList = listId !== task.listId;
-  const updatedTask = { ...task, listId, sectionId: changedList ? null : task.sectionId, position: changedList ? 0 : task.position, title, description: els.description.value.trim(), dueDate: els.date.value || null, updatedAt: new Date().toISOString() };
+  const updatedTask = { ...task, listId, sectionId: changedList ? null : task.sectionId, position: changedList ? 0 : task.position, title, description: els.description.value.trim(), dueDate: els.date.value || null, dueTime: els.date.value && els.time.value ? els.time.value : null, updatedAt: new Date().toISOString() };
   const shiftedTasks = changedList
     ? tasks.filter(item => item.id !== task.id && taskOrderScope(item) === taskOrderScope(updatedTask)).map(item => ({ ...item, position: (Number.isFinite(item.position) ? item.position : 0) + 1 }))
     : [];
@@ -521,7 +575,7 @@ async function completeTask(task, changes = {}, toggle) {
   });
 }
 
-els.add.addEventListener("click", () => openNewTaskEditor(activeListId));
+els.add.addEventListener("click", () => openNewTaskEditor(activeListId === TODAY_LIST_ID ? INBOX_LIST_ID : activeListId));
 els.mainMenuOpen.addEventListener("click", () => {
   if (selectedTaskIds.size) clearTaskSelection();
   openMainMenu();
@@ -647,11 +701,13 @@ els.datePickerClose.addEventListener("click", () => {
   closeDatePicker();
 });
 els.datePickerBackdrop.addEventListener("click", event => { if (event.target === els.datePickerBackdrop) { editingSelectedTaskDates = false; closeDatePicker(); } });
-els.datePicker.addEventListener("keydown", event => {
+els.datePicker.addEventListener("keydown", async event => {
   if (event.key === "Escape") { event.preventDefault(); editingSelectedTaskDates = false; closeDatePicker(); }
-  if (event.key === "Enter" && event.target !== els.datePickerSave && matchMedia("(min-width: 760px)").matches) {
+  if (event.key === "Enter" && matchMedia("(min-width: 760px)").matches) {
     event.preventDefault();
-    savePendingDateSelection();
+    const taskEditorWasOpen = !els.editor.hidden;
+    const dateSaved = await savePendingDateSelection();
+    if (dateSaved && taskEditorWasOpen) await saveAndLeaveTaskEditor();
   }
 });
 document.querySelectorAll("[data-date-shortcut]").forEach(button => button.addEventListener("click", () => {
@@ -671,17 +727,55 @@ async function savePendingDateSelection() {
   if (editingSelectedTaskDates) {
     editingSelectedTaskDates = false;
     closeDatePicker();
-    await updateSelectedTaskDates(pendingDateValue);
+    await updateSelectedTaskDates(pendingDateValue, pendingTimeValue);
     return true;
   }
   els.date.value = pendingDateValue;
-  els.dateLabel.textContent = readableDate(pendingDateValue);
-  applyDateTone(els.datePickerOpen, pendingDateValue);
+  els.time.value = pendingDateValue ? pendingTimeValue : "";
+  els.dateLabel.textContent = readableDueDate(pendingDateValue, pendingTimeValue);
+  applyDateTone(els.datePickerOpen, pendingDateValue, pendingTimeValue);
   updateDesktopSaveState();
   closeDatePicker();
   return true;
 }
 els.datePickerSave.addEventListener("click", savePendingDateSelection);
+els.timePickerOpen.addEventListener("click", openTimeDialog);
+els.timePickerClear.addEventListener("click", () => {
+  pendingTimeValue = "";
+  setPendingDate(pendingDateValue);
+  els.timePickerOpen.focus();
+});
+els.timeDialogClose.addEventListener("click", closeTimeDialog);
+els.timeDialogCancel.addEventListener("click", closeTimeDialog);
+els.timeDialogSave.addEventListener("click", saveTimeDialog);
+els.timeDialogBackdrop.addEventListener("click", event => { if (event.target === els.timeDialogBackdrop) closeTimeDialog(); });
+els.timeDialog.addEventListener("keydown", event => {
+  if (event.key === "Escape") { event.preventDefault(); closeTimeDialog(); }
+  if (event.key === "Enter" && matchMedia("(min-width: 760px)").matches) { event.preventDefault(); saveTimeDialog(); }
+});
+function activateTimeInput(input, phase) {
+  timePickerPhase = phase;
+  renderTimeDial({ preserveDisplay: true });
+  input.select();
+}
+els.timeDisplayHour.addEventListener("click", () => activateTimeInput(els.timeDisplayHour, "hour"));
+els.timeDisplayMinute.addEventListener("click", () => activateTimeInput(els.timeDisplayMinute, "minute"));
+els.timeDisplayHour.addEventListener("input", () => updateDraftTimeInput(els.timeDisplayHour, "hour"));
+els.timeDisplayMinute.addEventListener("input", () => updateDraftTimeInput(els.timeDisplayMinute, "minute"));
+els.timeDisplayHour.addEventListener("blur", normalizeDraftTimeInputs);
+els.timeDisplayMinute.addEventListener("blur", normalizeDraftTimeInputs);
+els.timeDialOptions.addEventListener("click", event => {
+  const option = event.target.closest("[data-time-value]");
+  if (!option) return;
+  const value = Number(option.dataset.timeValue);
+  if (timePickerPhase === "hour") {
+    draftTimeHour = value;
+    timePickerPhase = "minute";
+  } else {
+    draftTimeMinute = value;
+  }
+  renderTimeDial();
+});
 els.input.addEventListener("input", () => { els.input.style.height = "auto"; els.input.style.height = `${Math.min(els.input.scrollHeight, 150)}px`; updateDesktopSaveState(); });
 els.description.addEventListener("input", () => { resizeDescription(); updateDesktopSaveState(); });
 els.taskListTrigger.addEventListener("click", () => els.taskListOptions.hidden ? openTaskListDropdown() : closeTaskListDropdown());
@@ -703,7 +797,7 @@ document.addEventListener("pointerdown", event => {
 });
 els.form.addEventListener("keydown", event => {
   if (event.key === "Escape") { event.preventDefault(); saveAndLeaveTaskEditor({ allowEmptyNew: true }); return; }
-  if (event.key === "Enter" && !event.shiftKey && event.target.matches("#task-title")) {
+  if (event.key === "Enter" && !event.shiftKey && event.target.matches("#task-title") && matchMedia("(min-width: 760px)").matches) {
     event.preventDefault();
     saveAndLeaveTaskEditor();
   }
@@ -733,7 +827,7 @@ els.list.addEventListener("click", async event => {
 els.detailToggle.addEventListener("click", async () => {
   const task = tasks.find(item => item.id === els.editor.dataset.taskId);
   if (!task) return;
-  const changes = { title: els.input.value.trim() || task.title, description: els.description.value.trim(), dueDate: els.date.value || null };
+  const changes = { title: els.input.value.trim() || task.title, description: els.description.value.trim(), dueDate: els.date.value || null, dueTime: els.date.value && els.time.value ? els.time.value : null };
   await completeTask(task, changes, els.detailToggle);
   els.editor.dataset.taskId = "";
   hideTaskEditor();
@@ -749,5 +843,7 @@ enableTaskGestures({
   onReorder: reorderSelectedTasks
 });
 if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("./service-worker.js"));
+document.addEventListener("visibilitychange", () => { if (!document.hidden) checkForDateChange(); });
+window.addEventListener("focus", checkForDateChange);
 settingsDb.theme().then(applyTheme).catch(() => toast("Не вдалося завантажити тему"));
-initializeApp().catch(() => toast("Не вдалося відкрити локальне сховище"));
+initializeApp().then(scheduleDateChangeCheck).catch(() => toast("Не вдалося відкрити локальне сховище"));

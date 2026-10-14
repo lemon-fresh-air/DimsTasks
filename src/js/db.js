@@ -2,6 +2,7 @@ const DB_NAME = "dims-tasks-db";
 const DB_VERSION = 3;
 const STORE_NAMES = ["lists", "sections", "projects", "tasks", "settings"];
 const INBOX_LIST_ID = "system-list-inbox";
+const TODAY_LIST_ID = "system-list-today";
 const APPEARANCE_SETTINGS_ID = "appearance";
 
 function ensureIndex(store, name, keyPath, options = {}) {

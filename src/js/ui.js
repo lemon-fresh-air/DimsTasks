@@ -12,6 +12,7 @@ const els = {
   input: document.querySelector("#task-title"),
   description: document.querySelector("#task-description"),
   date: document.querySelector("#task-date"),
+  time: document.querySelector("#task-time"),
   dateLabel: document.querySelector("#date-label"),
   datePickerOpen: document.querySelector("#date-picker-open"),
   datePickerBackdrop: document.querySelector("#date-picker-backdrop"),
@@ -19,6 +20,18 @@ const els = {
   datePickerClose: document.querySelector("#date-picker-close"),
   datePickerValue: document.querySelector("#date-picker-value span:last-child"),
   datePickerSave: document.querySelector("#date-picker-save"),
+  timePickerOpen: document.querySelector("#time-picker-open"),
+  timePickerLabel: document.querySelector("#time-picker-label"),
+  timePickerClear: document.querySelector("#time-picker-clear"),
+  timeDialogBackdrop: document.querySelector("#time-dialog-backdrop"),
+  timeDialog: document.querySelector("#time-dialog"),
+  timeDialogClose: document.querySelector("#time-dialog-close"),
+  timeDialogCancel: document.querySelector("#time-dialog-cancel"),
+  timeDialogSave: document.querySelector("#time-dialog-save"),
+  timeDisplayHour: document.querySelector("#time-display-hour"),
+  timeDisplayMinute: document.querySelector("#time-display-minute"),
+  timeDial: document.querySelector("#time-dial"),
+  timeDialOptions: document.querySelector("#time-dial-options"),
   calendarPrevious: document.querySelector("#calendar-previous"),
   calendarNext: document.querySelector("#calendar-next"),
   calendarMonth: document.querySelector("#calendar-month"),
@@ -79,27 +92,37 @@ function localDateValue(date = new Date()) {
 function readableDate(value) {
   if (!value) return "Без дати";
   if (value === localDateValue()) return "Сьогодні";
+  const yesterday = new Date();
+  yesterday.setDate(yesterday.getDate() - 1);
+  if (value === localDateValue(yesterday)) return "Вчора";
   const tomorrow = new Date();
   tomorrow.setDate(tomorrow.getDate() + 1);
   if (value === localDateValue(tomorrow)) return "Завтра";
   return dateFormatter.format(new Date(`${value}T12:00:00`));
 }
 
-function dateTone(value) {
+function dateTone(value, time = "") {
   if (!value) return "none";
-  if (value === localDateValue()) return "today";
+  const today = localDateValue();
+  if (value < today) return "overdue";
+  if (value === today && time && new Date(`${value}T${time}:00`).getTime() < Date.now()) return "overdue";
+  if (value === today) return "today";
   const tomorrow = new Date();
   tomorrow.setDate(tomorrow.getDate() + 1);
   if (value === localDateValue(tomorrow)) return "tomorrow";
   return "future";
 }
 
-function applyDateTone(element, value) {
-  element.dataset.dateTone = dateTone(value);
+function applyDateTone(element, value, time = "") {
+  element.dataset.dateTone = dateTone(value, time);
+}
+
+function readableDueDate(date, time = "") {
+  return `${readableDate(date)}${date && time ? ` · ${time}` : ""}`;
 }
 
 function editorState() {
-  return JSON.stringify({ title: els.input.value, description: els.description.value, dueDate: els.date.value, listId: els.taskListSelect.value });
+  return JSON.stringify({ title: els.input.value, description: els.description.value, dueDate: els.date.value, dueTime: els.time.value, listId: els.taskListSelect.value });
 }
 
 function rememberEditorState() {
@@ -115,6 +138,11 @@ function updateDesktopSaveState() {
 }
 
 let pendingDateValue = null;
+let pendingTimeValue = "";
+let draftTimeHour = 0;
+let draftTimeMinute = 0;
+let timePickerPhase = "hour";
+let timeDialogReturnFocus = null;
 let visibleCalendarMonth = null;
 let datePickerReturnFocus = null;
 let editorCloseTimer;
@@ -133,11 +161,15 @@ function applyTheme(theme) {
 
 function taskCountsByList(tasks) {
   const counts = new Map();
+  let todayCount = 0;
+  const today = localDateValue();
   for (const task of tasks) {
     if (isTaskCompleted(task)) continue;
     const listId = task.listId || INBOX_LIST_ID;
     counts.set(listId, (counts.get(listId) || 0) + 1);
+    if (task.dueDate === today) todayCount += 1;
   }
+  counts.set(TODAY_LIST_ID, todayCount);
   return counts;
 }
 
@@ -157,7 +189,7 @@ function renderMainMenuLists(lists, activeListId, selectedIds = new Set(), tasks
     if (active) button.setAttribute("aria-current", "page");
     button.setAttribute("aria-selected", String(selected));
     const icon = document.createElement("span");
-    icon.className = list.kind === "inbox" ? "inbox-icon" : "list-menu-icon";
+    icon.className = list.kind === "inbox" ? "inbox-icon" : list.kind === "today" ? "calendar-icon" : "list-menu-icon";
     icon.setAttribute("aria-hidden", "true");
     const count = document.createElement("span");
     count.className = "main-menu-count";
@@ -562,7 +594,11 @@ function dateFromValue(value) {
 
 function setPendingDate(value) {
   pendingDateValue = value || "";
-  els.datePickerValue.textContent = value ? fullDateFormatter.format(dateFromValue(value)) : "Без дати";
+  if (!pendingDateValue) pendingTimeValue = "";
+  els.datePickerValue.textContent = value ? `${fullDateFormatter.format(dateFromValue(value))}${pendingTimeValue ? ` · ${pendingTimeValue}` : ""}` : "Без дати";
+  els.timePickerOpen.disabled = !pendingDateValue;
+  els.timePickerClear.disabled = !pendingDateValue || !pendingTimeValue;
+  els.timePickerLabel.textContent = pendingTimeValue || "Додати час";
   document.querySelectorAll("[data-date-shortcut]").forEach(button => {
     const shortcutValue = button.dataset.dateShortcut === "today" ? localDateValue()
       : button.dataset.dateShortcut === "tomorrow" ? localDateValue(new Date(Date.now() + 86400000)) : "";
@@ -570,6 +606,92 @@ function setPendingDate(value) {
     button.setAttribute("aria-pressed", String(shortcutValue === pendingDateValue));
   });
   renderCalendar();
+}
+
+function renderTimeDial({ preserveDisplay = false } = {}) {
+  const value = timePickerPhase === "hour" ? draftTimeHour : draftTimeMinute;
+  if (!preserveDisplay) {
+    els.timeDisplayHour.value = String(draftTimeHour).padStart(2, "0");
+    els.timeDisplayMinute.value = String(draftTimeMinute).padStart(2, "0");
+  }
+  els.timeDisplayHour.classList.toggle("active", timePickerPhase === "hour");
+  els.timeDisplayMinute.classList.toggle("active", timePickerPhase === "minute");
+  els.timeDial.dataset.phase = timePickerPhase;
+  const values = timePickerPhase === "hour" ? Array.from({ length: 24 }, (_, index) => index) : Array.from({ length: 12 }, (_, index) => index * 5);
+  const options = values.map(optionValue => {
+    const button = document.createElement("button");
+    const angle = (timePickerPhase === "hour" ? optionValue % 12 : optionValue / 5) * 30;
+    const radius = timePickerPhase === "hour" && optionValue >= 12 ? 74 : 108;
+    button.type = "button";
+    button.dataset.timeValue = String(optionValue);
+    button.style.setProperty("--dial-angle", `${angle}deg`);
+    button.style.setProperty("--dial-radius", `${radius}px`);
+    button.textContent = timePickerPhase === "minute" ? String(optionValue).padStart(2, "0") : String(optionValue);
+    button.classList.toggle("selected", optionValue === value);
+    button.setAttribute("aria-label", timePickerPhase === "hour" ? `${optionValue} година` : `${optionValue} хвилин`);
+    button.setAttribute("aria-pressed", String(optionValue === value));
+    return button;
+  });
+  const handAngle = (timePickerPhase === "hour" ? draftTimeHour % 12 : draftTimeMinute / 5) * 30;
+  const handRadius = timePickerPhase === "hour" && draftTimeHour >= 12 ? 74 : 108;
+  els.timeDial.style.setProperty("--hand-angle", `${handAngle}deg`);
+  els.timeDial.style.setProperty("--hand-radius", `${handRadius}px`);
+  els.timeDialOptions.replaceChildren(...options);
+}
+
+function updateDraftTimeInput(input, phase) {
+  const maximum = phase === "hour" ? 23 : 59;
+  const digits = input.value.replace(/\D/g, "").slice(0, 2);
+  input.value = digits;
+  if (!digits) return;
+  const value = Math.min(Number(digits), maximum);
+  input.value = String(value);
+  timePickerPhase = phase;
+  if (phase === "hour") draftTimeHour = value;
+  else draftTimeMinute = value;
+  renderTimeDial({ preserveDisplay: true });
+  if (phase === "hour" && digits.length === 2) {
+    requestAnimationFrame(() => {
+      els.timeDisplayMinute.focus();
+      els.timeDisplayMinute.select();
+    });
+  }
+}
+
+function normalizeDraftTimeInputs() {
+  const hour = Number(els.timeDisplayHour.value);
+  const minute = Number(els.timeDisplayMinute.value);
+  if (els.timeDisplayHour.value !== "" && Number.isFinite(hour)) draftTimeHour = Math.min(Math.max(hour, 0), 23);
+  if (els.timeDisplayMinute.value !== "" && Number.isFinite(minute)) draftTimeMinute = Math.min(Math.max(minute, 0), 59);
+  renderTimeDial();
+}
+
+function openTimeDialog() {
+  if (!pendingDateValue) return;
+  const now = new Date();
+  const roundedMinutes = Math.ceil(now.getMinutes() / 5) * 5;
+  const [hour, minute] = pendingTimeValue ? pendingTimeValue.split(":").map(Number) : [(now.getHours() + (roundedMinutes === 60 ? 1 : 0)) % 24, roundedMinutes % 60];
+  draftTimeHour = hour;
+  draftTimeMinute = minute;
+  timePickerPhase = "hour";
+  timeDialogReturnFocus = document.activeElement;
+  renderTimeDial();
+  els.timeDialogBackdrop.hidden = false;
+  document.body.classList.add("time-dialog-open");
+  requestAnimationFrame(() => els.timeDialog.focus());
+}
+
+function closeTimeDialog({ restoreFocus = true } = {}) {
+  els.timeDialogBackdrop.hidden = true;
+  document.body.classList.remove("time-dialog-open");
+  if (restoreFocus) timeDialogReturnFocus?.focus();
+}
+
+function saveTimeDialog() {
+  normalizeDraftTimeInputs();
+  pendingTimeValue = `${String(draftTimeHour).padStart(2, "0")}:${String(draftTimeMinute).padStart(2, "0")}`;
+  setPendingDate(pendingDateValue);
+  closeTimeDialog();
 }
 
 function renderCalendar() {
@@ -609,7 +731,7 @@ function renderCalendar() {
   els.calendarGrid.replaceChildren(...cells);
 }
 
-function openDatePicker(initialValue = els.date.value) {
+function openDatePicker(initialValue = els.date.value, initialTime = els.time.value) {
   datePickerReturnFocus = document.activeElement;
   const initial = initialValue || localDateValue();
   const initialDate = dateFromValue(initial);
@@ -621,6 +743,7 @@ function openDatePicker(initialValue = els.date.value) {
   els.tomorrowWeekday.textContent = weekdayFormatter.format(tomorrow);
   els.datePickerBackdrop.hidden = false;
   document.body.classList.add("date-picker-open");
+  pendingTimeValue = initialValue ? (initialTime || "") : "";
   setPendingDate(initialValue);
   requestAnimationFrame(() => els.datePicker.focus());
 }
@@ -678,8 +801,8 @@ function renderTasks(tasks, selectedIds = new Set()) {
     preview.textContent = description || "";
     const displayedDate = task.dueDate || task.createdAt?.slice(0, 10);
     const taskDate = row.querySelector(".task-date");
-    taskDate.textContent = readableDate(displayedDate);
-    applyDateTone(taskDate, displayedDate);
+    taskDate.textContent = task.dueDate ? readableDueDate(task.dueDate, task.dueTime) : readableDate(displayedDate);
+    applyDateTone(taskDate, task.dueDate, task.dueTime);
     row.querySelector(".task-project-name").textContent = els.currentListHeading.textContent;
     row.querySelector(".task-open").setAttribute("aria-label", `Відкрити деталі: ${task.title}`);
     return row;
@@ -725,8 +848,9 @@ function openNewTaskEditor(listId) {
   els.detailToggle.hidden = true;
   setTaskEditorListUI(listId);
   els.date.value = localDateValue();
-  els.dateLabel.textContent = "Сьогодні";
-  applyDateTone(els.datePickerOpen, els.date.value);
+  els.time.value = "";
+  els.dateLabel.textContent = readableDueDate(els.date.value);
+  applyDateTone(els.datePickerOpen, els.date.value, els.time.value);
   rememberEditorState();
   showTaskEditor();
   requestAnimationFrame(() => { resizeDescription(); els.input.focus(); });
@@ -742,8 +866,9 @@ function openTaskDetails(task) {
   els.input.value = task.title;
   els.description.value = task.description || "";
   els.date.value = task.dueDate || "";
-  els.dateLabel.textContent = readableDate(task.dueDate);
-  applyDateTone(els.datePickerOpen, els.date.value);
+  els.time.value = task.dueDate ? (task.dueTime || "") : "";
+  els.dateLabel.textContent = readableDueDate(task.dueDate, task.dueTime);
+  applyDateTone(els.datePickerOpen, els.date.value, els.time.value);
   rememberEditorState();
   showTaskEditor();
   requestAnimationFrame(() => {
