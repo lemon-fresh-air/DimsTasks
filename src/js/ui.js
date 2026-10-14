@@ -49,6 +49,10 @@ const els = {
   editorBack: document.querySelector("#task-editor-back"),
   mainMenu: document.querySelector("#main-menu"),
   mainMenuOpen: document.querySelector("#main-menu-open"),
+  navToday: document.querySelector("#nav-today"),
+  navUpcoming: document.querySelector("#nav-upcoming"),
+  navProjects: document.querySelector("#nav-projects"),
+  navInbox: document.querySelector("#nav-inbox"),
   mainMenuClose: document.querySelector("#main-menu-close"),
   mainMenuLists: document.querySelector("#main-menu-lists"),
   mainMenuSwipeZone: document.querySelector("#main-menu-swipe-zone"),
@@ -74,7 +78,6 @@ const els = {
   listSwipeZone: document.querySelector("#list-swipe-zone"),
   currentListHeading: document.querySelector("#current-list-heading"),
   inboxTitle: document.querySelector("#inbox-title"),
-  bottomListLabel: document.querySelector("#bottom-list-label"),
   editorListLabel: document.querySelector("#editor-list-label"),
   composerListLabel: document.querySelector("#composer-list-label"),
   add: document.querySelector("#add-task-btn"),
@@ -227,10 +230,21 @@ function setActiveListUI(list) {
   const title = displayListTitle(list);
   els.currentListHeading.textContent = title;
   els.inboxTitle.textContent = title;
-  els.bottomListLabel.textContent = title;
+  const primaryNav = list.kind === "today" ? "today" : list.kind === "inbox" ? "inbox" : "overview";
+  els.mainMenuOpen.dataset.currentPrimaryNav = primaryNav;
+  if (els.mainMenu.hidden) setActivePrimaryNav(primaryNav);
   els.editorListLabel.textContent = title;
   els.composerListLabel.textContent = title;
   els.listEditorOpen.hidden = list.kind !== "regular";
+}
+
+function setActivePrimaryNav(name) {
+  for (const item of document.querySelectorAll(".bottom-nav [data-nav]")) {
+    const active = item.dataset.nav === name;
+    item.classList.toggle("active", active);
+    if (active) item.setAttribute("aria-current", "page");
+    else item.removeAttribute("aria-current");
+  }
 }
 
 function createListDropdownOption(list) {
@@ -378,6 +392,7 @@ function openMainMenu() {
   els.mainMenu.hidden = false;
   els.mainMenu.classList.remove("is-open");
   els.mainMenuOpen.setAttribute("aria-expanded", "true");
+  setActivePrimaryNav("overview");
   document.body.classList.add("main-menu-open");
   menuOpenFrame = requestAnimationFrame(() => {
     menuOpenFrame = requestAnimationFrame(() => {
@@ -393,6 +408,7 @@ function closeMainMenu({ fromHistory = false } = {}) {
   cancelAnimationFrame(menuOpenFrame);
   els.mainMenu.classList.remove("is-open");
   els.mainMenuOpen.setAttribute("aria-expanded", "false");
+  setActivePrimaryNav(els.mainMenuOpen.dataset.currentPrimaryNav || "inbox");
   document.body.classList.remove("main-menu-open");
   menuCloseTimer = setTimeout(() => {
     els.mainMenu.hidden = true;

@@ -685,6 +685,11 @@ els.add.addEventListener("click", () => openNewTaskEditor(
   activeListId === TODAY_LIST_ID ? validTodayDefaultListId() : activeListId,
   activeListId
 ));
+els.navToday.addEventListener("click", () => openList(TODAY_LIST_ID));
+els.navInbox.addEventListener("click", () => openList(INBOX_LIST_ID));
+[els.navUpcoming, els.navProjects].forEach(button => button.addEventListener("click", () => {
+  toast(`Розділ «${button.querySelector("span:last-child").textContent}» з’явиться згодом`);
+}));
 els.mainMenuOpen.addEventListener("click", () => {
   if (selectedTaskIds.size) clearTaskSelection();
   openMainMenu();

@@ -23,8 +23,11 @@
   </section><div id="list-swipe-zone" class="list-swipe-zone" aria-hidden="true"></div></main>
   <button id="add-task-btn" class="fab" aria-label="Додати задачу"><span aria-hidden="true">＋</span></button>
   <nav class="bottom-nav" aria-label="Основна навігація"><div class="bottom-nav-inner">
-    <button id="main-menu-open" class="nav-item menu-nav-item" type="button" aria-label="Відкрити головне меню" aria-controls="main-menu" aria-expanded="false"><span class="menu-icon" aria-hidden="true"></span><span>Меню</span></button>
-    <button class="nav-item active" type="button" aria-current="page"><span class="inbox-icon" aria-hidden="true"></span><span id="bottom-list-label">Нові</span></button>
+    <button id="nav-today" class="nav-item" type="button" data-nav="today"><span class="calendar-icon" aria-hidden="true"></span><span>Сьогодні</span></button>
+    <button id="nav-upcoming" class="nav-item" type="button" data-nav="upcoming" aria-label="Скоро — розділ у розробці"><span class="upcoming-icon" aria-hidden="true"></span><span>Скоро</span></button>
+    <button id="nav-projects" class="nav-item" type="button" data-nav="projects" aria-label="Проєкти — розділ у розробці"><span class="projects-icon" aria-hidden="true"></span><span>Проєкти</span></button>
+    <button id="nav-inbox" class="nav-item active" type="button" data-nav="inbox" aria-current="page"><span class="inbox-icon" aria-hidden="true"></span><span>Нові</span></button>
+    <button id="main-menu-open" class="nav-item" type="button" data-nav="overview" aria-label="Відкрити огляд" aria-controls="main-menu" aria-expanded="false"><span class="overview-icon" aria-hidden="true"></span><span>Огляд</span></button>
   </div></nav>
 </div>
 <section id="main-menu" class="main-menu" aria-label="Головне меню" hidden>
