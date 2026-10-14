@@ -437,10 +437,9 @@ function enableHorizontalSwipe(element, { direction, onSwipe }) {
   element.addEventListener("pointerdown", event => {
     if (!event.isPrimary || (event.pointerType === "mouse" && event.button !== 0)) return;
     gesture = { pointerId: event.pointerId, startX: event.clientX, startY: event.clientY };
-    element.setPointerCapture?.(event.pointerId);
   });
 
-  element.addEventListener("pointerup", event => {
+  window.addEventListener("pointerup", event => {
     if (!gesture || gesture.pointerId !== event.pointerId) return;
     const dx = event.clientX - gesture.startX;
     const dy = event.clientY - gesture.startY;
@@ -454,8 +453,7 @@ function enableHorizontalSwipe(element, { direction, onSwipe }) {
   const cancel = event => {
     if (gesture?.pointerId === event.pointerId) gesture = null;
   };
-  element.addEventListener("pointercancel", cancel);
-  element.addEventListener("lostpointercapture", cancel);
+  window.addEventListener("pointercancel", cancel);
 }
 
 function enableListReordering({ onReorder, isSelectionMode, isSelected, onLongPress, onSelectOnly, getSelectedIds }) {
@@ -791,7 +789,7 @@ els.toastAction.addEventListener("click", async () => {
   if (action) await action();
 });
 
-function renderTasks(tasks, selectedIds = new Set()) {
+function renderTasks(tasks, selectedIds = new Set(), taskLists = []) {
   const active = tasks.filter(task => !isTaskCompleted(task));
   const selectionMode = selectedIds.size > 0;
   els.shell.classList.toggle("selection-active", selectionMode);
@@ -814,7 +812,11 @@ function renderTasks(tasks, selectedIds = new Set()) {
     const taskDate = row.querySelector(".task-date");
     taskDate.textContent = task.dueDate ? readableDueDate(task.dueDate, task.dueTime) : readableDate(displayedDate);
     applyDateTone(taskDate, task.dueDate, task.dueTime);
-    row.querySelector(".task-project-name").textContent = els.currentListHeading.textContent;
+    const taskList = taskLists.find(list => list.id === (task.listId || INBOX_LIST_ID))
+      || taskLists.find(list => list.kind === "inbox");
+    row.querySelector(".task-project-name").textContent = displayListTitle(taskList);
+    const taskListIcon = row.querySelector(".task-project .inbox-icon");
+    taskListIcon.className = taskList?.kind === "regular" ? "list-menu-icon" : "inbox-icon";
     row.querySelector(".task-open").setAttribute("aria-label", `Відкрити деталі: ${task.title}`);
     return row;
   }));
@@ -851,9 +853,10 @@ function resizeDescription() {
   els.description.style.height = `${Math.min(els.description.scrollHeight, maxHeight)}px`;
 }
 
-function openNewTaskEditor(listId) {
+function openNewTaskEditor(listId, originListId = listId) {
   els.editor.classList.remove("detail-mode");
   els.editor.dataset.taskId = "";
+  els.editor.dataset.originListId = originListId;
   els.form.reset();
   els.detailFields.hidden = false;
   els.detailToggle.hidden = true;
@@ -870,6 +873,7 @@ function openNewTaskEditor(listId) {
 function openTaskDetails(task) {
   els.editor.classList.add("detail-mode");
   els.editor.dataset.taskId = task.id;
+  delete els.editor.dataset.originListId;
   els.form.reset();
   els.detailFields.hidden = false;
   els.detailToggle.hidden = false;

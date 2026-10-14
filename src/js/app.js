@@ -1,6 +1,7 @@
 let tasks = [];
 let lists = [];
 let activeListId = INBOX_LIST_ID;
+let todayDefaultListId = INBOX_LIST_ID;
 let selectedTaskIds = new Set();
 let selectedListIds = new Set();
 let completionAudioContext;
@@ -20,13 +21,13 @@ function activeList() {
 function visibleTasks() {
   if (activeListId === TODAY_LIST_ID) {
     const today = localDateValue();
-    return tasks.filter(task => task.dueDate === today);
+    return tasks.filter(task => task.dueDate === today).sort(compareTodayTasks);
   }
   return tasks.filter(task => (task.listId || INBOX_LIST_ID) === activeListId);
 }
 
 function renderCurrentTasks() {
-  renderTasks(visibleTasks(), selectedTaskIds);
+  renderTasks(visibleTasks(), selectedTaskIds, lists);
   updateMainMenuTaskCounts(tasks);
   renderSelectedListOptions(lists, activeListId);
 }
@@ -154,7 +155,12 @@ async function loadLists() {
 
 async function initializeApp() {
   await loadLists();
+  todayDefaultListId = await settingsDb.todayListId() || INBOX_LIST_ID;
   await loadAndNormalizeTaskOrder();
+}
+
+function validTodayDefaultListId() {
+  return lists.some(list => list.id === todayDefaultListId) ? todayDefaultListId : INBOX_LIST_ID;
 }
 
 function refreshDateDependentUI() {
@@ -571,6 +577,12 @@ async function addTask() {
   const shifted = tasks.filter(item => taskOrderScope(item) === scope).map(item => ({ ...item, position: item.position + 1 }));
   await taskDb.putMany([task, ...shifted]);
   await refresh();
+  if (els.editor.dataset.originListId === TODAY_LIST_ID) {
+    todayDefaultListId = task.listId;
+    try { await settingsDb.setTodayListId(task.listId); } catch (_error) {
+      // The task is already saved; keep the chosen default for this session.
+    }
+  }
   return true;
 }
 
@@ -669,7 +681,10 @@ async function completeTask(task, changes = {}, toggle) {
   });
 }
 
-els.add.addEventListener("click", () => openNewTaskEditor(activeListId === TODAY_LIST_ID ? INBOX_LIST_ID : activeListId));
+els.add.addEventListener("click", () => openNewTaskEditor(
+  activeListId === TODAY_LIST_ID ? validTodayDefaultListId() : activeListId,
+  activeListId
+));
 els.mainMenuOpen.addEventListener("click", () => {
   if (selectedTaskIds.size) clearTaskSelection();
   openMainMenu();
@@ -739,7 +754,7 @@ enableHorizontalSwipe(els.listSwipeZone, {
     openMainMenu();
   }
 });
-enableHorizontalSwipe(els.mainMenuSwipeZone, {
+enableHorizontalSwipe(els.mainMenuLists, {
   direction: "left",
   onSwipe: () => {
     if (selectedListIds.size) clearListSelection();
@@ -921,7 +936,7 @@ document.addEventListener("pointerdown", event => {
 });
 els.form.addEventListener("keydown", event => {
   if (event.key === "Escape") { event.preventDefault(); saveAndLeaveTaskEditor({ allowEmptyNew: true }); return; }
-  if (event.key === "Enter" && !event.shiftKey && event.target.matches("#task-title") && matchMedia("(min-width: 760px)").matches) {
+  if (event.key === "Enter" && !event.shiftKey && event.target.matches("#task-title")) {
     event.preventDefault();
     saveAndLeaveTaskEditor();
   }

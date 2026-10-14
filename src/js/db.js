@@ -4,6 +4,7 @@ const STORE_NAMES = ["lists", "sections", "projects", "tasks", "settings"];
 const INBOX_LIST_ID = "system-list-inbox";
 const TODAY_LIST_ID = "system-list-today";
 const APPEARANCE_SETTINGS_ID = "appearance";
+const TASK_DEFAULTS_SETTINGS_ID = "task-defaults";
 
 function ensureIndex(store, name, keyPath, options = {}) {
   if (!store.indexNames.contains(name)) store.createIndex(name, keyPath, options);
@@ -188,6 +189,21 @@ const settingsDb = {
       id: APPEARANCE_SETTINGS_ID,
       entityVersion: 1,
       theme: theme === "dark" ? "dark" : "light",
+      createdAt: current?.createdAt || now,
+      updatedAt: now
+    });
+  },
+  todayListId: async () => {
+    const settings = await appDb.get("settings", TASK_DEFAULTS_SETTINGS_ID);
+    return typeof settings?.todayListId === "string" ? settings.todayListId : null;
+  },
+  setTodayListId: async listId => {
+    const current = await appDb.get("settings", TASK_DEFAULTS_SETTINGS_ID);
+    const now = new Date().toISOString();
+    await appDb.put("settings", {
+      id: TASK_DEFAULTS_SETTINGS_ID,
+      entityVersion: 1,
+      todayListId: typeof listId === "string" ? listId : INBOX_LIST_ID,
       createdAt: current?.createdAt || now,
       updatedAt: now
     });

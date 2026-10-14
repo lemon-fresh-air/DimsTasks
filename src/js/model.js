@@ -51,6 +51,9 @@ function compareTasks(a, b) {
   const positionB = Number.isFinite(b.position) ? b.position : Number.MAX_SAFE_INTEGER;
   return positionA - positionB || String(b.createdAt || "").localeCompare(String(a.createdAt || "")) || String(a.id).localeCompare(String(b.id));
 }
+function compareTodayTasks(a, b) {
+  return String(b.createdAt || "").localeCompare(String(a.createdAt || "")) || String(a.id).localeCompare(String(b.id));
+}
 function normalizeTaskOrder(records) {
   const groups = new Map();
   for (const task of records) {
