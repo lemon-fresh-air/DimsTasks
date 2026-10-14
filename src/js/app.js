@@ -8,6 +8,8 @@ let editingSelectedTaskDates = false;
 let currentLocalDate = localDateValue();
 let currentLocalMinute = new Date().toISOString().slice(0, 16);
 let dateChangeTimer;
+let listEditorCloseTimer;
+let listEditorOpenFrame;
 const todayList = { id: TODAY_LIST_ID, title: "Сьогодні", kind: "today" };
 
 function activeList() {
@@ -225,6 +227,98 @@ async function addList(title, { fromMainMenu = true } = {}) {
   } catch (_error) {
     toast("Не вдалося додати список");
     return null;
+  }
+}
+
+function showListEditorError(message = "") {
+  els.listEditorError.textContent = message;
+  els.listEditorError.hidden = !message;
+}
+
+function openListEditor() {
+  const list = activeList();
+  if (list?.kind !== "regular") return;
+  clearTimeout(listEditorCloseTimer);
+  cancelAnimationFrame(listEditorOpenFrame);
+  els.listEditorName.value = displayListTitle(list);
+  els.listDeleteOpen.hidden = false;
+  els.listDeleteConfirm.hidden = true;
+  showListEditorError();
+  els.listEditor.hidden = false;
+  els.listEditor.classList.remove("is-open");
+  els.listEditorOpen.setAttribute("aria-expanded", "true");
+  document.body.classList.add("list-editor-open");
+  listEditorOpenFrame = requestAnimationFrame(() => {
+    listEditorOpenFrame = requestAnimationFrame(() => {
+      els.listEditor.classList.add("is-open");
+      els.listEditorName.focus({ preventScroll: true });
+      els.listEditorName.select();
+    });
+  });
+  history.pushState({ listEditor: true }, "");
+}
+
+function closeListEditor({ fromHistory = false } = {}) {
+  if (els.listEditor.hidden) return;
+  cancelAnimationFrame(listEditorOpenFrame);
+  els.listEditor.classList.remove("is-open");
+  els.listEditorOpen.setAttribute("aria-expanded", "false");
+  document.body.classList.remove("list-editor-open");
+  listEditorCloseTimer = setTimeout(() => {
+    els.listEditor.hidden = true;
+    if (!els.listEditorOpen.hidden) els.listEditorOpen.focus({ preventScroll: true });
+  }, matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 240);
+  if (!fromHistory && history.state?.listEditor) history.back();
+}
+
+async function saveActiveListName(event) {
+  event.preventDefault();
+  const list = activeList();
+  if (list?.kind !== "regular") return;
+  const title = els.listEditorName.value.trim();
+  if (!title) {
+    showListEditorError("Введіть назву списку");
+    els.listEditorName.focus();
+    return;
+  }
+  if (lists.some(item => item.id !== list.id && displayListTitle(item).localeCompare(title, "uk", { sensitivity: "accent" }) === 0)) {
+    showListEditorError("Список із такою назвою вже існує");
+    els.listEditorName.focus();
+    return;
+  }
+  const updated = { ...list, title, updatedAt: new Date().toISOString() };
+  try {
+    await listDb.put(updated);
+    lists = lists.map(item => item.id === updated.id ? updated : item).sort(compareLists);
+    renderListNavigation();
+    renderCurrentTasks();
+    closeListEditor();
+    toast("Назву списку змінено");
+  } catch (_error) {
+    showListEditorError("Не вдалося зберегти назву. Спробуйте ще раз.");
+  }
+}
+
+async function deleteActiveList() {
+  const list = activeList();
+  if (list?.kind !== "regular") return;
+  const now = new Date().toISOString();
+  els.listDeleteConfirmButton.disabled = true;
+  try {
+    await listDb.deleteAndMoveTasksToInbox(list.id, now);
+    tasks = tasks.map(task => task.listId === list.id ? { ...task, listId: INBOX_LIST_ID, sectionId: null, updatedAt: now } : task);
+    lists = lists.filter(item => item.id !== list.id);
+    activeListId = INBOX_LIST_ID;
+    selectedTaskIds = new Set();
+    closeListEditor();
+    renderListNavigation();
+    renderCurrentTasks();
+    window.scrollTo(0, 0);
+    toast("Список видалено, задачі перенесено до «Нові»");
+  } catch (_error) {
+    showListEditorError("Не вдалося видалити список. Спробуйте ще раз.");
+  } finally {
+    els.listDeleteConfirmButton.disabled = false;
   }
 }
 
@@ -612,7 +706,26 @@ els.newListTitle.addEventListener("keydown", event => {
 });
 els.settingsOpen.addEventListener("click", openSettings);
 els.settingsClose.addEventListener("click", () => closeSettings());
+els.listEditorOpen.addEventListener("click", openListEditor);
+els.listEditorClose.addEventListener("click", () => closeListEditor());
+els.listEditorForm.addEventListener("submit", saveActiveListName);
+els.listEditorName.addEventListener("input", () => showListEditorError());
+els.listDeleteOpen.addEventListener("click", () => {
+  els.listDeleteOpen.hidden = true;
+  els.listDeleteConfirm.hidden = false;
+  els.listDeleteCancel.focus();
+});
+els.listDeleteCancel.addEventListener("click", () => {
+  els.listDeleteConfirm.hidden = true;
+  els.listDeleteOpen.hidden = false;
+  els.listDeleteOpen.focus();
+});
+els.listDeleteConfirmButton.addEventListener("click", deleteActiveList);
 window.addEventListener("popstate", () => {
+  if (!els.listEditor.hidden) {
+    closeListEditor({ fromHistory: true });
+    return;
+  }
   if (!els.settingsScreen.hidden) {
     closeSettings({ fromHistory: true });
     return;
@@ -672,6 +785,17 @@ els.selectedListOptions.addEventListener("keydown", event => {
 });
 els.deleteSelected.addEventListener("click", deleteSelectedTasks);
 document.addEventListener("keydown", event => {
+  if (event.key === "Escape" && !els.listEditor.hidden) {
+    event.preventDefault();
+    if (!els.listDeleteConfirm.hidden) {
+      els.listDeleteConfirm.hidden = true;
+      els.listDeleteOpen.hidden = false;
+      els.listDeleteOpen.focus();
+      return;
+    }
+    closeListEditor();
+    return;
+  }
   if (event.key === "Escape" && !els.settingsScreen.hidden) {
     event.preventDefault();
     closeSettings();

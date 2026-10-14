@@ -59,6 +59,16 @@ const els = {
   settingsOpen: document.querySelector("#settings-open"),
   settingsScreen: document.querySelector("#settings-screen"),
   settingsClose: document.querySelector("#settings-close"),
+  listEditorOpen: document.querySelector("#list-editor-open"),
+  listEditor: document.querySelector("#list-editor"),
+  listEditorClose: document.querySelector("#list-editor-close"),
+  listEditorForm: document.querySelector("#list-editor-form"),
+  listEditorName: document.querySelector("#list-editor-name"),
+  listEditorError: document.querySelector("#list-editor-error"),
+  listDeleteOpen: document.querySelector("#list-delete-open"),
+  listDeleteConfirm: document.querySelector("#list-delete-confirm"),
+  listDeleteCancel: document.querySelector("#list-delete-cancel"),
+  listDeleteConfirmButton: document.querySelector("#list-delete-confirm-button"),
   themeToggle: document.querySelector("#theme-toggle"),
   themeLabel: document.querySelector("#theme-label"),
   listSwipeZone: document.querySelector("#list-swipe-zone"),
@@ -220,6 +230,7 @@ function setActiveListUI(list) {
   els.bottomListLabel.textContent = title;
   els.editorListLabel.textContent = title;
   els.composerListLabel.textContent = title;
+  els.listEditorOpen.hidden = list.kind !== "regular";
 }
 
 function createListDropdownOption(list) {

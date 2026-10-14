@@ -154,6 +154,25 @@ const listDb = {
   put: list => appDb.put("lists", list),
   putMany: lists => transact("lists", "readwrite", (_tx, stores) => {
     for (const list of lists) stores.lists.put(list);
+  }),
+  deleteAndMoveTasksToInbox: (listId, updatedAt) => transact(["lists", "sections", "tasks"], "readwrite", (_tx, stores) => {
+    const taskRequest = stores.tasks.index("by-list").openCursor(IDBKeyRange.only(listId));
+    taskRequest.onsuccess = () => {
+      const cursor = taskRequest.result;
+      if (!cursor) {
+        stores.lists.delete(listId);
+        return;
+      }
+      cursor.update({ ...cursor.value, listId: INBOX_LIST_ID, sectionId: null, updatedAt });
+      cursor.continue();
+    };
+    const sectionRequest = stores.sections.index("by-list").openKeyCursor(IDBKeyRange.only(listId));
+    sectionRequest.onsuccess = () => {
+      const cursor = sectionRequest.result;
+      if (!cursor) return;
+      stores.sections.delete(cursor.primaryKey);
+      cursor.continue();
+    };
   })
 };
 

@@ -15,7 +15,10 @@
     </div>
   </header>
   <main><section class="task-section" aria-labelledby="inbox-title">
-    <h2 id="inbox-title">Нові</h2><ul id="task-list" aria-live="polite"></ul>
+    <div class="list-heading-row">
+      <h2 id="inbox-title">Нові</h2>
+      <button id="list-editor-open" class="list-editor-open" type="button" aria-label="Редагувати список" aria-controls="list-editor" aria-expanded="false" hidden><span class="edit-list-icon" aria-hidden="true"></span></button>
+    </div><ul id="task-list" aria-live="polite"></ul>
     <div id="empty-state" class="empty"><span class="empty-icon" aria-hidden="true">✓</span><p>У цьому списку поки немає задач</p><small>Натисніть кнопку внизу, щоб додати першу.</small></div>
   </section><div id="list-swipe-zone" class="list-swipe-zone" aria-hidden="true"></div></main>
   <button id="add-task-btn" class="fab" aria-label="Додати задачу"><span aria-hidden="true">＋</span></button>
@@ -63,6 +66,27 @@
       <button class="settings-row" type="button" disabled><span class="menu-placeholder-icon" aria-hidden="true"></span><span>Плейсхолдер 2</span></button>
       <button class="settings-row" type="button" disabled><span class="menu-placeholder-icon" aria-hidden="true"></span><span>Плейсхолдер 3</span></button>
       <button class="settings-row" type="button" disabled><span class="menu-placeholder-icon" aria-hidden="true"></span><span>Плейсхолдер 4</span></button>
+    </div>
+  </div>
+</section>
+<section id="list-editor" class="list-editor" aria-labelledby="list-editor-title" hidden>
+  <div class="list-editor-panel">
+    <header class="list-editor-header">
+      <button id="list-editor-close" class="list-editor-close" type="button" aria-label="Скасувати й повернутися до списку"><span aria-hidden="true"></span></button>
+      <h2 id="list-editor-title">Редагувати список</h2>
+    </header>
+    <form id="list-editor-form" class="list-editor-form">
+      <label for="list-editor-name">Назва</label>
+      <input id="list-editor-name" name="name" type="text" maxlength="80" autocomplete="off" required>
+      <p id="list-editor-error" class="form-error" role="alert" hidden></p>
+      <button id="list-editor-save" class="primary-action" type="submit">Зберегти</button>
+    </form>
+    <div class="list-danger-zone">
+      <button id="list-delete-open" class="danger-action" type="button"><span class="trash-icon" aria-hidden="true"></span><span>Видалити список</span></button>
+      <div id="list-delete-confirm" class="delete-confirm" hidden>
+        <p><strong>Видалити цей список?</strong><span>Його задачі буде перенесено до «Нові».</span></p>
+        <div><button id="list-delete-cancel" type="button">Скасувати</button><button id="list-delete-confirm-button" type="button">Видалити</button></div>
+      </div>
     </div>
   </div>
 </section>
