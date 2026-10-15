@@ -179,6 +179,23 @@ const listDb = {
   })
 };
 
+const projectDb = {
+  all: () => appDb.all("projects"),
+  put: project => appDb.put("projects", project),
+  deleteAndDetachTasks: (projectId, updatedAt) => transact(["projects", "tasks"], "readwrite", (_tx, stores) => {
+    const request = stores.tasks.index("by-project").openCursor(IDBKeyRange.only(projectId));
+    request.onsuccess = () => {
+      const cursor = request.result;
+      if (!cursor) {
+        stores.projects.delete(projectId);
+        return;
+      }
+      cursor.update({ ...cursor.value, projectId: null, projectPosition: null, updatedAt });
+      cursor.continue();
+    };
+  })
+};
+
 const settingsDb = {
   theme: async () => {
     const settings = await appDb.get("settings", APPEARANCE_SETTINGS_ID);

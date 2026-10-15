@@ -7,6 +7,7 @@ let selectedTaskIds = new Set();
 let selectedListIds = new Set();
 let completionAudioContext;
 let editingSelectedTaskDates = false;
+let editingProjectDate = false;
 let currentLocalDate = localDateValue();
 let currentLocalMinute = localTimeValue();
 let overdueProcessing;
@@ -26,13 +27,14 @@ function visibleTasks() {
     const time = localTimeValue();
     return tasks.filter(task => task.dueDate === today && !isTaskOverdue(task, today, time)).sort(compareTodayTasks);
   }
-  return tasks.filter(task => (task.listId || INBOX_LIST_ID) === activeListId);
+  return visibleListTasks(tasks, activeListId).sort(compareTasks);
 }
 
 function renderCurrentTasks() {
   renderTasks(visibleTasks(), selectedTaskIds, lists);
   updateMainMenuTaskCounts(tasks);
   renderSelectedListOptions(lists, activeListId);
+  renderProjects();
 }
 
 function renderListNavigation() {
@@ -135,6 +137,7 @@ async function refresh({ animateTaskReflow: shouldAnimateTaskReflow = false } = 
   tasks = (await taskDb.all()).sort(compareTasks);
   selectedTaskIds = new Set([...selectedTaskIds].filter(id => tasks.some(task => task.id === id)));
   renderCurrentTasks();
+  renderProjects();
   if (previousPositions) animateTaskReflow(previousPositions);
 }
 
@@ -162,6 +165,7 @@ async function initializeApp() {
   returnOverdueToInbox = await settingsDb.returnOverdueToInbox();
   els.returnOverdueToggle.checked = returnOverdueToInbox;
   await loadAndNormalizeTaskOrder();
+  await loadProjects();
   await processOverdueTasks();
 }
 
@@ -229,6 +233,7 @@ function checkForDateChange() {
 }
 
 function openList(listId) {
+  closeProjects();
   if (listId !== TODAY_LIST_ID && !lists.some(list => list.id === listId)) return;
   activeListId = listId;
   selectedTaskIds = new Set();
@@ -448,6 +453,7 @@ function openSelectedTaskDatePicker() {
   const firstTime = selected[0].dueTime || "";
   const sharedTime = sharedDate && selected.every(task => (task.dueTime || "") === firstTime) ? firstTime : "";
   editingSelectedTaskDates = true;
+  editingProjectDate = false;
   openDatePicker(sharedDate, sharedTime);
 }
 
@@ -490,7 +496,7 @@ async function animateSelectedTasksToList(selectedIds, previousPositions) {
 }
 
 async function moveSelectedTasksToList(listId) {
-  if (listId === activeListId || !lists.some(list => list.id === listId)) {
+  if (!lists.some(list => list.id === listId)) {
     closeSelectedListDropdown({ returnFocus: true });
     return;
   }
@@ -713,7 +719,8 @@ els.add.addEventListener("click", () => openNewTaskEditor(
 ));
 els.navToday.addEventListener("click", () => openList(TODAY_LIST_ID));
 els.navInbox.addEventListener("click", () => openList(INBOX_LIST_ID));
-[els.navUpcoming, els.navProjects].forEach(button => button.addEventListener("click", () => {
+els.navProjects.addEventListener("click", openProjects);
+[els.navUpcoming].forEach(button => button.addEventListener("click", () => {
   toast(`Розділ «${button.querySelector("span:last-child").textContent}» з’явиться згодом`);
 }));
 els.mainMenuOpen.addEventListener("click", () => {
@@ -873,18 +880,19 @@ document.addEventListener("keydown", event => {
   event.preventDefault();
   clearTaskSelection();
 });
-els.datePickerOpen.addEventListener("click", () => { editingSelectedTaskDates = false; openDatePicker(); });
+els.datePickerOpen.addEventListener("click", () => { editingSelectedTaskDates = false; editingProjectDate = false; openDatePicker(); });
 els.datePickerClose.addEventListener("click", () => {
   if (matchMedia("(max-width: 759px)").matches) {
     savePendingDateSelection();
     return;
   }
   editingSelectedTaskDates = false;
+  editingProjectDate = false;
   closeDatePicker();
 });
-els.datePickerBackdrop.addEventListener("click", event => { if (event.target === els.datePickerBackdrop) { editingSelectedTaskDates = false; closeDatePicker(); } });
+els.datePickerBackdrop.addEventListener("click", event => { if (event.target === els.datePickerBackdrop) { editingSelectedTaskDates = false; editingProjectDate = false; closeDatePicker(); } });
 els.datePicker.addEventListener("keydown", async event => {
-  if (event.key === "Escape") { event.preventDefault(); editingSelectedTaskDates = false; closeDatePicker(); }
+  if (event.key === "Escape") { event.preventDefault(); editingSelectedTaskDates = false; editingProjectDate = false; closeDatePicker(); }
   if (event.key === "Enter" && matchMedia("(min-width: 760px)").matches) {
     event.preventDefault();
     const taskEditorWasOpen = !els.editor.hidden;
@@ -892,6 +900,13 @@ els.datePicker.addEventListener("keydown", async event => {
     if (dateSaved && taskEditorWasOpen) await saveAndLeaveTaskEditor();
   }
 });
+document.addEventListener("keydown", async event => {
+  if (event.key !== "Enter" || els.datePickerBackdrop.hidden || !matchMedia("(min-width: 760px)").matches) return;
+  if (!els.timeDialogBackdrop.hidden || event.target.closest("#time-dialog")) return;
+  event.preventDefault();
+  event.stopPropagation();
+  await savePendingDateSelection();
+}, true);
 document.querySelectorAll("[data-date-shortcut]").forEach(button => button.addEventListener("click", () => {
   const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate() + 1);
   const value = button.dataset.dateShortcut === "today" ? localDateValue()
@@ -906,6 +921,17 @@ els.calendarGrid.addEventListener("click", event => {
 els.calendarPrevious.addEventListener("click", () => { visibleCalendarMonth.setMonth(visibleCalendarMonth.getMonth() - 1); renderCalendar(); });
 els.calendarNext.addEventListener("click", () => { visibleCalendarMonth.setMonth(visibleCalendarMonth.getMonth() + 1); renderCalendar(); });
 async function savePendingDateSelection() {
+  if (editingProjectDate) {
+    editingProjectDate = false;
+    projectEls.dueDate.value = pendingDateValue || "";
+    projectEls.dueTime.value = pendingDateValue ? pendingTimeValue : "";
+    projectEls.dateLabel.textContent = readableDueDate(pendingDateValue, pendingTimeValue);
+    applyDateTone(projectEls.datePickerOpen, pendingDateValue, pendingTimeValue);
+    renderProjectCountdown();
+    markProjectDirty();
+    closeDatePicker();
+    return true;
+  }
   if (editingSelectedTaskDates) {
     editingSelectedTaskDates = false;
     closeDatePicker();

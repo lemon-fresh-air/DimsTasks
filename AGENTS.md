@@ -2,52 +2,72 @@
 
 Local-first PWA task manager. All user-facing text is in Ukrainian. Mobile-first. No dependencies, backend, or accounts. Data lives in the browser's IndexedDB.
 
+## Runtimes (Codex, Windows)
+
+- Root: `C:\Users\38066\.cache\codex-runtimes\codex-primary-runtime\dependencies`
+- Python: `<root>\python\python.exe`. Node: `<root>\node\bin\node.exe`. Playwright `NODE_PATH`: `<root>\node\node_modules`.
+- Use these paths directly. The WindowsApps `py` and `python` launchers fail in Codex, so do not try them.
+- Outside Codex (the user's own terminal): `py scripts/build.py`.
+
 ## Build
 
-* Windows: `py scripts/build.py`, then `python scripts/build.py` → `dist/`. Inside Codex the `WindowsApps` launchers can fail; then use `C:\Users\38066\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe`. Do not retry a failing launcher more than once.
-* The script runs from any directory. Run it after every completed change.
-* Edit only `src/`, `static/`, `tests/`, and `docs/`. `dist/` is generated: never edit or commit it.
-* JS order is set in `scripts/build.py`: db → model → import-export → ui → app. Add new JS files to that list. CSS order: tokens → base → app.
-* `dist/` has only `index.html` (CSS and JS inlined), `service-worker.js`, `manifest.webmanifest`, `icons/`. There is no `app.js`, so never run `node --check` on `dist/`.
-* CI builds with `python scripts/build.py` on Linux. Leave it unchanged.
+- `<python> scripts/build.py` → `dist/`. The script runs from any directory. Run it after every completed change.
+- Edit only `src/`, `static/`, `tests/`, and `docs/`. `dist/` is generated: never edit or commit it.
+- JS order is set in `scripts/build.py` (source of truth): db → model → import-export → ui → projects → app. Add new JS files to that list. CSS order: tokens → base → app.
+- `dist/` has only `index.html` (CSS and JS inlined), `service-worker.js`, `manifest.webmanifest`, `icons/`. There is no `app.js`, so never run `node --check` on `dist/`.
+- CI builds with `python scripts/build.py` on Linux. Leave it unchanged.
 
 ## Where things are
 
-* `src/js/db.js`: IndexedDB, `DB_VERSION`, upgrade steps
-* `src/js/model.js`: entity factories, computed rules
-* `src/js/import-export.js`: backup format
-* `src/js/ui.js`, `src/js/app.js`: rendering, events, startup
-* `src/html/app.html`: markup
-* `src/css/`: styles and tokens
-* `static/`: manifest, service worker, icons (copied to `dist/`)
-* `docs/data-model.md`: data model and extension rules
-* `docs/product.md`: user, primary action, first-screen priorities, visual direction
+- `src/js/db.js`: IndexedDB, `DB_VERSION`, upgrade steps
+- `src/js/model.js`: entity factories, computed rules
+- `src/js/import-export.js`: backup format
+- `src/js/ui.js`, `src/js/projects.js`, `src/js/app.js`: rendering, project flows, events, startup
+- `src/html/app.html`: markup
+- `src/css/`: styles and tokens
+- `static/`: manifest, service worker, icons (copied to `dist/`)
+- `docs/data-model.md`: data model and extension rules
+- `docs/product.md`: user, primary action, first-screen priorities, visual direction
+- `tests/*.test.js`: model tests (`node --test`). `tests/e2e-*.js`: browser scenarios, run directly with Node.
+
+## Reading files
+
+- Read each file once. Do not re-read a file already read in this session.
+- Files over 300 lines (`app.js`, `ui.js`, `app.css`): locate with `rg -n` first, then read one line range with line numbers.
+- One large file per command. Never `Get-Content -Raw` on several large files in one command: the output is truncated and forces a second read.
+- Read `css/`, `tests/`, and `scripts/build.py` only when the task changes them.
+- Read `docs/data-model.md` before any schema change.
+- Skills: load a skill when its step starts. `pwa-debug` and its regression matrix are needed only for Level 3.
 
 ## Verifying changes
 
-Use the lightest level that covers the change.
+Use the lightest level that covers the change. Run verification once, at the end of the task. After later logic edits, re-run only the Level 2 tests.
 
-**Level 1: visual and small changes**
+**Level 1: UI and small changes**
 
-1. Build.
-2. `node --check src/js/<file>.js` for each changed JS file (Codex runtime Node). The build only concatenates and does not catch syntax errors.
-3. Tell the user to open `dist\index.html` and list the exact steps to click. No server, browser, or screenshots.
+2. Build.
+4. `node --check src/js/<file>.js` for each changed JS file. The build only concatenates and does not catch syntax errors.
+6. Give the user an exact click checklist for `dist\index.html`. No server, browser, or screenshots.
 
 **Level 2: logic changes (`model.js`, sorting, filters, next-step rules)**
 
-`model.js` is DOM-free. Tests live in `tests/*.test.js`, run with `node --test "tests/*.test.js"` (Codex runtime Node; the bare `tests/` form fails on Node 24 for Windows). Load the file via `vm`; pass `crypto` and `INBOX_LIST_ID` (value from `db.js`) into the context. Priority coverage: `reorderLists`, `reorderTaskBlock`, `normalizeTaskOrder`, `compareTodayTasks`, `currentProjectTask`. Keep `document`, `window`, and IndexedDB out of `model.js`; put such code in `ui.js` or `db.js`.
+`model.js` is DOM-free. Tests live in `tests/*.test.js` and run with `node --test "tests/*.test.js"` (the bare `tests/` form fails on Node 24 for Windows). Load the file via `vm`; pass `crypto` and `INBOX_LIST_ID` (value from `db.js`) into the context. Add or update a test for every changed rule. Priority coverage: `reorderLists`, `reorderTaskBlock`, `normalizeTaskOrder`, `compareTodayTasks`, `currentProjectTask`. Keep `document`, `window`, and IndexedDB out of `model.js`; put such code in `ui.js` or `db.js`.
 
-**Level 3: data, storage, import/export, migrations, or when the user asks**
+**Level 3: browser test**
 
-1. Playwright headless through the Codex runtime Node (`NODE_PATH` is the `node_modules` next to it), Chrome at `C:/Program Files/Google/Chrome/Application/chrome.exe`, viewport 390×844.
-2. The Playwright script itself spawns the server (`py -m http.server 8000 --bind 127.0.0.1 --directory dist`) and kills it at the end, so both share one network context. URL `http://127.0.0.1:8000`.
-3. Launch Chrome with `--no-proxy-server` and set `NO_PROXY=127.0.0.1,localhost,::1` (also lowercase).
-4. Cover the main action, cancel, save, persistence after reload, and one neighbouring feature. Collect console errors.
-5. Service worker and offline behavior need localhost. `file://` is acceptable for plain markup, and the report must say it was used.
+Run it when the user asks, when a new screen or user flow is added, or when schema, `DB_VERSION`, a migration that rewrites records, or import/export changed. Skip it for visual tweaks and text changes (Level 1).
 
-**On failure to reach localhost** (timeout, `ERR_CONNECTION_*`): do not blame the environment right away. Run `curl.exe -sI http://127.0.0.1:8000` and `Get-ChildItem Env: | Select-String proxy`, then retry once with the proxy bypass. If it still fails, fall back to `file://` or Level 2, and give the user a manual click checklist.
+Use only the method below, which is known to work in this environment. Do not try alternatives (localhost, a server, other browsers, Browser Use, Computer Use). If the method fails, apply the 3-fix limit in step 5.
 
-**Report:** state which level ran, what was checked, and the result. If something was skipped, name the exact diagnostic output that justifies it.
+2. Open `dist/index.html` through `file://`. Never use localhost. In this environment Chrome gets `ERR_CONNECTION_TIMED_OUT` even with the server running and the proxy bypassed (confirmed in two projects). Do not start a server, and skip curl and proxy diagnostics.
+4. Playwright headless through the Codex Node, Chrome at `C:/Program Files/Google/Chrome/Application/chrome.exe`, viewport 390×844, a fresh temporary profile on every run so real data stays untouched.
+6. Reuse `tests/e2e-helper.js` (launch, open the `file://` page, collect console errors, clean up; no server code). If it does not exist yet, extract it once from `tests/e2e-projects.js` and make `file://` the default there.
+8. One scenario per feature: main action, cancel, save, persistence after reload, one neighbouring feature. Use explicit waits on elements, no fixed sleeps. Read results from IndexedDB and visible text.
+10. Fix the test script at most 3 times. If it still fails, stop and give the user a manual checklist together with the exact failure message.
+
+**Not testable here:** service worker, offline, install prompt. When a change touches them, list them in the report as "not verified, manual check". Never call them verified.
+
+**Report:** the level that ran, what was checked, the result, and what was skipped with the exact reason.
 
 Never use Browser Use or Computer Use for verification. They load large instructions and cannot reach localhost in this setup.
 
@@ -55,17 +75,13 @@ Never use Browser Use or Computer Use for verification. They load large instruct
 
 Files in `src/` use CRLF. Do not convert or investigate line endings. For `git diff --check` add `-c core.whitespace=cr-at-eol`.
 
-## Reading files
-
-Read each file once. Use targeted ranges (`rg -n`, line ranges) for large files. Do not re-read a file already read in this session.
-
 ## Invariants
 
-* No npm, frameworks, CDN, backend, or analytics without explicit approval.
-* Read `docs/data-model.md` before any schema change. A migration never clears or recreates the database.
-* No new browser permissions (notifications, geolocation, camera) without agreement.
-* Paths stay relative and compatible with a GitHub Pages subpath.
-* Never touch the user's real data while testing.
+- No npm, frameworks, CDN, backend, or analytics without explicit approval.
+- A migration never clears or recreates the database.
+- No new browser permissions (notifications, geolocation, camera) without agreement.
+- Paths stay relative and compatible with a GitHub Pages subpath.
+- Never touch the user's real data while testing.
 
 ## Deploy
 

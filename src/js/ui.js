@@ -178,10 +178,11 @@ function taskCountsByList(tasks) {
   let todayCount = 0;
   const today = localDateValue();
   const localTime = `${String(new Date().getHours()).padStart(2, "0")}:${String(new Date().getMinutes()).padStart(2, "0")}`;
+  const currentProjectTaskIds = new Set(tasks.filter(task => task.projectId).map(task => currentProjectTask(tasks, task.projectId)?.id).filter(Boolean));
   for (const task of tasks) {
     if (isTaskCompleted(task)) continue;
     const listId = task.listId || INBOX_LIST_ID;
-    counts.set(listId, (counts.get(listId) || 0) + 1);
+    if (!task.projectId || currentProjectTaskIds.has(task.id)) counts.set(listId, (counts.get(listId) || 0) + 1);
     if (task.dueDate === today && !isTaskOverdue(task, today, localTime)) todayCount += 1;
   }
   counts.set(TODAY_LIST_ID, todayCount);
@@ -911,21 +912,21 @@ function openTaskDetails(task) {
   });
 }
 
-function enableTaskGestures({ onDelete, isSelectionMode, isSelected, onLongPress, onSelectOnly, getSelectedIds, onReorder }) {
+function enableTaskGestures({ container = els.list, onDelete, isSelectionMode, isSelected, onLongPress, onSelectOnly, getSelectedIds, onReorder, requireSelectionForDrag = false }) {
   let gesture = null;
   const maxReveal = 112;
   const deleteThreshold = 72;
   const settleDuration = 260;
   const deleteDuration = 300;
 
-  els.list.addEventListener("pointerdown", event => {
+  container.addEventListener("pointerdown", event => {
     const card = event.target.closest(".task-card");
     if (!card || event.button > 0) return;
     const row = card.closest(".swipe-row");
     gesture = { row, card, id: row.dataset.id, pointerId: event.pointerId, pointerType: event.pointerType, startX: event.clientX, startY: event.clientY, lastY: event.clientY, dx: 0, horizontal: false, scrolling: false, longPress: false, dragging: false };
     card.setPointerCapture(event.pointerId);
     row.classList.remove("settling");
-    if (event.pointerType === "mouse") {
+    if (event.pointerType === "mouse" && (!requireSelectionForDrag || isSelectionMode())) {
       gesture.longPress = true;
     }
     gesture.longPressTimer = setTimeout(() => {
@@ -933,19 +934,19 @@ function enableTaskGestures({ onDelete, isSelectionMode, isSelected, onLongPress
       gesture.longPress = true;
       row.dataset.longPressed = "true";
       onLongPress(row.dataset.id);
-      gesture.row = els.list.querySelector(`[data-id="${CSS.escape(gesture.id)}"]`);
+      gesture.row = container.querySelector(`[data-id="${CSS.escape(gesture.id)}"]`);
       gesture.card = gesture.row?.querySelector(".task-card");
       gesture.row?.classList.add("lifted");
     }, 450);
   });
 
   function captureRows() {
-    return new Map([...els.list.children].filter(row => row.dataset.id).map(row => [row.dataset.id, row.getBoundingClientRect().top]));
+    return new Map([...container.children].filter(row => row.dataset.id).map(row => [row.dataset.id, row.getBoundingClientRect().top]));
   }
 
   function animateRows(previous) {
     if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-    for (const row of els.list.children) {
+    for (const row of container.children) {
       const top = previous.get(row.dataset.id);
       if (top === undefined) continue;
       const delta = top - row.getBoundingClientRect().top;
@@ -957,11 +958,11 @@ function enableTaskGestures({ onDelete, isSelectionMode, isSelected, onLongPress
     clearTimeout(gesture.longPressTimer);
     if (!isSelected(gesture.id)) {
       onSelectOnly(gesture.id);
-      gesture.row = els.list.querySelector(`[data-id="${CSS.escape(gesture.id)}"]`);
+      gesture.row = container.querySelector(`[data-id="${CSS.escape(gesture.id)}"]`);
       gesture.card = gesture.row?.querySelector(".task-card");
     }
     const selectedIds = getSelectedIds();
-    const rows = [...els.list.children].filter(row => selectedIds.has(row.dataset.id));
+    const rows = [...container.children].filter(row => selectedIds.has(row.dataset.id));
     if (!rows.length) return;
     const sourceRect = gesture.row.getBoundingClientRect();
     const totalHeight = rows.reduce((sum, row) => sum + row.getBoundingClientRect().height, 0);
@@ -986,7 +987,7 @@ function enableTaskGestures({ onDelete, isSelectionMode, isSelected, onLongPress
       offsetX: event.clientX - sourceRect.left, offsetY: event.clientY - sourceRect.top,
       currentX: sourceRect.left, currentY: sourceRect.top, targetX: sourceRect.left, targetY: sourceRect.top
     };
-    els.list.classList.add("dragging");
+    container.classList.add("dragging");
     positionPreview(event.clientX, event.clientY);
     gesture.followFrame = requestAnimationFrame(renderPreview);
     gesture.scrollFrame = requestAnimationFrame(autoScroll);
@@ -1010,12 +1011,12 @@ function enableTaskGestures({ onDelete, isSelectionMode, isSelected, onLongPress
   }
 
   function updateInsertion(clientY) {
-    const candidates = [...els.list.children].filter(row => row.dataset.id && !gesture.selectedIds.has(row.dataset.id));
+    const candidates = [...container.children].filter(row => row.dataset.id && !gesture.selectedIds.has(row.dataset.id));
     const before = candidates.find(row => clientY < row.getBoundingClientRect().top + row.getBoundingClientRect().height / 2) || null;
     const beforeId = before?.dataset.id || null;
     if (beforeId === gesture.lastBeforeId) return;
     const previous = captureRows();
-    if (before) before.before(gesture.placeholder); else els.list.append(gesture.placeholder);
+    if (before) before.before(gesture.placeholder); else container.append(gesture.placeholder);
     gesture.lastBeforeId = beforeId;
     gesture.moved = true;
     animateRows(previous);
@@ -1033,7 +1034,7 @@ function enableTaskGestures({ onDelete, isSelectionMode, isSelected, onLongPress
     gesture.scrollFrame = requestAnimationFrame(autoScroll);
   }
 
-  els.list.addEventListener("pointermove", event => {
+  container.addEventListener("pointermove", event => {
     if (!gesture || gesture.pointerId !== event.pointerId) return;
     const dx = event.clientX - gesture.startX;
     const dy = event.clientY - gesture.startY;
@@ -1084,7 +1085,7 @@ function enableTaskGestures({ onDelete, isSelectionMode, isSelected, onLongPress
       finished.preview.remove();
       finished.placeholder.remove();
       finished.rows.forEach(row => row.classList.remove("drag-source", "lifted"));
-      els.list.classList.remove("dragging");
+      container.classList.remove("dragging");
       if (finished.moved) onReorder({ beforeId: finished.lastBeforeId });
       return;
     }
@@ -1117,7 +1118,7 @@ function enableTaskGestures({ onDelete, isSelectionMode, isSelected, onLongPress
       preview.remove();
       placeholder.remove();
       rows.forEach(item => item.classList.remove("drag-source", "lifted"));
-      els.list.classList.remove("dragging");
+      container.classList.remove("dragging");
       return;
     }
     row.classList.remove("swiping");
@@ -1126,6 +1127,6 @@ function enableTaskGestures({ onDelete, isSelectionMode, isSelected, onLongPress
     setTimeout(() => row.classList.remove("settling"), settleDuration);
   };
 
-  els.list.addEventListener("pointerup", finishGesture);
-  els.list.addEventListener("pointercancel", cancelGesture);
+  container.addEventListener("pointerup", finishGesture);
+  container.addEventListener("pointercancel", cancelGesture);
 }

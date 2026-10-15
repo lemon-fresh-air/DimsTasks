@@ -37,7 +37,22 @@ function createSection(values = {}) {
   return { ...baseRecord(values), ...values, listId: values.listId, title: String(values.title || "").trim(), description: values.description || "", position: Number.isFinite(values.position) ? values.position : 0 };
 }
 function createProject(values = {}) {
-  return { ...baseRecord(values), ...values, title: String(values.title || "").trim(), goal: values.goal || "", description: values.description || "", status: values.status || "active", dueDate: values.dueDate || null, dueTime: values.dueDate && values.dueTime ? values.dueTime : null, completedAt: values.completedAt || null, position: Number.isFinite(values.position) ? values.position : 0 };
+  return { ...baseRecord(values), ...values, title: String(values.title || "").trim(), goal: values.goal || "", description: values.description || "", status: values.status === "completed" ? "completed" : "active", dueDate: values.dueDate || null, dueTime: values.dueDate && values.dueTime ? values.dueTime : null, showCountdown: values.showCountdown === true, completedAt: values.completedAt || null, position: Number.isFinite(values.position) ? values.position : 0 };
+}
+function projectCountdown(dueDate, today) {
+  if (!dueDate || !today) return null;
+  const toUtcDay = value => {
+    const [year, month, day] = value.split("-").map(Number);
+    return Date.UTC(year, month - 1, day);
+  };
+  const days = Math.round((toUtcDay(dueDate) - toUtcDay(today)) / 86400000);
+  if (days === 2) return { text: "Післязавтра", overdue: false };
+  if (days === 1) return { text: "Завтра", overdue: false };
+  if (days === 0) return { text: "Сьогодні", overdue: false };
+  if (days === -1) return { text: "Вчора", overdue: true };
+  if (days === -2) return { text: "Позавчора", overdue: true };
+  if (days < -2) return { text: `Прострочено на ${Math.abs(days)} днів`, overdue: true };
+  return { text: `Лишилося ${days} днів`, overdue: false };
 }
 function createTask(values = {}) {
   return { ...baseRecord(values), ...values, listId: values.listId || INBOX_LIST_ID, sectionId: values.sectionId || null, projectId: values.projectId || null, title: String(values.title || "").trim(), description: values.description || "", status: values.status || "active", completedAt: values.completedAt || null, dueDate: values.dueDate || null, dueTime: values.dueDate && values.dueTime ? values.dueTime : null, position: Number.isFinite(values.position) ? values.position : 0, projectPosition: Number.isFinite(values.projectPosition) ? values.projectPosition : null, returnedToInboxAt: values.returnedToInboxAt || null };
@@ -91,7 +106,13 @@ function normalizeTaskOrder(records) {
   const normalized = [];
   for (const group of groups.values()) {
     group.sort(compareTasks).forEach((task, position) => {
-      normalized.push(task.position === position ? task : { ...task, position });
+      const hasProjectFields = Object.hasOwn(task, "projectId") && Object.hasOwn(task, "projectPosition");
+      normalized.push(task.position === position && hasProjectFields ? task : {
+        ...task,
+        projectId: task.projectId ?? null,
+        projectPosition: Number.isFinite(task.projectPosition) ? task.projectPosition : null,
+        position
+      });
     });
   }
   return normalized;
@@ -111,6 +132,31 @@ function reorderTaskBlock(records, selectedIds, beforeId, scope) {
   return records.map(task => replacements.get(task.id) || task);
 }
 function currentProjectTask(tasks, projectId) {
-  return tasks.filter(task => task.projectId === projectId && !isTaskCompleted(task)).sort((a, b) => (a.projectPosition ?? Number.MAX_SAFE_INTEGER) - (b.projectPosition ?? Number.MAX_SAFE_INTEGER))[0] || null;
+  return tasks.filter(task => task.projectId === projectId && !isTaskCompleted(task)).sort(compareProjectTasks)[0] || null;
+}
+function compareProjectTasks(a, b) {
+  return (a.projectPosition ?? Number.MAX_SAFE_INTEGER) - (b.projectPosition ?? Number.MAX_SAFE_INTEGER)
+    || String(a.createdAt || "").localeCompare(String(b.createdAt || ""))
+    || String(a.id).localeCompare(String(b.id));
+}
+function visibleListTasks(records, listId) {
+  const currentIds = new Set(records.filter(task => task.projectId).map(task => currentProjectTask(records, task.projectId)?.id).filter(Boolean));
+  return records.filter(task => (task.listId || INBOX_LIST_ID) === listId && (!task.projectId || currentIds.has(task.id)));
+}
+function reorderProjectSteps(records, projectId, movedId, beforeId) {
+  return reorderProjectStepBlock(records, projectId, new Set([movedId]), beforeId);
+}
+function reorderProjectStepBlock(records, projectId, selectedIds, beforeId) {
+  const steps = records.filter(task => task.projectId === projectId).sort(compareProjectTasks);
+  const selected = steps.filter(task => selectedIds.has(task.id));
+  if (!selected.length) return records;
+  const ordered = steps.filter(task => !selectedIds.has(task.id));
+  const index = beforeId ? ordered.findIndex(task => task.id === beforeId) : ordered.length;
+  ordered.splice(index < 0 ? ordered.length : index, 0, ...selected);
+  const updatedAt = nowIso();
+  const replacements = new Map(ordered.map((task, projectPosition) => [task.id,
+    task.projectPosition === projectPosition ? task : { ...task, projectPosition, updatedAt }
+  ]));
+  return records.map(task => replacements.get(task.id) || task);
 }
 
