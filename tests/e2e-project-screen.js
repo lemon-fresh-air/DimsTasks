@@ -14,11 +14,12 @@ const { openTestApp } = require("./e2e-helper");
   await page.waitForFunction(() => document.querySelector("#project-screen-title").textContent === "Осінній запуск");
   assert.equal(await page.locator("#project-screen-title").textContent(), "Осінній запуск");
 
-  step("cancel editor");
+  step("save editor with back");
   await page.click("#project-edit-open");
-  await page.fill("#project-title", "Назва, яку скасували");
+  await page.fill("#project-title", "Осінній запуск — оновлено");
   await page.click("#project-edit-close");
-  assert.equal(await page.locator("#project-screen-title").textContent(), "Осінній запуск");
+  await page.waitForFunction(() => document.querySelector("#project-editor").hidden && document.querySelector("#project-screen-title").textContent === "Осінній запуск — оновлено");
+  assert.equal(await page.locator("#project-screen-title").textContent(), "Осінній запуск — оновлено");
 
   step("save editor");
   await page.click("#project-edit-open");
@@ -33,14 +34,41 @@ const { openTestApp } = require("./e2e-helper");
   assert.equal(await page.locator("#project-description-toggle").getAttribute("aria-expanded"), "true");
 
   step("add and expand tasks");
-  for (let index = 1; index <= 5; index += 1) {
+  await page.fill("#project-step-title", "Завдання 1");
+  await page.click("#project-step-form button");
+  await page.evaluate(() => addList("Робота", { fromMainMenu: false }));
+  await page.locator("#project-task-list .task-open").first().click();
+  await page.click("#task-list-trigger");
+  await page.locator("#task-list-options [data-list-id]").filter({ hasText: "Робота" }).click();
+  await page.waitForFunction(() => document.querySelector("#task-list-value").textContent === "Робота");
+  await page.click("#task-editor-back");
+  for (let index = 2; index <= 5; index += 1) {
     await page.fill("#project-step-title", `Завдання ${index}`);
     await page.click("#project-step-form button");
   }
+  await page.waitForFunction(() => tasks.filter(task => task.projectId === activeProjectId).length === 5);
+  assert.equal(await page.evaluate(() => tasks.filter(task => task.projectId === activeProjectId && task.title !== "Завдання 1").every(task => lists.find(list => list.id === task.listId)?.title === "Робота")), true);
+  await page.evaluate(async () => {
+    for (let index = 6; index <= 10; index += 1) await addProjectStep(`Завдання ${index}`);
+  });
   assert.equal(await page.locator("#project-task-list .swipe-row:visible").count(), 4);
   await page.click("#project-tasks-expand");
-  assert.equal(await page.locator("#project-task-list .swipe-row:visible").count(), 5);
+  assert.equal(await page.locator("#project-task-list .swipe-row:visible").count(), 10);
   assert.equal(await page.locator("#project-steps").getAttribute("class"), "project-steps is-expanded");
+  const expandedScroll = await page.evaluate(() => {
+    const card = document.querySelector("#project-task-list .task-card");
+    const list = document.querySelector("#project-task-list");
+    const panel = document.querySelector("#project-steps");
+    const setPointerCapture = card.setPointerCapture;
+    card.setPointerCapture = () => {};
+    card.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, pointerId: 41, pointerType: "touch", clientX: 180, clientY: 650 }));
+    list.dispatchEvent(new PointerEvent("pointermove", { bubbles: true, cancelable: true, pointerId: 41, pointerType: "touch", clientX: 180, clientY: 450 }));
+    window.dispatchEvent(new PointerEvent("pointerup", { bubbles: true, pointerId: 41, pointerType: "touch", clientX: 180, clientY: 450 }));
+    card.setPointerCapture = setPointerCapture;
+    return { top: panel.scrollTop, scrollHeight: panel.scrollHeight, clientHeight: panel.clientHeight };
+  });
+  assert.ok(expandedScroll.scrollHeight > expandedScroll.clientHeight);
+  assert.ok(expandedScroll.top > 0);
   await page.locator("#project-task-list .swipe-row").nth(1).evaluate(row => row.classList.add("selected"));
   await page.evaluate(() => {
     document.querySelector("#project-selection-toolbar").hidden = false;
@@ -64,13 +92,17 @@ const { openTestApp } = require("./e2e-helper");
   await page.click("#nav-projects");
   await page.click(".project-card");
   assert.match(await page.locator("#project-goal-summary").textContent(), /Випустити першу версію/);
-  assert.equal(await page.locator("#project-task-list .swipe-row").count(), 5);
+  assert.equal(await page.locator("#project-task-list .swipe-row").count(), 10);
+  await page.fill("#project-step-title", "Завдання 11");
+  await page.click("#project-step-form button");
+  await page.waitForFunction(() => tasks.some(task => task.title === "Завдання 11"));
+  assert.equal(await page.evaluate(() => lists.find(list => list.id === tasks.find(task => task.title === "Завдання 11").listId)?.title), "Робота");
 
   step("complete neighbouring task");
   await page.locator("#project-task-list .toggle").first().evaluate(button => button.click());
-  await page.waitForFunction(() => document.querySelector("#project-progress").textContent === "1/5");
-  assert.equal(await page.locator("#project-progress").textContent(), "1/5");
-  assert.equal(await page.locator("#project-main-save").isVisible(), true);
+  await page.waitForFunction(() => document.querySelector("#project-progress").textContent === "1/11");
+  assert.equal(await page.locator("#project-progress").textContent(), "1/11");
+  assert.equal(await page.locator("#project-main-save").count(), 0);
   assert.equal(await page.locator("#project-main-complete").isVisible(), true);
   assert.deepEqual(errors, []);
   await browser.close();

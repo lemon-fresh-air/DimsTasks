@@ -22,6 +22,14 @@
     <div id="empty-state" class="empty"><span class="empty-icon" aria-hidden="true">✓</span><p>У цьому списку поки немає задач</p><small>Натисніть кнопку внизу, щоб додати першу.</small></div>
   </section><div id="list-swipe-zone" class="list-swipe-zone" aria-hidden="true"></div></main>
   <section id="projects-overview" class="projects-overview" aria-labelledby="projects-title" hidden>
+    <div id="projects-selection-toolbar" class="projects-selection-toolbar" hidden>
+      <button id="projects-selection-close" class="toolbar-action" type="button" aria-label="Завершити виділення"><span class="back-icon" aria-hidden="true"></span></button>
+      <p id="projects-selection-count">Вибрано: 0</p>
+      <div class="selection-actions" aria-label="Дії з вибраними проєктами">
+        <button id="projects-complete-selected" class="toolbar-action" type="button" aria-label="Завершити вибрані проєкти"><span class="project-complete-icon" aria-hidden="true">✓</span></button>
+        <button id="projects-delete-selected" class="toolbar-action destructive" type="button" aria-label="Видалити вибрані проєкти"><span class="trash-icon" aria-hidden="true"></span></button>
+      </div>
+    </div>
     <header class="projects-header"><div><h1 id="projects-title">Проєкти</h1><p id="projects-count">0 активних</p></div><button id="project-add" class="project-add" type="button" aria-label="Створити проєкт">＋</button></header>
     <form id="project-create-form" class="project-create-form" hidden>
       <label class="sr-only" for="project-create-title">Назва проєкту</label><input id="project-create-title" maxlength="100" autocomplete="off" placeholder="Назва проєкту" required>
@@ -92,7 +100,7 @@
 <section id="list-editor" class="list-editor" aria-labelledby="list-editor-title" hidden>
   <div class="list-editor-panel">
     <header class="list-editor-header">
-      <button id="list-editor-close" class="list-editor-close" type="button" aria-label="Скасувати й повернутися до списку"><span aria-hidden="true"></span></button>
+      <button id="list-editor-close" class="list-editor-close" type="button" aria-label="Зберегти й повернутися до списку"><span aria-hidden="true"></span></button>
       <h2 id="list-editor-title">Редагувати список</h2>
     </header>
     <form id="list-editor-form" class="list-editor-form">
@@ -133,11 +141,11 @@
       <p id="project-tasks-empty" class="project-tasks-empty" hidden>Додайте перше завдання, щоб почати рух проєктом.</p>
       <form id="project-step-form" class="project-step-form"><label class="sr-only" for="project-step-title">Нове завдання</label><input id="project-step-title" maxlength="160" autocomplete="off" placeholder="Додати завдання"><button type="submit" aria-label="Додати завдання">＋</button></form>
     </section>
-    <div class="project-main-actions"><button id="project-main-save" class="primary-action" type="button">Зберегти</button><button id="project-main-complete" class="secondary-action" type="button">Завершити проєкт</button></div>
+    <div class="project-main-actions"><button id="project-main-complete" class="secondary-action" type="button">Завершити проєкт</button></div>
   </div>
   <section id="project-editor" class="project-editor" aria-labelledby="project-editor-title" hidden>
     <div class="project-editor-panel">
-      <header class="project-editor-header"><button id="project-edit-close" class="editor-back" type="button" aria-label="Скасувати й повернутися до проєкту"><span aria-hidden="true"></span></button><h2 id="project-editor-title">Редагувати проєкт</h2></header>
+      <header class="project-editor-header"><button id="project-edit-close" class="editor-back" type="button" aria-label="Зберегти й повернутися до проєкту"><span aria-hidden="true"></span></button><h2 id="project-editor-title">Редагувати проєкт</h2></header>
       <div class="project-fields">
       <label>Назва<input id="project-title" maxlength="100" autocomplete="off"></label>
       <label>Мета<textarea id="project-goal" rows="2" placeholder="Якого результату прагнете?"></textarea></label>
@@ -231,8 +239,22 @@
     <footer><button id="time-dialog-cancel" type="button">Скасувати</button><button id="time-dialog-save" type="button">Готово</button></footer>
   </section>
 </div>
+<div id="project-complete-dialog-backdrop" class="project-complete-dialog-backdrop" hidden>
+  <section id="project-complete-dialog" class="project-complete-dialog" role="dialog" aria-modal="true" aria-labelledby="project-complete-dialog-title" tabindex="-1">
+    <h2 id="project-complete-dialog-title">Завершити проєкт?</h2>
+    <label class="project-complete-tasks"><input id="project-complete-tasks" type="checkbox" checked><span>Завершити й завдання</span></label>
+    <footer><button id="project-complete-no" type="button">Скасувати</button><button id="project-complete-yes" type="button">Завершити</button></footer>
+  </section>
+</div>
+<div id="project-delete-dialog-backdrop" class="project-delete-dialog-backdrop" hidden>
+  <section id="project-delete-dialog" class="project-delete-dialog" role="dialog" aria-modal="true" aria-labelledby="project-delete-dialog-title" tabindex="-1">
+    <h2 id="project-delete-dialog-title">Видалити проєкт?</h2>
+    <label class="project-delete-keep"><input id="project-delete-keep-tasks" type="checkbox" checked><span>Залишити завдання без проєкту</span></label>
+    <footer><button id="project-delete-no" type="button">Ні</button><button id="project-delete-yes" type="button">Так</button></footer>
+  </section>
+</div>
 <template id="task-template"><li class="swipe-row"><div class="delete-reveal" aria-hidden="true"><span class="delete-icon"></span><span>Видалити</span></div><article class="task-card"><button class="toggle" aria-label="Позначити виконаною"><span>✓</span></button><button class="task-open" type="button" aria-label="Відкрити деталі завдання"><span class="task-copy"><span class="task-text"></span><span class="task-description-preview" hidden></span><span class="task-date"></span></span><span class="task-meta"><span class="task-project" hidden><span class="projects-icon" aria-hidden="true"></span><span class="task-project-name"></span></span><span class="task-list"><span class="task-list-name"></span><span class="inbox-icon" aria-hidden="true"></span></span></span></button></article></li></template>
-<template id="project-card-template"><button class="project-card" type="button"><strong class="project-card-title"></strong><span class="project-card-goal"></span><span class="project-card-meta"><span class="project-card-progress"></span><span class="project-card-current"></span></span></button></template>
+<template id="project-card-template"><button class="project-card" type="button"><strong class="project-card-title"></strong><span class="project-card-progress"></span><span class="project-card-deadline" hidden></span></button></template>
 <div id="toast" class="toast" role="status" aria-live="polite"><span class="toast-message"></span><button id="toast-action" class="toast-action" type="button">Відмінити</button><svg class="toast-timer" viewBox="0 0 28 28" aria-hidden="true"><circle class="toast-timer-track" cx="14" cy="14" r="11"></circle><circle class="toast-timer-progress" cx="14" cy="14" r="11"></circle></svg></div>
 
 

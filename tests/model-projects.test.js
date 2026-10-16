@@ -6,8 +6,8 @@ const vm = require("node:vm");
 
 const source = fs.readFileSync(path.join(__dirname, "..", "src", "js", "model.js"), "utf8");
 const context = vm.createContext({ crypto: { randomUUID: () => "generated-id" }, INBOX_LIST_ID: "inbox" });
-vm.runInContext(`${source}\nthis.model = { createTask, createProject, projectCountdown, currentProjectTask, visibleListTasks, reorderProjectSteps, reorderProjectStepBlock, normalizeTaskOrder };`, context);
-const { createTask, createProject, projectCountdown, currentProjectTask, visibleListTasks, reorderProjectSteps, reorderProjectStepBlock, normalizeTaskOrder } = context.model;
+vm.runInContext(`${source}\nthis.model = { createTask, createProject, reorderProjects, reorderProjectBlock, projectCountdown, currentProjectTask, visibleListTasks, reorderProjectSteps, reorderProjectStepBlock, normalizeTaskOrder };`, context);
+const { createTask, createProject, reorderProjects, reorderProjectBlock, projectCountdown, currentProjectTask, visibleListTasks, reorderProjectSteps, reorderProjectStepBlock, normalizeTaskOrder } = context.model;
 
 const step = (id, projectPosition, values = {}) => createTask({
   id, projectId: "project", projectPosition, listId: "inbox", title: id,
@@ -38,6 +38,24 @@ test("several selected project steps move as one ordered block", () => {
   assert.deepEqual(Array.from(reordered.slice().sort((a, b) => a.projectPosition - b.projectPosition), task => task.id), ["first", "fourth", "second", "third"]);
 });
 
+test("active projects can be reordered without changing completed projects", () => {
+  const records = [
+    createProject({ id: "first", title: "first", position: 0 }),
+    createProject({ id: "done", title: "done", position: 8, status: "completed" }),
+    createProject({ id: "second", title: "second", position: 1 }),
+    createProject({ id: "third", title: "third", position: 2 })
+  ];
+  const reordered = reorderProjects(records, "third", "first");
+  assert.deepEqual(Array.from(reordered.filter(project => project.status === "active").sort((a, b) => a.position - b.position), project => project.id), ["third", "first", "second"]);
+  assert.equal(reordered.find(project => project.id === "done"), records[1]);
+});
+
+test("several selected projects move as one ordered block", () => {
+  const records = ["first", "second", "third", "fourth"].map((id, position) => createProject({ id, title: id, position }));
+  const reordered = reorderProjectBlock(records, new Set(["second", "third"]), null);
+  assert.deepEqual(Array.from(reordered.slice().sort((a, b) => a.position - b.position), project => project.id), ["first", "fourth", "second", "third"]);
+});
+
 test("legacy tasks are normalized with null project fields without changing identity", () => {
   const legacy = { id: "legacy", listId: "inbox", sectionId: null, title: "legacy", position: 0, createdAt: "2026-01-01T00:00:00.000Z" };
   const normalized = normalizeTaskOrder([legacy])[0];
@@ -55,4 +73,9 @@ test("project countdown uses inclusive calendar-day labels and marks past dates 
   assert.deepEqual({ ...projectCountdown("2026-10-13", "2026-10-15") }, { text: "Позавчора", overdue: true });
   assert.deepEqual({ ...projectCountdown("2026-10-10", "2026-10-15") }, { text: "Прострочено на 5 днів", overdue: true });
   assert.equal(createProject({ title: "legacy" }).showCountdown, false);
+});
+
+test("project remembers a valid last list and legacy projects default safely", () => {
+  assert.equal(createProject({ title: "legacy" }).lastListId, null);
+  assert.equal(createProject({ title: "remembered", lastListId: "work" }).lastListId, "work");
 });

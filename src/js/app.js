@@ -309,8 +309,8 @@ function closeListEditor({ fromHistory = false } = {}) {
   if (!fromHistory && history.state?.listEditor) history.back();
 }
 
-async function saveActiveListName(event) {
-  event.preventDefault();
+async function saveActiveListName(event, { fromHistory = false } = {}) {
+  event?.preventDefault();
   const list = activeList();
   if (list?.kind !== "regular") return;
   const title = els.listEditorName.value.trim();
@@ -330,7 +330,7 @@ async function saveActiveListName(event) {
     lists = lists.map(item => item.id === updated.id ? updated : item).sort(compareLists);
     renderListNavigation();
     renderCurrentTasks();
-    closeListEditor();
+    closeListEditor({ fromHistory });
     toast("Назву списку змінено");
   } catch (_error) {
     showListEditorError("Не вдалося зберегти назву. Спробуйте ще раз.");
@@ -516,6 +516,7 @@ async function moveSelectedTasksToList(listId) {
   closeSelectedListDropdown();
   try {
     await taskDb.putMany([...movedTasks, ...shiftedTasks]);
+    await rememberProjectLists(movedTasks, listId);
     tasks = tasks.map(task => movedById.get(task.id) || shiftedById.get(task.id) || task).sort(compareTasks);
     selectedTaskIds = new Set();
     await animateSelectedTasksToList(selectedIds, previousPositions);
@@ -542,6 +543,7 @@ async function moveOpenTaskImmediatelyToList(listId) {
   const replacements = new Map([movedTask, ...shiftedTasks].map(item => [item.id, item]));
   try {
     await taskDb.putMany([movedTask, ...shiftedTasks]);
+    await rememberProjectLists([movedTask], listId);
     tasks = tasks.map(item => replacements.get(item.id) || item).sort(compareTasks);
     setTaskEditorListUI(listId);
     updateDesktopSaveState();
@@ -761,7 +763,7 @@ els.newListTitle.addEventListener("keydown", event => {
 els.settingsOpen.addEventListener("click", openSettings);
 els.settingsClose.addEventListener("click", () => closeSettings());
 els.listEditorOpen.addEventListener("click", openListEditor);
-els.listEditorClose.addEventListener("click", () => closeListEditor());
+els.listEditorClose.addEventListener("click", saveActiveListName);
 els.listEditorForm.addEventListener("submit", saveActiveListName);
 els.listEditorName.addEventListener("input", () => showListEditorError());
 els.listDeleteOpen.addEventListener("click", () => {
@@ -777,7 +779,7 @@ els.listDeleteCancel.addEventListener("click", () => {
 els.listDeleteConfirmButton.addEventListener("click", deleteActiveList);
 window.addEventListener("popstate", () => {
   if (!els.listEditor.hidden) {
-    closeListEditor({ fromHistory: true });
+    saveActiveListName(null, { fromHistory: true });
     return;
   }
   if (!els.settingsScreen.hidden) {
@@ -988,13 +990,16 @@ els.timeDialOptions.addEventListener("click", event => {
 els.input.addEventListener("input", () => { els.input.style.height = "auto"; els.input.style.height = `${Math.min(els.input.scrollHeight, 150)}px`; updateDesktopSaveState(); });
 els.description.addEventListener("input", () => { resizeDescription(); updateDesktopSaveState(); });
 els.taskListTrigger.addEventListener("click", () => els.taskListOptions.hidden ? openTaskListDropdown() : closeTaskListDropdown());
-els.taskListOptions.addEventListener("click", event => {
+els.taskListOptions.addEventListener("click", async event => {
   if (handleDropdownListCreation(event, els.taskListOptions)) return;
   const option = event.target.closest("[data-list-id]");
   if (!option) return;
-  setTaskEditorListUI(option.dataset.listId);
   closeTaskListDropdown({ returnFocus: true });
-  updateDesktopSaveState();
+  if (els.editor.dataset.taskId) await moveOpenTaskImmediatelyToList(option.dataset.listId);
+  else {
+    setTaskEditorListUI(option.dataset.listId);
+    updateDesktopSaveState();
+  }
 });
 els.taskListOptions.addEventListener("keydown", event => {
   if (handleDropdownListCreationKeydown(event, els.taskListOptions)) return;

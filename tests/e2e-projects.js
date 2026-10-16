@@ -105,8 +105,8 @@ async function waitForServer() {
   await page.locator("#project-list-options [data-list-id]").filter({ hasText: "Зелений" }).click();
   await page.waitForFunction(() => [...document.querySelectorAll("#project-task-list .task-project-name")].some(node => node.textContent === "Зелений"));
   await page.click("#project-back");
-  assert.match(await page.locator(".project-card").innerText(), /0\/2 виконано/);
-  assert.match(await page.locator(".project-card").innerText(), /Поточний крок: Перший крок/);
+  assert.match(await page.locator(".project-card").innerText(), /0\/2/);
+  assert.doesNotMatch(await page.locator(".project-card").innerText(), /Поточний крок:/);
 
   await page.click("#nav-inbox");
   assert.deepEqual(await page.locator("#task-list .task-text").allTextContents(), ["Перший крок"]);
@@ -120,8 +120,8 @@ async function waitForServer() {
 
   await page.reload({ waitUntil: "networkidle" });
   await page.click("#nav-projects");
-  assert.match(await page.locator(".project-card").innerText(), /1\/2 виконано/);
-  assert.match(await page.locator(".project-card").innerText(), /Поточний крок: Другий крок/);
+  assert.match(await page.locator(".project-card").innerText(), /1\/2/);
+  assert.doesNotMatch(await page.locator(".project-card").innerText(), /Поточний крок:/);
   await page.click(".project-card");
   await page.click("#project-edit-open");
   assert.equal(await page.inputValue("#project-goal"), "Перевірити послідовний потік");
@@ -163,6 +163,7 @@ async function waitForServer() {
 
   await page.click("#project-edit-open");
   await page.click("#project-complete");
+  await page.click("#project-complete-yes");
   await page.click("#project-edit-close");
   await page.click("#project-back");
   assert.equal(await page.locator("#completed-projects").isVisible(), true);
@@ -171,6 +172,7 @@ async function waitForServer() {
   await page.click("#completed-project-list .project-card");
   await page.click("#project-edit-open");
   await page.click("#project-delete");
+  await page.click("#project-delete-yes");
   await page.waitForFunction(() => document.querySelectorAll(".project-card").length === 0);
   assert.equal(await page.locator(".project-card").count(), 0);
   await page.click("#main-menu-open");

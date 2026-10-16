@@ -42,3 +42,8 @@ test("format 5 remains importable after project countdown is added", async () =>
   const restored = await parseBackup(file({ format: "local-first-pwa-backup", appId: "dims-tasks", formatVersion: 5, data }));
   assert.equal(restored.tasks.length, 1);
 });
+
+test("format 6 remains importable after project list memory is added", async () => {
+  const restored = await parseBackup(file({ format: "local-first-pwa-backup", appId: "dims-tasks", formatVersion: 6, data }));
+  assert.equal(restored.tasks.length, 1);
+});

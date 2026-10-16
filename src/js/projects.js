@@ -1,9 +1,15 @@
 let projects = [];
 let activeProjectId = null;
+let selectedProjectIds = new Set();
+let projectCompleteDialogResolve = null;
+let projectCompleteDialogReturnFocus = null;
+let projectDeleteDialogResolve = null;
+let projectDeleteDialogReturnFocus = null;
 
 const projectEls = {
   shell: document.querySelector(".app-shell"),
   overview: document.querySelector("#projects-overview"),
+  overviewHeader: document.querySelector(".projects-header"),
   count: document.querySelector("#projects-count"),
   add: document.querySelector("#project-add"),
   createForm: document.querySelector("#project-create-form"),
@@ -14,6 +20,23 @@ const projectEls = {
   completed: document.querySelector("#completed-projects"),
   completedCount: document.querySelector("#completed-projects-count"),
   completedList: document.querySelector("#completed-project-list"),
+  overviewSelectionToolbar: document.querySelector("#projects-selection-toolbar"),
+  overviewSelectionClose: document.querySelector("#projects-selection-close"),
+  overviewSelectionCount: document.querySelector("#projects-selection-count"),
+  completeSelected: document.querySelector("#projects-complete-selected"),
+  deleteSelectedProjects: document.querySelector("#projects-delete-selected"),
+  completeDialogBackdrop: document.querySelector("#project-complete-dialog-backdrop"),
+  completeDialog: document.querySelector("#project-complete-dialog"),
+  completeDialogTitle: document.querySelector("#project-complete-dialog-title"),
+  completeTasks: document.querySelector("#project-complete-tasks"),
+  completeNo: document.querySelector("#project-complete-no"),
+  completeYes: document.querySelector("#project-complete-yes"),
+  deleteDialogBackdrop: document.querySelector("#project-delete-dialog-backdrop"),
+  deleteDialog: document.querySelector("#project-delete-dialog"),
+  deleteDialogTitle: document.querySelector("#project-delete-dialog-title"),
+  deleteKeepTasks: document.querySelector("#project-delete-keep-tasks"),
+  deleteNo: document.querySelector("#project-delete-no"),
+  deleteYes: document.querySelector("#project-delete-yes"),
   cardTemplate: document.querySelector("#project-card-template"),
   screen: document.querySelector("#project-screen"),
   selectionToolbar: document.querySelector("#project-selection-toolbar"),
@@ -49,7 +72,6 @@ const projectEls = {
   taskList: document.querySelector("#project-task-list"),
   stepForm: document.querySelector("#project-step-form"),
   stepTitle: document.querySelector("#project-step-title"),
-  mainSave: document.querySelector("#project-main-save"),
   mainComplete: document.querySelector("#project-main-complete"),
   save: document.querySelector("#project-save"),
   complete: document.querySelector("#project-complete"),
@@ -58,6 +80,23 @@ const projectEls = {
 
 function projectSteps(projectId) {
   return tasks.filter(task => task.projectId === projectId).sort(compareProjectTasks);
+}
+
+async function rememberProjectList(projectId, listId) {
+  const project = projects.find(item => item.id === projectId);
+  if (!project || project.lastListId === listId || !lists.some(list => list.id === listId)) return;
+  const updated = createProject({ ...project, lastListId: listId, updatedAt: new Date().toISOString() });
+  projects = projects.map(item => item.id === updated.id ? updated : item);
+  try {
+    await projectDb.put(updated);
+  } catch (_error) {
+    toast("Не вдалося запам’ятати список проєкту");
+  }
+}
+
+async function rememberProjectLists(tasksToRemember, listId) {
+  const projectIds = new Set(tasksToRemember.map(task => task.projectId).filter(Boolean));
+  await Promise.all([...projectIds].map(projectId => rememberProjectList(projectId, listId)));
 }
 
 function renderProjectCountdown() {
@@ -71,12 +110,17 @@ function renderProjectCard(project, container) {
   const card = projectEls.cardTemplate.content.firstElementChild.cloneNode(true);
   const steps = projectSteps(project.id);
   const completed = steps.filter(isTaskCompleted).length;
-  const current = currentProjectTask(tasks, project.id);
+  const countdown = project.dueDate ? projectCountdown(project.dueDate, localDateValue()) : null;
   card.dataset.projectId = project.id;
+  const selected = selectedProjectIds.has(project.id);
+  card.classList.toggle("selected", selected);
+  card.setAttribute("aria-pressed", String(selected));
   card.querySelector(".project-card-title").textContent = project.title;
-  card.querySelector(".project-card-goal").textContent = project.goal || "";
-  card.querySelector(".project-card-progress").textContent = `${completed}/${steps.length} виконано`;
-  card.querySelector(".project-card-current").textContent = current ? `Поточний крок: ${current.title}` : "Немає поточного кроку";
+  card.querySelector(".project-card-progress").textContent = `${completed}/${steps.length}`;
+  const deadline = card.querySelector(".project-card-deadline");
+  deadline.hidden = !countdown;
+  deadline.textContent = countdown?.text || "";
+  deadline.dataset.overdue = String(countdown?.overdue === true);
   container.append(card);
 }
 
@@ -87,6 +131,12 @@ function renderProjects() {
   projectEls.completedList.replaceChildren();
   active.forEach(project => renderProjectCard(project, projectEls.activeList));
   completed.forEach(project => renderProjectCard(project, projectEls.completedList));
+  selectedProjectIds = new Set(active.filter(project => selectedProjectIds.has(project.id)).map(project => project.id));
+  const selectionMode = selectedProjectIds.size > 0;
+  projectEls.overview.classList.toggle("selection-mode", selectionMode);
+  projectEls.overviewSelectionToolbar.hidden = !selectionMode;
+  projectEls.overviewHeader.hidden = selectionMode;
+  projectEls.overviewSelectionCount.textContent = `Вибрано: ${selectedProjectIds.size}`;
   projectEls.count.textContent = `${active.length} активних`;
   projectEls.empty.hidden = projects.length > 0;
   projectEls.completed.hidden = completed.length === 0;
@@ -101,6 +151,7 @@ async function loadProjects() {
 
 function openProjects() {
   activeProjectId = null;
+  selectedProjectIds = new Set();
   projectEls.shell.classList.add("projects-mode");
   projectEls.overview.hidden = false;
   setActivePrimaryNav("projects");
@@ -267,10 +318,12 @@ async function addProjectStep(title) {
   const project = projects.find(item => item.id === activeProjectId);
   const value = title.trim();
   if (!project || !value) return;
-  const inboxTasks = tasks.filter(task => (task.listId || INBOX_LIST_ID) === INBOX_LIST_ID && !task.sectionId);
-  const task = createTask({ title: value, listId: INBOX_LIST_ID, position: inboxTasks.length ? Math.max(...inboxTasks.map(item => item.position || 0)) + 1 : 0, projectId: project.id, projectPosition: projectSteps(project.id).length });
+  const listId = lists.some(list => list.id === project.lastListId) ? project.lastListId : INBOX_LIST_ID;
+  const listTasks = tasks.filter(task => (task.listId || INBOX_LIST_ID) === listId && !task.sectionId);
+  const task = createTask({ title: value, listId, position: listTasks.length ? Math.max(...listTasks.map(item => item.position || 0)) + 1 : 0, projectId: project.id, projectPosition: projectSteps(project.id).length });
   await taskDb.put(task);
   tasks.push(task);
+  await rememberProjectList(project.id, listId);
   if (projectEls.stepTitle.value.trim() === value) projectEls.stepTitle.value = "";
   renderOpenProject();
   renderProjects();
@@ -280,9 +333,12 @@ async function toggleProjectStatus() {
   const project = projects.find(item => item.id === activeProjectId);
   if (!project) return;
   const completing = project.status !== "completed";
-  if (completing && !confirm("Завершити цей проєкт?")) return;
+  if (completing) {
+    await completeProjects([project]);
+    return;
+  }
   const now = new Date().toISOString();
-  const updated = { ...project, status: completing ? "completed" : "active", completedAt: completing ? now : null, updatedAt: now };
+  const updated = { ...project, status: "active", completedAt: null, updatedAt: now };
   await projectDb.put(updated);
   projects = projects.map(item => item.id === updated.id ? updated : item);
   renderOpenProject();
@@ -291,14 +347,18 @@ async function toggleProjectStatus() {
 
 async function deleteProject() {
   const project = projects.find(item => item.id === activeProjectId);
-  if (!project || !confirm("Видалити проєкт? Його завдання залишаться у своїх списках.")) return;
+  if (!project) return;
+  const detachTasks = await requestProjectDeletion(1);
+  if (detachTasks === null) return;
   const now = new Date().toISOString();
-  await projectDb.deleteAndDetachTasks(project.id, now);
-  tasks = tasks.map(task => task.projectId === project.id ? { ...task, projectId: null, projectPosition: null, updatedAt: now } : task);
+  await projectDb.deleteManyWithTasks([project.id], now, detachTasks);
+  tasks = detachTasks
+    ? tasks.map(task => task.projectId === project.id ? { ...task, projectId: null, projectPosition: null, updatedAt: now } : task)
+    : tasks.filter(task => task.projectId !== project.id);
   projects = projects.filter(item => item.id !== project.id);
   closeProject();
   renderCurrentTasks();
-  toast("Проєкт видалено, завдання збережено");
+  toast(detachTasks ? "Проєкт видалено, завдання збережено" : "Проєкт і його завдання видалено");
 }
 
 async function reorderSelectedProjectSteps({ beforeId }) {
@@ -313,22 +373,158 @@ async function reorderSelectedProjectSteps({ beforeId }) {
   catch (_error) { await refresh(); toast("Не вдалося зберегти порядок кроків"); }
 }
 
+async function reorderProjectCards({ selectedIds, beforeId }) {
+  const reordered = reorderProjectBlock(projects, selectedIds, beforeId);
+  const changed = reordered.filter((project, index) => project !== projects[index]);
+  if (!changed.length) return;
+  projects = reordered;
+  renderProjects();
+  try { await projectDb.putMany(changed); }
+  catch (_error) { await loadProjects(); toast("Не вдалося зберегти порядок проєктів"); }
+}
+
+function selectProject(projectId) {
+  if (!projects.some(project => project.id === projectId && project.status !== "completed")) return;
+  selectedProjectIds.add(projectId);
+  renderProjects();
+}
+
+function selectOnlyProject(projectId) {
+  selectedProjectIds = new Set([projectId]);
+  renderProjects();
+}
+
+function toggleProjectSelection(projectId) {
+  if (selectedProjectIds.has(projectId)) selectedProjectIds.delete(projectId);
+  else selectedProjectIds.add(projectId);
+  renderProjects();
+}
+
+function clearProjectSelection() {
+  selectedProjectIds = new Set();
+  renderProjects();
+}
+
+async function completeSelectedProjects() {
+  const selected = projects.filter(project => selectedProjectIds.has(project.id) && project.status !== "completed");
+  if (!selected.length) return;
+  await completeProjects(selected);
+}
+
+async function completeProjects(selected) {
+  const completeTasks = await requestProjectCompletion(selected.length);
+  if (completeTasks === null) return;
+  const now = new Date().toISOString();
+  const updates = selected.map(project => ({ ...project, status: "completed", completedAt: now, updatedAt: now }));
+  const ids = new Set(updates.map(project => project.id));
+  const replacements = new Map(updates.map(project => [project.id, project]));
+  await projectDb.completeManyWithTasks(updates, now, completeTasks);
+  projects = projects.map(project => replacements.get(project.id) || project);
+  tasks = tasks.map(task => {
+    if (!ids.has(task.projectId) || task.status !== "active") return task;
+    return completeTasks
+      ? { ...task, status: "completed", completedAt: now, updatedAt: now }
+      : { ...task, projectId: null, projectPosition: null, updatedAt: now };
+  });
+  selectedProjectIds = new Set();
+  renderProjects();
+  renderCurrentTasks();
+}
+
+function requestProjectCompletion(count) {
+  if (projectCompleteDialogResolve) projectCompleteDialogResolve(null);
+  projectCompleteDialogReturnFocus = document.activeElement;
+  projectEls.completeDialogTitle.textContent = count === 1 ? "Завершити проєкт?" : `Завершити проєкти (${count})?`;
+  projectEls.completeTasks.checked = true;
+  projectEls.completeDialogBackdrop.hidden = false;
+  document.body.classList.add("project-complete-dialog-open");
+  requestAnimationFrame(() => projectEls.completeDialog.focus());
+  return new Promise(resolve => { projectCompleteDialogResolve = resolve; });
+}
+
+function closeProjectCompleteDialog(result = null) {
+  if (!projectCompleteDialogResolve) return;
+  const resolve = projectCompleteDialogResolve;
+  projectCompleteDialogResolve = null;
+  projectEls.completeDialogBackdrop.hidden = true;
+  document.body.classList.remove("project-complete-dialog-open");
+  projectCompleteDialogReturnFocus?.focus();
+  projectCompleteDialogReturnFocus = null;
+  resolve(result);
+}
+
+async function deleteSelectedProjects() {
+  const ids = new Set(selectedProjectIds);
+  if (!ids.size) return;
+  const detachTasks = await requestProjectDeletion(ids.size);
+  if (detachTasks === null) return;
+  const now = new Date().toISOString();
+  await projectDb.deleteManyWithTasks(ids, now, detachTasks);
+  tasks = detachTasks
+    ? tasks.map(task => ids.has(task.projectId) ? { ...task, projectId: null, projectPosition: null, updatedAt: now } : task)
+    : tasks.filter(task => !ids.has(task.projectId));
+  projects = projects.filter(project => !ids.has(project.id));
+  selectedProjectIds = new Set();
+  renderProjects();
+  renderCurrentTasks();
+  toast(detachTasks ? "Проєкти видалено, завдання збережено" : "Проєкти та їхні завдання видалено");
+}
+
+function requestProjectDeletion(count) {
+  if (projectDeleteDialogResolve) projectDeleteDialogResolve(null);
+  projectDeleteDialogReturnFocus = document.activeElement;
+  projectEls.deleteDialogTitle.textContent = count === 1 ? "Видалити проєкт?" : `Видалити проєкти (${count})?`;
+  projectEls.deleteKeepTasks.checked = true;
+  projectEls.deleteDialogBackdrop.hidden = false;
+  document.body.classList.add("project-delete-dialog-open");
+  requestAnimationFrame(() => projectEls.deleteDialog.focus());
+  return new Promise(resolve => { projectDeleteDialogResolve = resolve; });
+}
+
+function closeProjectDeleteDialog(result = null) {
+  if (!projectDeleteDialogResolve) return;
+  const resolve = projectDeleteDialogResolve;
+  projectDeleteDialogResolve = null;
+  projectEls.deleteDialogBackdrop.hidden = true;
+  document.body.classList.remove("project-delete-dialog-open");
+  projectDeleteDialogReturnFocus?.focus();
+  projectDeleteDialogReturnFocus = null;
+  resolve(result);
+}
+
 projectEls.add.addEventListener("click", () => { projectEls.createForm.hidden = false; projectEls.createTitle.focus(); });
 projectEls.createCancel.addEventListener("click", () => { projectEls.createForm.hidden = true; projectEls.createTitle.value = ""; });
 projectEls.createForm.addEventListener("submit", event => { event.preventDefault(); addProject(projectEls.createTitle.value); });
 [projectEls.activeList, projectEls.completedList].forEach(container => container.addEventListener("click", event => {
   const card = event.target.closest("[data-project-id]");
-  if (card) openProject(card.dataset.projectId);
+  if (!card) return;
+  if (card.dataset.dragged) { delete card.dataset.dragged; return; }
+  if (card.dataset.longPressed) { delete card.dataset.longPressed; return; }
+  if (selectedProjectIds.size && container === projectEls.activeList) { toggleProjectSelection(card.dataset.projectId); return; }
+  openProject(card.dataset.projectId);
 }));
+projectEls.overviewSelectionClose.addEventListener("click", clearProjectSelection);
+projectEls.completeSelected.addEventListener("click", completeSelectedProjects);
+projectEls.deleteSelectedProjects.addEventListener("click", deleteSelectedProjects);
+projectEls.completeNo.addEventListener("click", () => closeProjectCompleteDialog(null));
+projectEls.completeYes.addEventListener("click", () => closeProjectCompleteDialog(projectEls.completeTasks.checked));
+projectEls.completeDialogBackdrop.addEventListener("click", event => { if (event.target === projectEls.completeDialogBackdrop) closeProjectCompleteDialog(null); });
+projectEls.deleteNo.addEventListener("click", () => closeProjectDeleteDialog(null));
+projectEls.deleteYes.addEventListener("click", () => closeProjectDeleteDialog(projectEls.deleteKeepTasks.checked));
+projectEls.deleteDialogBackdrop.addEventListener("click", event => { if (event.target === projectEls.deleteDialogBackdrop) closeProjectDeleteDialog(null); });
+document.addEventListener("keydown", event => {
+  if (event.key !== "Escape") return;
+  if (!projectEls.completeDialogBackdrop.hidden) closeProjectCompleteDialog(null);
+  else if (!projectEls.deleteDialogBackdrop.hidden) closeProjectDeleteDialog(null);
+});
 projectEls.back.addEventListener("click", closeProject);
 projectEls.editOpen.addEventListener("click", openProjectEditor);
-projectEls.editClose.addEventListener("click", closeProjectEditor);
+projectEls.editClose.addEventListener("click", () => saveProjectFields({ closeAfter: true }));
 projectEls.descriptionToggle.addEventListener("click", () => {
   const expanded = projectEls.descriptionToggle.getAttribute("aria-expanded") !== "true";
   projectEls.descriptionToggle.setAttribute("aria-expanded", String(expanded));
 });
 projectEls.tasksExpand.addEventListener("click", toggleProjectTasks);
-projectEls.mainSave.addEventListener("click", () => closeProject({ animated: true }));
 projectEls.mainComplete.addEventListener("click", toggleProjectStatus);
 [projectEls.title, projectEls.goal, projectEls.description, projectEls.dueDate, projectEls.dueTime].forEach(field => field.addEventListener("input", markProjectDirty));
 projectEls.datePickerOpen.addEventListener("click", () => {
@@ -377,4 +573,14 @@ enableTaskGestures({
   getSelectedIds: () => new Set(selectedTaskIds),
   onReorder: reorderSelectedProjectSteps,
   requireSelectionForDrag: true
+});
+
+enableProjectCardReorder({
+  container: projectEls.activeList,
+  isSelectionMode: () => selectedProjectIds.size > 0,
+  isSelected: id => selectedProjectIds.has(id),
+  onLongPress: selectProject,
+  onSelectOnly: selectOnlyProject,
+  getSelectedIds: () => new Set(selectedProjectIds),
+  onReorder: reorderProjectCards
 });

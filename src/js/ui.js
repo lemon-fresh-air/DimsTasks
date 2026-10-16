@@ -1078,7 +1078,9 @@ function enableTaskGestures({ container = els.list, onDelete, isSelectionMode, i
       event.preventDefault();
       gesture.scrolling = true;
       gesture.row.dataset.swiped = "true";
-      window.scrollBy(0, gesture.lastY - event.clientY);
+      const scrollContainer = container.closest(".project-steps.is-expanded") || container.closest(".project-screen");
+      if (scrollContainer) scrollContainer.scrollBy(0, gesture.lastY - event.clientY);
+      else window.scrollBy(0, gesture.lastY - event.clientY);
       gesture.lastY = event.clientY;
       return;
     }
@@ -1147,4 +1149,156 @@ function enableTaskGestures({ container = els.list, onDelete, isSelectionMode, i
 
   container.addEventListener("pointerup", finishGesture);
   container.addEventListener("pointercancel", cancelGesture);
+}
+
+function enableProjectCardReorder({ container, isSelectionMode, isSelected, onLongPress, onSelectOnly, getSelectedIds, onReorder }) {
+  let gesture = null;
+
+  function cleanup(finished) {
+    clearTimeout(finished.longPressTimer);
+    cancelAnimationFrame(finished.followFrame);
+    cancelAnimationFrame(finished.scrollFrame);
+    finished.preview?.remove();
+    finished.placeholder?.remove();
+    (finished.cards || [finished.card]).forEach(card => card?.classList.remove("drag-source", "lifted"));
+    container.classList.remove("dragging");
+  }
+
+  function updateInsertion(clientY) {
+    const candidates = [...container.children].filter(card => card.dataset.projectId && !gesture.selectedIds.has(card.dataset.projectId));
+    const before = candidates.find(card => clientY < card.getBoundingClientRect().top + card.getBoundingClientRect().height / 2) || null;
+    const beforeId = before?.dataset.projectId || null;
+    if (beforeId === gesture.lastBeforeId) return;
+    if (before) before.before(gesture.placeholder); else container.append(gesture.placeholder);
+    gesture.lastBeforeId = beforeId;
+    gesture.moved = true;
+  }
+
+  function renderPreview() {
+    if (!gesture?.dragging) return;
+    const follow = matchMedia("(prefers-reduced-motion: reduce)").matches ? 1 : .42;
+    gesture.currentX += (gesture.targetX - gesture.currentX) * follow;
+    gesture.currentY += (gesture.targetY - gesture.currentY) * follow;
+    gesture.preview.style.transform = `translate3d(${gesture.currentX}px,${gesture.currentY}px,0)`;
+    gesture.followFrame = requestAnimationFrame(renderPreview);
+  }
+
+  function autoScroll() {
+    if (!gesture?.dragging) return;
+    const edge = 72;
+    const speed = gesture.lastY < edge ? -Math.min(14, (edge - gesture.lastY) / 4)
+      : gesture.lastY > innerHeight - edge ? Math.min(14, (gesture.lastY - innerHeight + edge) / 4) : 0;
+    if (speed) {
+      window.scrollBy(0, speed);
+      updateInsertion(gesture.lastY);
+    }
+    gesture.scrollFrame = requestAnimationFrame(autoScroll);
+  }
+
+  function startDrag(event) {
+    clearTimeout(gesture.longPressTimer);
+    if (!isSelected(gesture.id)) {
+      onSelectOnly(gesture.id);
+      gesture.card = container.querySelector(`[data-project-id="${CSS.escape(gesture.id)}"]`);
+    }
+    const selectedIds = getSelectedIds();
+    const cards = [...container.children].filter(card => selectedIds.has(card.dataset.projectId));
+    if (!cards.length) return;
+    const rect = gesture.card.getBoundingClientRect();
+    const gap = Number.parseFloat(getComputedStyle(container).rowGap) || 0;
+    const totalHeight = cards.reduce((sum, card) => sum + card.getBoundingClientRect().height, 0) + gap * (cards.length - 1);
+    const placeholder = document.createElement("div");
+    placeholder.className = "project-drag-placeholder";
+    placeholder.style.height = `${totalHeight}px`;
+    cards[0].before(placeholder);
+    const preview = document.createElement("div");
+    preview.className = "project-drag-preview";
+    preview.style.width = `${rect.width}px`;
+    preview.append(gesture.card.cloneNode(true));
+    if (cards.length > 1) {
+      const badge = document.createElement("span");
+      badge.className = "drag-count";
+      badge.textContent = cards.length;
+      preview.append(badge);
+    }
+    document.body.append(preview);
+    cards.forEach(card => card.classList.add("drag-source"));
+    gesture = {
+      ...gesture, dragging: true, selectedIds, cards, placeholder, preview, moved: false, lastBeforeId: gesture.id,
+      offsetX: event.clientX - rect.left, offsetY: event.clientY - rect.top,
+      currentX: rect.left, currentY: rect.top, targetX: rect.left, targetY: rect.top,
+      lastY: event.clientY
+    };
+    container.classList.add("dragging");
+    gesture.followFrame = requestAnimationFrame(renderPreview);
+    gesture.scrollFrame = requestAnimationFrame(autoScroll);
+  }
+
+  container.addEventListener("pointerdown", event => {
+    const card = event.target.closest(".project-card");
+    if (!card || event.button > 0) return;
+    gesture = { card, id: card.dataset.projectId, pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, lastY: event.clientY, ready: event.pointerType === "mouse", scrolling: false, dragging: false };
+    card.setPointerCapture?.(event.pointerId);
+    gesture.longPressTimer = setTimeout(() => {
+      if (!gesture || gesture.pointerId !== event.pointerId) return;
+      gesture.ready = true;
+      onLongPress(gesture.id);
+      gesture.card = container.querySelector(`[data-project-id="${CSS.escape(gesture.id)}"]`);
+      if (gesture.card) {
+        gesture.card.dataset.longPressed = "true";
+        gesture.card.classList.add("lifted");
+      }
+    }, 450);
+  });
+
+  container.addEventListener("pointermove", event => {
+    if (!gesture || gesture.pointerId !== event.pointerId) return;
+    const distance = Math.hypot(event.clientX - gesture.startX, event.clientY - gesture.startY);
+    if (gesture.dragging) {
+      event.preventDefault();
+      gesture.targetX = event.clientX - gesture.offsetX;
+      gesture.targetY = event.clientY - gesture.offsetY;
+      gesture.lastY = event.clientY;
+      updateInsertion(event.clientY);
+      return;
+    }
+    if ((gesture.ready || isSelectionMode()) && distance > 6) {
+      event.preventDefault();
+      startDrag(event);
+      updateInsertion(event.clientY);
+      return;
+    }
+    if (distance > 8) {
+      clearTimeout(gesture.longPressTimer);
+      if (event.pointerType !== "mouse" && Math.abs(event.clientY - gesture.startY) > Math.abs(event.clientX - gesture.startX)) {
+        event.preventDefault();
+        gesture.scrolling = true;
+        gesture.card.dataset.dragged = "true";
+        window.scrollBy(0, gesture.lastY - event.clientY);
+        gesture.lastY = event.clientY;
+      }
+    }
+  });
+
+  container.addEventListener("pointerup", event => {
+    if (!gesture || gesture.pointerId !== event.pointerId) return;
+    const finished = gesture;
+    gesture = null;
+    if (!finished.dragging) {
+      clearTimeout(finished.longPressTimer);
+      finished.card.classList.remove("lifted");
+      return;
+    }
+    const { selectedIds, lastBeforeId: beforeId, moved } = finished;
+    finished.card.dataset.dragged = "true";
+    cleanup(finished);
+    if (moved) onReorder({ selectedIds, beforeId });
+  });
+
+  container.addEventListener("pointercancel", event => {
+    if (!gesture || gesture.pointerId !== event.pointerId) return;
+    const finished = gesture;
+    gesture = null;
+    cleanup(finished);
+  });
 }

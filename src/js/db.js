@@ -182,6 +182,39 @@ const listDb = {
 const projectDb = {
   all: () => appDb.all("projects"),
   put: project => appDb.put("projects", project),
+  putMany: projects => transact("projects", "readwrite", (_tx, stores) => {
+    for (const project of projects) stores.projects.put(project);
+  }),
+  completeManyWithTasks: (projectUpdates, updatedAt, completeTasks) => transact(["projects", "tasks"], "readwrite", (_tx, stores) => {
+    const ids = new Set(projectUpdates.map(project => project.id));
+    for (const project of projectUpdates) stores.projects.put(project);
+    const request = stores.tasks.openCursor();
+    request.onsuccess = () => {
+      const cursor = request.result;
+      if (!cursor) return;
+      const task = cursor.value;
+      if (ids.has(task.projectId) && task.status === "active") {
+        cursor.update(completeTasks
+          ? { ...task, status: "completed", completedAt: updatedAt, updatedAt }
+          : { ...task, projectId: null, projectPosition: null, updatedAt });
+      }
+      cursor.continue();
+    };
+  }),
+  deleteManyWithTasks: (projectIds, updatedAt, detachTasks) => transact(["projects", "tasks"], "readwrite", (_tx, stores) => {
+    const ids = new Set(projectIds);
+    const request = stores.tasks.openCursor();
+    request.onsuccess = () => {
+      const cursor = request.result;
+      if (!cursor) return;
+      if (ids.has(cursor.value.projectId)) {
+        if (detachTasks) cursor.update({ ...cursor.value, projectId: null, projectPosition: null, updatedAt });
+        else cursor.delete();
+      }
+      cursor.continue();
+    };
+    for (const projectId of ids) stores.projects.delete(projectId);
+  }),
   deleteAndDetachTasks: (projectId, updatedAt) => transact(["projects", "tasks"], "readwrite", (_tx, stores) => {
     const request = stores.tasks.index("by-project").openCursor(IDBKeyRange.only(projectId));
     request.onsuccess = () => {
