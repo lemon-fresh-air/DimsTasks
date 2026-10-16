@@ -72,6 +72,7 @@ const projectEls = {
   taskList: document.querySelector("#project-task-list"),
   stepForm: document.querySelector("#project-step-form"),
   stepTitle: document.querySelector("#project-step-title"),
+  addNewFirst: document.querySelector("#project-add-new-first"),
   mainComplete: document.querySelector("#project-main-complete"),
   save: document.querySelector("#project-save"),
   complete: document.querySelector("#project-complete"),
@@ -171,7 +172,9 @@ function renderProjectTask(task) {
     || lists.find(item => item.kind === "inbox");
   row.dataset.id = task.id;
   const selected = selectedTaskIds.has(task.id);
+  const completed = isTaskCompleted(task);
   row.classList.toggle("selected", selected);
+  row.classList.toggle("completed", completed);
   row.setAttribute("aria-selected", String(selected));
   row.querySelector(".task-text").textContent = task.title;
   const description = row.querySelector(".task-description-preview");
@@ -185,8 +188,18 @@ function renderProjectTask(task) {
   row.querySelector(".task-list-name").textContent = displayListTitle(list);
   const taskListIcon = row.querySelector(".task-list .inbox-icon");
   taskListIcon.className = list?.kind === "regular" ? "list-menu-icon" : "inbox-icon";
-  row.querySelector(".toggle").classList.toggle("done", isTaskCompleted(task));
+  const toggle = row.querySelector(".toggle");
+  toggle.classList.toggle("done", completed);
+  toggle.setAttribute("aria-label", completed ? "Повернути завдання в активні" : "Позначити виконаною");
   projectEls.taskList.append(row);
+}
+
+async function reopenProjectTask(task) {
+  const updatedAt = new Date().toISOString();
+  const updated = { ...task, status: "active", completedAt: null, updatedAt };
+  await taskDb.put(updated);
+  tasks = tasks.map(item => item.id === updated.id ? updated : item);
+  renderCurrentTasks();
 }
 
 function renderOpenProject() {
@@ -216,6 +229,7 @@ function renderOpenProject() {
   projectEls.progress.textContent = `${completedCount}/${steps.length}`;
   projectEls.tasksEmpty.hidden = steps.length > 0;
   projectEls.tasksExpand.hidden = steps.length < 5;
+  projectEls.addNewFirst.checked = project.addNewTasksFirst !== false;
   projectEls.complete.textContent = project.status === "completed" ? "Повернути в активні" : "Завершити проєкт";
   projectEls.mainComplete.textContent = projectEls.complete.textContent;
   projectEls.taskList.replaceChildren();
@@ -320,8 +334,31 @@ async function addProjectStep(title) {
   if (!project || !value) return;
   const listId = lists.some(list => list.id === project.lastListId) ? project.lastListId : INBOX_LIST_ID;
   const listTasks = tasks.filter(task => (task.listId || INBOX_LIST_ID) === listId && !task.sectionId);
-  const task = createTask({ title: value, listId, position: listTasks.length ? Math.max(...listTasks.map(item => item.position || 0)) + 1 : 0, projectId: project.id, projectPosition: projectSteps(project.id).length });
-  await taskDb.put(task);
+  const steps = tasks.filter(task => task.projectId === project.id);
+  const addFirst = project.addNewTasksFirst !== false;
+  const task = createTask({
+    title: value,
+    listId,
+    position: addFirst ? 0 : (listTasks.length ? Math.max(...listTasks.map(item => item.position || 0)) + 1 : 0),
+    projectId: project.id,
+    projectPosition: addFirst ? 0 : (steps.length ? Math.max(...steps.map(item => item.projectPosition ?? -1)) + 1 : 0)
+  });
+  const replacements = new Map();
+  if (addFirst) {
+    for (const existing of tasks) {
+      const inProject = existing.projectId === project.id;
+      const inListRoot = (existing.listId || INBOX_LIST_ID) === listId && !existing.sectionId;
+      if (!inProject && !inListRoot) continue;
+      replacements.set(existing.id, {
+        ...existing,
+        position: inListRoot ? (Number.isFinite(existing.position) ? existing.position : 0) + 1 : existing.position,
+        projectPosition: inProject ? (Number.isFinite(existing.projectPosition) ? existing.projectPosition : 0) + 1 : existing.projectPosition,
+        updatedAt: task.updatedAt
+      });
+    }
+  }
+  await taskDb.putMany([task, ...replacements.values()]);
+  tasks = tasks.map(existing => replacements.get(existing.id) || existing);
   tasks.push(task);
   await rememberProjectList(project.id, listId);
   if (projectEls.stepTitle.value.trim() === value) projectEls.stepTitle.value = "";
@@ -535,6 +572,18 @@ projectEls.datePickerOpen.addEventListener("click", () => {
 projectEls.showCountdown.addEventListener("change", () => { markProjectDirty(); renderProjectCountdown(); });
 projectEls.save.addEventListener("click", () => saveProjectFields({ closeAfter: true }));
 projectEls.stepForm.addEventListener("submit", event => { event.preventDefault(); addProjectStep(projectEls.stepTitle.value); });
+projectEls.addNewFirst.addEventListener("change", async () => {
+  const project = projects.find(item => item.id === activeProjectId);
+  if (!project) return;
+  const updated = createProject({ ...project, addNewTasksFirst: projectEls.addNewFirst.checked, updatedAt: new Date().toISOString() });
+  projects = projects.map(item => item.id === updated.id ? updated : item);
+  try { await projectDb.put(updated); }
+  catch (_error) {
+    projects = projects.map(item => item.id === project.id ? project : item);
+    projectEls.addNewFirst.checked = project.addNewTasksFirst !== false;
+    toast("Не вдалося зберегти порядок нових завдань");
+  }
+});
 projectEls.complete.addEventListener("click", toggleProjectStatus);
 projectEls.delete.addEventListener("click", deleteProject);
 projectEls.taskList.addEventListener("click", async event => {
@@ -543,7 +592,12 @@ projectEls.taskList.addEventListener("click", async event => {
   if (row.dataset.longPressed) { delete row.dataset.longPressed; return; }
   if (selectedTaskIds.size) { toggleTaskSelection(row.dataset.id); return; }
   const task = tasks.find(item => item.id === row.dataset.id);
-  if (event.target.closest(".toggle")) { await completeTask(task, {}, event.target.closest(".toggle")); renderOpenProject(); return; }
+  if (event.target.closest(".toggle")) {
+    if (isTaskCompleted(task)) await reopenProjectTask(task);
+    else await completeTask(task, {}, event.target.closest(".toggle"));
+    renderOpenProject();
+    return;
+  }
   if (event.target.closest(".task-card")) openTaskDetails(task);
 });
 

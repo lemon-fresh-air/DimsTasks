@@ -47,3 +47,8 @@ test("format 6 remains importable after project list memory is added", async () 
   const restored = await parseBackup(file({ format: "local-first-pwa-backup", appId: "dims-tasks", formatVersion: 6, data }));
   assert.equal(restored.tasks.length, 1);
 });
+
+test("format 7 remains importable after project step placement is added", async () => {
+  const restored = await parseBackup(file({ format: "local-first-pwa-backup", appId: "dims-tasks", formatVersion: 7, data }));
+  assert.equal(restored.tasks.length, 1);
+});

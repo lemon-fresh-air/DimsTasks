@@ -37,7 +37,7 @@ function createSection(values = {}) {
   return { ...baseRecord(values), ...values, listId: values.listId, title: String(values.title || "").trim(), description: values.description || "", position: Number.isFinite(values.position) ? values.position : 0 };
 }
 function createProject(values = {}) {
-  return { ...baseRecord(values), ...values, title: String(values.title || "").trim(), goal: values.goal || "", description: values.description || "", status: values.status === "completed" ? "completed" : "active", dueDate: values.dueDate || null, dueTime: values.dueDate && values.dueTime ? values.dueTime : null, showCountdown: values.showCountdown === true, lastListId: typeof values.lastListId === "string" ? values.lastListId : null, completedAt: values.completedAt || null, position: Number.isFinite(values.position) ? values.position : 0 };
+  return { ...baseRecord(values), ...values, title: String(values.title || "").trim(), goal: values.goal || "", description: values.description || "", status: values.status === "completed" ? "completed" : "active", dueDate: values.dueDate || null, dueTime: values.dueDate && values.dueTime ? values.dueTime : null, showCountdown: values.showCountdown === true, lastListId: typeof values.lastListId === "string" ? values.lastListId : null, addNewTasksFirst: values.addNewTasksFirst !== false, completedAt: values.completedAt || null, position: Number.isFinite(values.position) ? values.position : 0 };
 }
 function reorderProjectBlock(records, selectedIds, beforeId) {
   const active = records.filter(project => project.status !== "completed")
@@ -152,7 +152,8 @@ function currentProjectTask(tasks, projectId) {
   return tasks.filter(task => task.projectId === projectId && !isTaskCompleted(task)).sort(compareProjectTasks)[0] || null;
 }
 function compareProjectTasks(a, b) {
-  return (a.projectPosition ?? Number.MAX_SAFE_INTEGER) - (b.projectPosition ?? Number.MAX_SAFE_INTEGER)
+  return Number(isTaskCompleted(a)) - Number(isTaskCompleted(b))
+    || (a.projectPosition ?? Number.MAX_SAFE_INTEGER) - (b.projectPosition ?? Number.MAX_SAFE_INTEGER)
     || String(a.createdAt || "").localeCompare(String(b.createdAt || ""))
     || String(a.id).localeCompare(String(b.id));
 }

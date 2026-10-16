@@ -54,8 +54,10 @@ h1 { font-size:clamp(2.25rem,9vw,3.4rem); line-height:1; letter-spacing:-.05em; 
 .swipe-row.bulk-moving { pointer-events:none; }
 .toggle { width:32px; height:32px; display:grid; place-items:center; border:2px solid var(--toggle-border); border-radius:50%; background:transparent; color:var(--on-accent); }
 .toggle span { opacity:0; transform:scale(.55) rotate(-14deg); }
-.toggle.completing { border-color:var(--success); background:var(--success); box-shadow:0 0 0 6px color-mix(in srgb,var(--success) 13%,transparent); }
-.toggle.completing span { opacity:1; transform:scale(1) rotate(0); }
+.toggle.completing,.toggle.done { border-color:var(--success); background:var(--success); }
+.toggle.completing { box-shadow:0 0 0 6px color-mix(in srgb,var(--success) 13%,transparent); }
+.toggle.completing span,.toggle.done span { opacity:1; transform:scale(1) rotate(0); }
+.swipe-row.completed .task-text { color:var(--muted); text-decoration:line-through; }
 .task-open { min-width:0; min-height:42px; display:grid; grid-template-columns:minmax(0,1fr); align-items:center; gap:6px; padding:0; border:0; background:transparent; color:inherit; text-align:left; font:inherit; }
 .task-open:focus-visible { outline:2px solid var(--accent); outline-offset:4px; border-radius:8px; }
 .task-copy { min-width:0; display:block; }
@@ -276,6 +278,8 @@ body.project-tasks-open .project-selection-toolbar { position:fixed; z-index:29;
 #project-task-list.selection-mode .swipe-row.selected .task-card { background:var(--selected); box-shadow:inset 4px 0 0 var(--accent); }
 #project-task-list .task-card { cursor:grab; }
 .project-step-form { display:grid; grid-template-columns:minmax(0,1fr) 48px; gap:8px; margin-top:13px; }
+.project-step-placement { display:flex; align-items:center; gap:10px; min-height:44px; margin-top:6px; color:var(--muted); font-size:.92rem; font-weight:650; cursor:pointer; }
+.project-step-placement input { width:21px; height:21px; margin:0; accent-color:var(--accent); }
 .project-tasks-empty { margin:16px 0; color:var(--muted); line-height:1.45; }
 .project-main-actions { display:grid; gap:10px; margin:0 20px; padding-top:18px; border-top:1px solid var(--line); }
 .project-main-actions .primary-action,.project-main-actions .secondary-action { width:100%; }

@@ -99,9 +99,17 @@ const { openTestApp } = require("./e2e-helper");
   assert.equal(await page.evaluate(() => lists.find(list => list.id === tasks.find(task => task.title === "Завдання 11").listId)?.title), "Робота");
 
   step("complete neighbouring task");
+  const completedTitle = await page.locator("#project-task-list .task-text").first().textContent();
   await page.locator("#project-task-list .toggle").first().evaluate(button => button.click());
   await page.waitForFunction(() => document.querySelector("#project-progress").textContent === "1/11");
   assert.equal(await page.locator("#project-progress").textContent(), "1/11");
+  await page.click("#project-tasks-expand");
+  assert.equal(await page.locator("#project-task-list .task-text").last().textContent(), completedTitle);
+  assert.equal(await page.locator("#project-task-list .toggle").last().getAttribute("class"), "toggle done");
+  assert.equal(await page.locator("#project-task-list .toggle").last().getAttribute("aria-label"), "Повернути завдання в активні");
+  await page.locator("#project-task-list .toggle").last().evaluate(button => button.click());
+  await page.waitForFunction(() => document.querySelector("#project-progress").textContent === "0/11");
+  assert.equal(await page.locator("#project-task-list .toggle.done").count(), 0);
   assert.equal(await page.locator("#project-main-save").count(), 0);
   assert.equal(await page.locator("#project-main-complete").isVisible(), true);
   assert.deepEqual(errors, []);

@@ -6,8 +6,8 @@ const vm = require("node:vm");
 
 const source = fs.readFileSync(path.join(__dirname, "..", "src", "js", "model.js"), "utf8");
 const context = vm.createContext({ crypto: { randomUUID: () => "generated-id" }, INBOX_LIST_ID: "inbox" });
-vm.runInContext(`${source}\nthis.model = { createTask, createProject, reorderProjects, reorderProjectBlock, projectCountdown, currentProjectTask, visibleListTasks, reorderProjectSteps, reorderProjectStepBlock, normalizeTaskOrder };`, context);
-const { createTask, createProject, reorderProjects, reorderProjectBlock, projectCountdown, currentProjectTask, visibleListTasks, reorderProjectSteps, reorderProjectStepBlock, normalizeTaskOrder } = context.model;
+vm.runInContext(`${source}\nthis.model = { createTask, createProject, reorderProjects, reorderProjectBlock, projectCountdown, currentProjectTask, compareProjectTasks, visibleListTasks, reorderProjectSteps, reorderProjectStepBlock, normalizeTaskOrder };`, context);
+const { createTask, createProject, reorderProjects, reorderProjectBlock, projectCountdown, currentProjectTask, compareProjectTasks, visibleListTasks, reorderProjectSteps, reorderProjectStepBlock, normalizeTaskOrder } = context.model;
 
 const step = (id, projectPosition, values = {}) => createTask({
   id, projectId: "project", projectPosition, listId: "inbox", title: id,
@@ -23,6 +23,7 @@ test("a regular list shows only the current project step plus ordinary tasks", (
 test("completing a step advances the computed current step", () => {
   const records = [step("first", 0, { status: "completed", completedAt: "2026-10-15T01:00:00.000Z" }), step("second", 1)];
   assert.equal(currentProjectTask(records, "project").id, "second");
+  assert.deepEqual(Array.from(records.slice().sort(compareProjectTasks), task => task.id), ["second", "first"]);
 });
 
 test("project order is independent from list position and can be reordered", () => {
@@ -76,6 +77,9 @@ test("project countdown uses inclusive calendar-day labels and marks past dates 
 });
 
 test("project remembers a valid last list and legacy projects default safely", () => {
-  assert.equal(createProject({ title: "legacy" }).lastListId, null);
+  const legacy = createProject({ title: "legacy" });
+  assert.equal(legacy.lastListId, null);
+  assert.equal(legacy.addNewTasksFirst, true);
   assert.equal(createProject({ title: "remembered", lastListId: "work" }).lastListId, "work");
+  assert.equal(createProject({ title: "append", addNewTasksFirst: false }).addNewTasksFirst, false);
 });
