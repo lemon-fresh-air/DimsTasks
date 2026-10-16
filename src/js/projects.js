@@ -115,7 +115,9 @@ function closeProjects() {
 
 function renderProjectTask(task) {
   const row = els.template.content.firstElementChild.cloneNode(true);
-  const list = lists.find(item => item.id === task.listId);
+  const project = projects.find(item => item.id === task.projectId);
+  const list = lists.find(item => item.id === (task.listId || INBOX_LIST_ID))
+    || lists.find(item => item.kind === "inbox");
   row.dataset.id = task.id;
   const selected = selectedTaskIds.has(task.id);
   row.classList.toggle("selected", selected);
@@ -125,9 +127,13 @@ function renderProjectTask(task) {
   description.textContent = task.description || "";
   description.hidden = !task.description;
   const date = row.querySelector(".task-date");
-  date.textContent = readableDueDate(task.dueDate, task.dueTime);
-  applyDateTone(date, task.dueDate, task.dueTime);
-  row.querySelector(".task-project-name").textContent = displayListTitle(list);
+  renderTaskDueDate(date, task);
+  const projectBadge = row.querySelector(".task-project");
+  projectBadge.hidden = !project;
+  row.querySelector(".task-project-name").textContent = project?.title || "";
+  row.querySelector(".task-list-name").textContent = displayListTitle(list);
+  const taskListIcon = row.querySelector(".task-list .inbox-icon");
+  taskListIcon.className = list?.kind === "regular" ? "list-menu-icon" : "inbox-icon";
   row.querySelector(".toggle").classList.toggle("done", isTaskCompleted(task));
   projectEls.taskList.append(row);
 }
@@ -234,6 +240,7 @@ async function saveProjectFields({ closeAfter = false } = {}) {
     projectEls.heading.textContent = updated.title;
     projectEls.saveStatus.textContent = "Збережено";
     renderProjects();
+    renderCurrentTasks();
     if (closeAfter) closeProjectEditor();
   } catch (_error) {
     projectEls.saveStatus.textContent = "Не вдалося зберегти";

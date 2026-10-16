@@ -56,7 +56,7 @@ h1 { font-size:clamp(2.25rem,9vw,3.4rem); line-height:1; letter-spacing:-.05em; 
 .toggle span { opacity:0; transform:scale(.55) rotate(-14deg); }
 .toggle.completing { border-color:var(--success); background:var(--success); box-shadow:0 0 0 6px color-mix(in srgb,var(--success) 13%,transparent); }
 .toggle.completing span { opacity:1; transform:scale(1) rotate(0); }
-.task-open { min-width:0; min-height:42px; display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:center; gap:9px; padding:0; border:0; background:transparent; color:inherit; text-align:left; font:inherit; }
+.task-open { min-width:0; min-height:42px; display:grid; grid-template-columns:minmax(0,1fr); align-items:center; gap:6px; padding:0; border:0; background:transparent; color:inherit; text-align:left; font:inherit; }
 .task-open:focus-visible { outline:2px solid var(--accent); outline-offset:4px; border-radius:8px; }
 .task-copy { min-width:0; display:block; }
 .task-text { font-size:1rem; line-height:1.32; overflow-wrap:anywhere; }
@@ -66,7 +66,14 @@ h1 { font-size:clamp(2.25rem,9vw,3.4rem); line-height:1; letter-spacing:-.05em; 
 .task-date[data-date-tone="overdue"] { color:var(--danger); }
 .task-date[data-date-tone="tomorrow"] { color:var(--date-tomorrow); }
 .task-date[data-date-tone="future"],.task-date[data-date-tone="none"] { color:var(--date-future); }
-.task-project { display:inline-flex; align-items:center; gap:5px; color:var(--muted); font-size:.82rem; white-space:nowrap; align-self:end; padding-bottom:2px; }
+.task-meta { min-width:0; display:flex; flex-wrap:wrap; justify-content:flex-end; gap:4px; }
+.task-project,.task-list { min-width:0; max-width:100%; display:inline-flex; align-items:center; gap:5px; padding:4px 8px; border-radius:999px; font-size:.75rem; font-weight:700; white-space:nowrap; }
+.task-project { background:color-mix(in srgb,var(--accent) 9%,var(--surface)); color:var(--accent); }
+.task-project[hidden] { display:none; }
+.task-project .projects-icon { width:14px; height:14px; flex:0 0 auto; }
+.task-list { background:var(--control); color:var(--muted); }
+.task-list .inbox-icon,.task-list .list-menu-icon { width:14px; height:14px; flex:0 0 auto; }
+.task-project-name,.task-list-name { overflow:hidden; text-overflow:ellipsis; }
 .inbox-icon { width:17px; height:15px; display:inline-block; border:2px solid currentColor; border-radius:3px 3px 5px 5px; position:relative; }
 .inbox-icon::after { content:""; position:absolute; width:6px; height:3px; left:50%; bottom:2px; translate:-50% 0; border-bottom:2px solid currentColor; border-radius:50%; }
 .empty { display:grid; justify-items:center; gap:8px; padding:76px 20px; color:var(--muted); text-align:center; }
@@ -302,8 +309,15 @@ body.task-editor-open { overflow:hidden; }
 .date-chip[data-date-tone="overdue"] { color:var(--danger); }
 .date-chip[data-date-tone="tomorrow"] { color:var(--date-tomorrow); }
 .date-chip[data-date-tone="future"],.date-chip[data-date-tone="none"] { color:var(--date-future); }
-.task-attributes { display:flex; align-items:end; gap:12px; margin:18px 0 0; }
+.task-attributes { display:flex; flex-wrap:wrap; align-items:end; gap:12px; margin:18px 0 0; }
 .list-attribute { min-width:0; min-height:58px; flex:1 1 280px; display:grid; grid-template-columns:30px minmax(0,1fr); align-items:center; gap:12px; padding:7px 12px; border:1px solid var(--line); border-radius:15px; background:var(--control); }
+.project-attribute { min-width:0; min-height:58px; flex:1 1 280px; display:grid; grid-template-columns:30px minmax(0,1fr) 18px; align-items:center; gap:12px; padding:7px 12px; border:1px solid var(--line); border-radius:15px; background:var(--control); color:var(--text); text-align:left; }
+.project-attribute[hidden] { display:none; }
+.project-attribute .projects-icon { width:20px; height:20px; color:var(--muted); }
+.project-attribute-copy { min-width:0; display:grid; gap:1px; color:var(--muted); font-size:.75rem; font-weight:650; }
+.project-attribute-copy strong { overflow:hidden; color:var(--text); font:700 1rem/1.3 system-ui,sans-serif; text-overflow:ellipsis; white-space:nowrap; }
+.attribute-chevron { width:8px; height:8px; justify-self:center; border-top:2px solid currentColor; border-right:2px solid currentColor; transform:rotate(45deg); color:var(--muted); }
+.project-attribute:focus-visible { outline:2px solid var(--accent); outline-offset:3px; }
 .list-attribute .list-menu-icon { width:20px; height:20px; color:var(--muted); }
 .list-attribute-copy { min-width:0; display:grid; gap:1px; color:var(--muted); font-size:.75rem; font-weight:650; }
 .list-dropdown { min-width:0; position:relative; display:block; }

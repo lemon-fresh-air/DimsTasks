@@ -11,6 +11,8 @@ const els = {
   form: document.querySelector("#task-form"),
   input: document.querySelector("#task-title"),
   description: document.querySelector("#task-description"),
+  taskProjectLink: document.querySelector("#task-project-link"),
+  taskProjectValue: document.querySelector("#task-project-value"),
   date: document.querySelector("#task-date"),
   time: document.querySelector("#task-time"),
   dateLabel: document.querySelector("#date-label"),
@@ -133,6 +135,14 @@ function applyDateTone(element, value, time = "") {
 
 function readableDueDate(date, time = "") {
   return `${readableDate(date)}${date && time ? ` · ${time}` : ""}`;
+}
+
+function renderTaskDueDate(element, task) {
+  const hasDueDate = Boolean(task.dueDate);
+  element.hidden = !hasDueDate;
+  element.textContent = hasDueDate ? readableDueDate(task.dueDate, task.dueTime) : "";
+  if (hasDueDate) applyDateTone(element, task.dueDate, task.dueTime);
+  else delete element.dataset.dateTone;
 }
 
 function editorState() {
@@ -808,7 +818,7 @@ els.toastAction.addEventListener("click", async () => {
   if (action) await action();
 });
 
-function renderTasks(tasks, selectedIds = new Set(), taskLists = []) {
+function renderTasks(tasks, selectedIds = new Set(), taskLists = [], taskProjects = []) {
   const active = tasks.filter(task => !isTaskCompleted(task));
   const selectionMode = selectedIds.size > 0;
   els.shell.classList.toggle("selection-active", selectionMode);
@@ -827,14 +837,16 @@ function renderTasks(tasks, selectedIds = new Set(), taskLists = []) {
     const preview = row.querySelector(".task-description-preview");
     preview.hidden = !description;
     preview.textContent = description || "";
-    const displayedDate = task.dueDate || task.createdAt?.slice(0, 10);
     const taskDate = row.querySelector(".task-date");
-    taskDate.textContent = task.dueDate ? readableDueDate(task.dueDate, task.dueTime) : readableDate(displayedDate);
-    applyDateTone(taskDate, task.dueDate, task.dueTime);
+    renderTaskDueDate(taskDate, task);
+    const taskProject = taskProjects.find(project => project.id === task.projectId);
+    const projectBadge = row.querySelector(".task-project");
+    projectBadge.hidden = !taskProject;
+    row.querySelector(".task-project-name").textContent = taskProject?.title || "";
     const taskList = taskLists.find(list => list.id === (task.listId || INBOX_LIST_ID))
       || taskLists.find(list => list.kind === "inbox");
-    row.querySelector(".task-project-name").textContent = displayListTitle(taskList);
-    const taskListIcon = row.querySelector(".task-project .inbox-icon");
+    row.querySelector(".task-list-name").textContent = displayListTitle(taskList);
+    const taskListIcon = row.querySelector(".task-list .inbox-icon");
     taskListIcon.className = taskList?.kind === "regular" ? "list-menu-icon" : "inbox-icon";
     row.querySelector(".task-open").setAttribute("aria-label", `Відкрити деталі: ${task.title}`);
     return row;
@@ -879,6 +891,8 @@ function openNewTaskEditor(listId, originListId = listId) {
   els.form.reset();
   els.detailFields.hidden = false;
   els.detailToggle.hidden = true;
+  els.taskProjectLink.hidden = true;
+  delete els.taskProjectLink.dataset.projectId;
   setTaskEditorListUI(listId);
   els.date.value = localDateValue();
   els.time.value = "";
@@ -896,6 +910,10 @@ function openTaskDetails(task) {
   els.form.reset();
   els.detailFields.hidden = false;
   els.detailToggle.hidden = false;
+  const project = projects.find(item => item.id === task.projectId);
+  els.taskProjectLink.hidden = !project;
+  els.taskProjectLink.dataset.projectId = project?.id || "";
+  els.taskProjectValue.textContent = project?.title || "";
   setTaskEditorListUI(task.listId || INBOX_LIST_ID);
   els.input.value = task.title;
   els.description.value = task.description || "";

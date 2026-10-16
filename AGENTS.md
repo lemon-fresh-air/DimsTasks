@@ -86,3 +86,14 @@ Files in `src/` use CRLF. Do not convert or investigate line endings. For `git d
 ## Deploy
 
 Push to `main` triggers `.github/workflows/pages.yml`, which builds `dist/` and publishes to Pages. Push, repository changes, and Pages settings only with the user's direct permission.
+
+## Screen abbreviations (Cyrillic, used in my prompts)
+
+- ВП: all projects. Screen opened from the bottom navigation bar, lists projects.
+- КП: a specific project. Opened by tapping a project on ВП.
+- НаКП: settings of a specific project (rename etc.).
+- ГМ: main menu. Also the all-lists screen.
+- НаГ: global app settings. Opened from ГМ.
+- КС: a specific task list. System lists «Нові» and «Сьогодні» are not КС.
+
+The prefix «На» always means settings.

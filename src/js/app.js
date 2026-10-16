@@ -31,7 +31,7 @@ function visibleTasks() {
 }
 
 function renderCurrentTasks() {
-  renderTasks(visibleTasks(), selectedTaskIds, lists);
+  renderTasks(visibleTasks(), selectedTaskIds, lists, projects);
   updateMainMenuTaskCounts(tasks);
   renderSelectedListOptions(lists, activeListId);
   renderProjects();
@@ -166,6 +166,7 @@ async function initializeApp() {
   els.returnOverdueToggle.checked = returnOverdueToInbox;
   await loadAndNormalizeTaskOrder();
   await loadProjects();
+  renderCurrentTasks();
   await processOverdueTasks();
 }
 
@@ -1039,6 +1040,13 @@ els.detailToggle.addEventListener("click", async () => {
   await completeTask(task, changes, els.detailToggle);
   els.editor.dataset.taskId = "";
   hideTaskEditor();
+});
+
+els.taskProjectLink.addEventListener("click", () => {
+  const projectId = els.taskProjectLink.dataset.projectId;
+  if (!projectId) return;
+  hideTaskEditor();
+  openProject(projectId);
 });
 
 enableTaskGestures({
