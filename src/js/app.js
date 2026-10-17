@@ -454,6 +454,34 @@ function clearListSelection() {
   renderListMenu();
 }
 
+function closeSelectedListsDeleteDialog() {
+  els.listSelectionDeleteBackdrop.hidden = true;
+  document.body.classList.remove("project-delete-dialog-open");
+  els.mainMenuDeleteSelected.focus({ preventScroll: true });
+}
+
+async function deleteSelectedLists() {
+  const ids = new Set(selectedListIds);
+  if (!ids.size) return;
+  const now = new Date().toISOString();
+  els.listSelectionDeleteConfirm.disabled = true;
+  try {
+    await listDb.deleteManyAndMoveTasksToInbox([...ids], now);
+    tasks = tasks.map(task => ids.has(task.listId) ? { ...task, listId: INBOX_LIST_ID, sectionId: null, updatedAt: now } : task);
+    lists = lists.filter(list => !ids.has(list.id));
+    if (ids.has(activeListId)) activeListId = INBOX_LIST_ID;
+    selectedListIds = new Set();
+    closeSelectedListsDeleteDialog();
+    renderListNavigation();
+    renderCurrentTasks();
+    toast(ids.size === 1 ? "Список видалено, задачі перенесено до «Нові»" : `Видалено списків: ${ids.size}. Задачі перенесено до «Нові»`);
+  } catch (_error) {
+    toast("Не вдалося видалити списки. Спробуйте ще раз.");
+  } finally {
+    els.listSelectionDeleteConfirm.disabled = false;
+  }
+}
+
 async function reorderTaskLists({ selectedIds, beforeId }) {
   const previous = lists;
   const reordered = reorderLists(lists, selectedIds, beforeId);
@@ -809,6 +837,16 @@ els.mainMenuClose.addEventListener("click", () => {
   if (selectedListIds.size) clearListSelection();
   closeMainMenu();
 });
+els.mainMenuSelectionClose.addEventListener("click", clearListSelection);
+els.mainMenuDeleteSelected.addEventListener("click", () => {
+  els.listSelectionDeleteTitle.textContent = selectedListIds.size === 1 ? "Видалити список?" : `Видалити списки (${selectedListIds.size})?`;
+  els.listSelectionDeleteBackdrop.hidden = false;
+  document.body.classList.add("project-delete-dialog-open");
+  requestAnimationFrame(() => els.listSelectionDeleteDialog.focus());
+});
+els.listSelectionDeleteCancel.addEventListener("click", closeSelectedListsDeleteDialog);
+els.listSelectionDeleteConfirm.addEventListener("click", deleteSelectedLists);
+els.listSelectionDeleteBackdrop.addEventListener("click", event => { if (event.target === els.listSelectionDeleteBackdrop) closeSelectedListsDeleteDialog(); });
 els.mainMenuLists.addEventListener("click", event => {
   const button = event.target.closest("[data-list-id]");
   if (els.mainMenuLists.dataset.suppressListClick === button?.dataset.listId) {
@@ -882,15 +920,17 @@ window.addEventListener("popstate", () => {
   }
   if (!els.mainMenu.hidden) closeMainMenu({ fromHistory: true });
 });
-enableHorizontalSwipe(els.listSwipeZone, {
+enableHorizontalSwipe(els.shell, {
   direction: "right",
+  canStart: event => projectEls.overview.hidden && !event.target.closest(".task-card"),
   onSwipe: () => {
     if (selectedTaskIds.size) clearTaskSelection();
     openMainMenu();
   }
 });
-enableHorizontalSwipe(els.mainMenuLists, {
+enableHorizontalSwipe(els.mainMenu.querySelector(".main-menu-panel"), {
   direction: "left",
+  canStart: event => !event.target.closest(".main-menu-item"),
   onSwipe: () => {
     if (selectedListIds.size) clearListSelection();
     closeMainMenu();
@@ -947,6 +987,11 @@ els.selectedListOptions.addEventListener("keydown", event => {
 });
 els.deleteSelected.addEventListener("click", deleteSelectedTasks);
 document.addEventListener("keydown", event => {
+  if (event.key === "Escape" && !els.listSelectionDeleteBackdrop.hidden) {
+    event.preventDefault();
+    closeSelectedListsDeleteDialog();
+    return;
+  }
   if (event.key === "Escape" && !els.listEditor.hidden) {
     event.preventDefault();
     if (!els.listDeleteConfirm.hidden) {

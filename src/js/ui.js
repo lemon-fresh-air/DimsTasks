@@ -56,6 +56,16 @@ const els = {
   navProjects: document.querySelector("#nav-projects"),
   navInbox: document.querySelector("#nav-inbox"),
   mainMenuClose: document.querySelector("#main-menu-close"),
+  mainMenuNormalHeader: document.querySelector("#main-menu-normal-header"),
+  mainMenuSelectionToolbar: document.querySelector("#main-menu-selection-toolbar"),
+  mainMenuSelectionClose: document.querySelector("#main-menu-selection-close"),
+  mainMenuSelectionCount: document.querySelector("#main-menu-selection-count"),
+  mainMenuDeleteSelected: document.querySelector("#main-menu-delete-selected"),
+  listSelectionDeleteBackdrop: document.querySelector("#list-selection-delete-backdrop"),
+  listSelectionDeleteDialog: document.querySelector("#list-selection-delete-dialog"),
+  listSelectionDeleteTitle: document.querySelector("#list-selection-delete-title"),
+  listSelectionDeleteCancel: document.querySelector("#list-selection-delete-cancel"),
+  listSelectionDeleteConfirm: document.querySelector("#list-selection-delete-confirm"),
   mainMenuLists: document.querySelector("#main-menu-lists"),
   mainMenuSwipeZone: document.querySelector("#main-menu-swipe-zone"),
   newListOpen: document.querySelector("#new-list-open"),
@@ -207,6 +217,9 @@ function taskCountsByList(tasks) {
 function renderMainMenuLists(lists, activeListId, selectedIds = new Set(), tasks = []) {
   const counts = taskCountsByList(tasks);
   els.mainMenuLists.classList.toggle("selection-mode", selectedIds.size > 0);
+  els.mainMenuNormalHeader.hidden = selectedIds.size > 0;
+  els.mainMenuSelectionToolbar.hidden = selectedIds.size === 0;
+  els.mainMenuSelectionCount.textContent = `Вибрано: ${selectedIds.size}`;
   els.mainMenuLists.replaceChildren(...lists.map(list => {
     const button = document.createElement("button");
     button.type = "button";

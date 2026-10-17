@@ -217,6 +217,25 @@ const listDb = {
       stores.sections.delete(cursor.primaryKey);
       cursor.continue();
     };
+  }),
+  deleteManyAndMoveTasksToInbox: (listIds, updatedAt) => transact(["lists", "sections", "tasks"], "readwrite", (_tx, stores) => {
+    for (const listId of listIds) {
+      stores.lists.delete(listId);
+      const taskRequest = stores.tasks.index("by-list").openCursor(IDBKeyRange.only(listId));
+      taskRequest.onsuccess = () => {
+        const cursor = taskRequest.result;
+        if (!cursor) return;
+        cursor.update({ ...cursor.value, listId: INBOX_LIST_ID, sectionId: null, updatedAt });
+        cursor.continue();
+      };
+      const sectionRequest = stores.sections.index("by-list").openKeyCursor(IDBKeyRange.only(listId));
+      sectionRequest.onsuccess = () => {
+        const cursor = sectionRequest.result;
+        if (!cursor) return;
+        stores.sections.delete(cursor.primaryKey);
+        cursor.continue();
+      };
+    }
   })
 };
 

@@ -1,8 +1,8 @@
-function enableHorizontalSwipe(element, { direction, onSwipe }) {
+function enableHorizontalSwipe(element, { direction, onSwipe, canStart = () => true }) {
   let gesture = null;
 
   element.addEventListener("pointerdown", event => {
-    if (!event.isPrimary || (event.pointerType === "mouse" && event.button !== 0)) return;
+    if (!event.isPrimary || (event.pointerType === "mouse" && event.button !== 0) || !canStart(event)) return;
     gesture = { pointerId: event.pointerId, startX: event.clientX, startY: event.clientY };
   });
 
@@ -10,9 +10,9 @@ function enableHorizontalSwipe(element, { direction, onSwipe }) {
     if (!gesture || gesture.pointerId !== event.pointerId) return;
     const dx = event.clientX - gesture.startX;
     const dy = event.clientY - gesture.startY;
-    const requiredDistance = Math.min(120, Math.max(80, innerWidth * .22));
+    const requiredDistance = Math.min(96, Math.max(64, innerWidth * .18));
     const movesInDirection = direction === "right" ? dx >= requiredDistance : dx <= -requiredDistance;
-    const isClearlyHorizontal = Math.abs(dx) >= Math.abs(dy) * 1.5;
+    const isClearlyHorizontal = Math.abs(dx) >= Math.abs(dy) * 1.15;
     gesture = null;
     if (movesInDirection && isClearlyHorizontal) onSwipe();
   });
@@ -109,7 +109,7 @@ function enableListReordering({ onReorder, isSelectionMode, isSelected, onLongPr
   container.addEventListener("pointerdown", event => {
     const item = event.target.closest('[data-list-kind="regular"]');
     if (!item || !event.isPrimary || (event.pointerType === "mouse" && event.button !== 0)) return;
-    gesture = { item, id: item.dataset.listId, pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, ready: event.pointerType === "mouse", dragging: false };
+    gesture = { item, id: item.dataset.listId, pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, lastY: event.clientY, ready: event.pointerType === "mouse", scrolling: false, dragging: false };
     item.setPointerCapture?.(event.pointerId);
     gesture.longPressTimer = setTimeout(() => {
       if (!gesture || gesture.pointerId !== event.pointerId) return;
@@ -140,6 +140,17 @@ function enableListReordering({ onReorder, isSelectionMode, isSelected, onLongPr
       event.preventDefault();
       container.dataset.suppressListClick = gesture.id;
       startDrag(event);
+      return;
+    }
+    const dx = event.clientX - gesture.startX;
+    const dy = event.clientY - gesture.startY;
+    if (gesture.scrolling || (!isSelected(gesture.id) && Math.abs(dy) > Math.abs(dx) && Math.abs(dy) > 8)) {
+      event.preventDefault();
+      clearTimeout(gesture.longPressTimer);
+      gesture.scrolling = true;
+      container.dataset.suppressListClick = gesture.id;
+      container.scrollBy(0, gesture.lastY - event.clientY);
+      gesture.lastY = event.clientY;
       return;
     }
     if (!gesture.ready && distance > 8) clearTimeout(gesture.longPressTimer);
@@ -301,14 +312,8 @@ function enableTaskGestures({ container = els.list, onDelete, isSelectionMode, i
       startDrag(event);
       return;
     }
-    if (isSelectionMode() && Math.hypot(dx, dy) > 8) {
-      event.preventDefault();
-      clearTimeout(gesture.longPressTimer);
-      startDrag(event);
-      return;
-    }
     if (Math.abs(dx) > 8 || Math.abs(dy) > 8) clearTimeout(gesture.longPressTimer);
-    if (!gesture.horizontal && Math.abs(dy) > Math.abs(dx) && Math.abs(dy) > 8) {
+    if (gesture.scrolling || (!gesture.horizontal && Math.abs(dy) > Math.abs(dx) && Math.abs(dy) > 8)) {
       event.preventDefault();
       gesture.scrolling = true;
       gesture.row.dataset.swiped = "true";

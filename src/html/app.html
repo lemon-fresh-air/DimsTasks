@@ -51,8 +51,17 @@
 <section id="main-menu" class="main-menu" aria-label="Головне меню" hidden>
   <div class="main-menu-panel">
     <header class="main-menu-header">
-      <button id="main-menu-close" class="main-menu-close" type="button" aria-label="Повернутися до списку"><span aria-hidden="true"></span></button>
-      <h2>Головне меню</h2>
+      <div id="main-menu-normal-header" class="main-menu-header-content">
+        <button id="main-menu-close" class="main-menu-close" type="button" aria-label="Повернутися до списку"><span aria-hidden="true"></span></button>
+        <h2>Головне меню</h2>
+      </div>
+      <div id="main-menu-selection-toolbar" class="main-menu-selection-toolbar" hidden>
+        <button id="main-menu-selection-close" class="toolbar-action" type="button" aria-label="Завершити виділення"><span class="back-icon" aria-hidden="true"></span></button>
+        <p id="main-menu-selection-count">Вибрано: 0</p>
+        <div class="selection-actions" aria-label="Дії з вибраними списками">
+          <button id="main-menu-delete-selected" class="toolbar-action destructive" type="button" aria-label="Видалити вибрані списки"><span class="trash-icon" aria-hidden="true"></span></button>
+        </div>
+      </div>
     </header>
     <nav id="main-menu-lists" class="main-menu-list" aria-label="Списки задач"></nav>
     <form id="new-list-form" class="new-list-form" hidden>
@@ -68,6 +77,13 @@
     </div>
   </div>
 </section>
+<div id="list-selection-delete-backdrop" class="project-delete-dialog-backdrop" hidden>
+  <section id="list-selection-delete-dialog" class="project-delete-dialog" role="dialog" aria-modal="true" aria-labelledby="list-selection-delete-title" tabindex="-1">
+    <h2 id="list-selection-delete-title">Видалити списки?</h2>
+    <p>Задачі з вибраних списків буде перенесено до «Нові».</p>
+    <footer><button id="list-selection-delete-cancel" type="button">Скасувати</button><button id="list-selection-delete-confirm" class="dialog-confirm-destructive" type="button">Видалити</button></footer>
+  </section>
+</div>
 <section id="settings-screen" class="settings-screen" aria-labelledby="settings-title" hidden>
   <div class="settings-panel">
     <header class="settings-header">
