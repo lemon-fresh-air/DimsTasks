@@ -86,6 +86,7 @@ const els = {
   listDeleteConfirm: document.querySelector("#list-delete-confirm"),
   listDeleteCancel: document.querySelector("#list-delete-cancel"),
   listDeleteConfirmButton: document.querySelector("#list-delete-confirm-button"),
+  systemThemeToggle: document.querySelector("#system-theme-toggle"),
   themeToggle: document.querySelector("#theme-toggle"),
   themeLabel: document.querySelector("#theme-label"),
   returnOverdueToggle: document.querySelector("#return-overdue-toggle"),
@@ -193,12 +194,17 @@ let menuOpenFrame;
 let settingsCloseTimer;
 let settingsOpenFrame;
 
-function applyTheme(theme) {
+function applyTheme(theme, { manualTheme = theme, useSystemTheme = false } = {}) {
   const normalizedTheme = theme === "dark" ? "dark" : "light";
+  const normalizedManualTheme = manualTheme === "dark" ? "dark" : "light";
   document.documentElement.dataset.theme = normalizedTheme;
-  els.themeToggle.checked = normalizedTheme === "dark";
-  els.themeLabel.textContent = normalizedTheme === "dark" ? "Нічна" : "Денна";
-  els.themeToggle.setAttribute("aria-label", normalizedTheme === "dark" ? "Увімкнено нічну тему" : "Увімкнути нічну тему");
+  els.systemThemeToggle.checked = useSystemTheme;
+  els.themeToggle.disabled = useSystemTheme;
+  els.themeToggle.checked = normalizedManualTheme === "dark";
+  els.themeLabel.textContent = useSystemTheme
+    ? `Системна · ${normalizedTheme === "dark" ? "нічна" : "денна"}`
+    : normalizedManualTheme === "dark" ? "Нічна" : "Денна";
+  els.themeToggle.setAttribute("aria-label", normalizedManualTheme === "dark" ? "Увімкнено нічну тему" : "Увімкнути нічну тему");
 }
 
 function taskCountsByList(tasks) {

@@ -1,4 +1,4 @@
-function enableHorizontalSwipe(element, { direction, onSwipe, canStart = () => true }) {
+function enableHorizontalSwipe(element, { direction, onSwipe, canStart = () => true, canComplete = () => true }) {
   let gesture = null;
 
   element.addEventListener("pointerdown", event => {
@@ -14,7 +14,7 @@ function enableHorizontalSwipe(element, { direction, onSwipe, canStart = () => t
     const movesInDirection = direction === "right" ? dx >= requiredDistance : dx <= -requiredDistance;
     const isClearlyHorizontal = Math.abs(dx) >= Math.abs(dy) * 1.15;
     gesture = null;
-    if (movesInDirection && isClearlyHorizontal) onSwipe();
+    if (movesInDirection && isClearlyHorizontal && canComplete()) onSwipe();
   });
 
   const cancel = event => {
@@ -296,9 +296,12 @@ function enableTaskGestures({ container = els.list, onDelete, isSelectionMode, i
     if (!gesture?.dragging) return;
     const clientY = gesture.lastY;
     const edge = 72;
-    const speed = clientY < edge ? -Math.min(14, (edge - clientY) / 4) : clientY > innerHeight - edge ? Math.min(14, (clientY - innerHeight + edge) / 4) : 0;
+    const scrollContainer = container.closest(".project-screen");
+    const bounds = scrollContainer?.getBoundingClientRect() || { top: 0, bottom: innerHeight };
+    const speed = clientY < bounds.top + edge ? -Math.min(14, (bounds.top + edge - clientY) / 4) : clientY > bounds.bottom - edge ? Math.min(14, (clientY - bounds.bottom + edge) / 4) : 0;
     if (speed) {
-      window.scrollBy(0, speed);
+      if (scrollContainer) scrollContainer.scrollBy(0, speed);
+      else window.scrollBy(0, speed);
       updateInsertion(clientY);
     }
     gesture.scrollFrame = requestAnimationFrame(autoScroll);
@@ -336,7 +339,7 @@ function enableTaskGestures({ container = els.list, onDelete, isSelectionMode, i
       gesture.lastY = event.clientY;
       return;
     }
-    if (dx >= 0 && !gesture.horizontal) return;
+    if (gesture.canDrag || dx >= 0 && !gesture.horizontal) return;
     if (Math.abs(dx) > 8) {
       gesture.horizontal = true;
     }
@@ -380,7 +383,7 @@ function enableTaskGestures({ container = els.list, onDelete, isSelectionMode, i
       momentumFrame = requestAnimationFrame(coast);
     }
     if (longPress || scrolling) return;
-    if (horizontal && Math.abs(dx) >= deleteThreshold) {
+    if (!isSelectionMode() && horizontal && Math.abs(dx) >= deleteThreshold) {
       row.classList.remove("swiping");
       row.classList.add("deleting");
       row.dataset.swiped = "true";

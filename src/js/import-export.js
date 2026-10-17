@@ -1,6 +1,6 @@
 const BACKUP_FORMAT = "local-first-pwa-backup";
 const APP_ID = "dims-tasks";
-const BACKUP_FORMAT_VERSION = 12;
+const BACKUP_FORMAT_VERSION = 13;
 const BACKUP_MAX_BYTES = 50 * 1024 * 1024;
 
 function backupCounts(data) { return Object.fromEntries(STORE_NAMES.map(name => [name, data[name].length])); }
@@ -38,7 +38,7 @@ function validateBackupData(data, { strict = true } = {}) {
       if (name === "sections" && (typeof record.listId !== "string" || typeof record.title !== "string" || typeof record.description !== "string" || !validPosition(record.position))) throw new Error(`Некоректна секція: ${record.id}`);
       if (name === "projects" && (typeof record.title !== "string" || typeof record.goal !== "string" || typeof record.description !== "string" || !["active", "completed"].includes(record.status) || !validDate(record.dueDate) || !validTime(record.dueTime) || record.dueTime && !record.dueDate || typeof record.showCountdown !== "boolean" || !validOptionalId(record.lastListId) || typeof record.addNewTasksFirst !== "boolean" || record.completedAt !== null && !validIso(record.completedAt) || !validPosition(record.position))) throw new Error(`Некоректний проєкт: ${record.id}`);
       if (name === "tasks" && (typeof record.listId !== "string" || !validOptionalId(record.sectionId) || !validOptionalId(record.projectId) || typeof record.title !== "string" || typeof record.description !== "string" || !["active", "completed", "archived"].includes(record.status) || record.completedAt !== null && !validIso(record.completedAt) || !validDate(record.dueDate) || !validTime(record.dueTime) || record.dueTime && !record.dueDate || !validPosition(record.position) || record.todayPosition !== null && !validPosition(record.todayPosition) || record.projectPosition !== null && !validPosition(record.projectPosition) || record.returnedToInboxAt !== null && !validIso(record.returnedToInboxAt))) throw new Error(`Некоректне завдання: ${record.id}`);
-      if (name === "settings" && (record.id === "appearance" && !["light", "dark"].includes(record.theme) || record.id === "task-defaults" && typeof record.todayListId !== "string" || record.id === "workflow" && typeof record.returnOverdueToInbox !== "boolean" || record.id === "backup-naming" && (typeof record.prefix !== "string" || !record.prefix.trim() || !Number.isSafeInteger(record.nextVersion) || record.nextVersion < 1) || record.id === "navigation" && !["today", "upcoming", "projects", "inbox", "overview"].includes(record.startScreen))) throw new Error(`Некоректне налаштування: ${record.id}`);
+      if (name === "settings" && (record.id === "appearance" && (!["light", "dark"].includes(record.theme) || typeof record.useSystemTheme !== "boolean") || record.id === "task-defaults" && typeof record.todayListId !== "string" || record.id === "workflow" && typeof record.returnOverdueToInbox !== "boolean" || record.id === "backup-naming" && (typeof record.prefix !== "string" || !record.prefix.trim() || !Number.isSafeInteger(record.nextVersion) || record.nextVersion < 1) || record.id === "navigation" && !["today", "upcoming", "projects", "inbox", "overview"].includes(record.startScreen))) throw new Error(`Некоректне налаштування: ${record.id}`);
     }
   }
   if (!strict) return data;
@@ -91,7 +91,7 @@ function normalizeOlderBackup(data) {
     entityVersion: record.entityVersion || 1,
     updatedAt: record.updatedAt || record.createdAt,
     customFields: record.customFields || {},
-    ...(record.id === "appearance" ? { theme: record.theme === "dark" ? "dark" : "light" } : {}),
+    ...(record.id === "appearance" ? { theme: record.theme === "dark" ? "dark" : "light", useSystemTheme: record.useSystemTheme !== false } : {}),
     ...(record.id === "task-defaults" ? { todayListId: listIds.has(record.todayListId) ? record.todayListId : INBOX_LIST_ID } : {}),
     ...(record.id === "workflow" ? { returnOverdueToInbox: record.returnOverdueToInbox === true } : {}),
     ...(record.id === "backup-naming" ? { prefix: normalizeBackupPrefix(record.prefix), nextVersion: Number.isSafeInteger(record.nextVersion) && record.nextVersion > 0 ? record.nextVersion : 1 } : {}),
@@ -107,7 +107,8 @@ function completeBackupFields(data) {
     projects: data.projects.map(record => createProject(record)),
     tasks: data.tasks.map(record => createTask(record)),
     settings: data.settings.map(record => ({ ...record, entityVersion: record.entityVersion || 1,
-      updatedAt: record.updatedAt || record.createdAt }))
+      updatedAt: record.updatedAt || record.createdAt,
+      ...(record.id === "appearance" ? { theme: record.theme === "dark" ? "dark" : "light", useSystemTheme: record.useSystemTheme !== false } : {}) }))
   };
 }
 

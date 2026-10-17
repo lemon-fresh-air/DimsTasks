@@ -94,10 +94,11 @@ async function readStore(page, name) {
     assert.equal((await readStore(page, "lists")).length, 101);
     const replacedSettings = await readStore(page, "settings");
     assert.equal(replacedSettings.find(item => item.id === "appearance").theme, "dark");
+    assert.equal(replacedSettings.find(item => item.id === "appearance").useSystemTheme, true);
     assert.equal(replacedSettings.find(item => item.id === "navigation").startScreen, "projects");
     await page.reload({ waitUntil: "networkidle" });
     assert.equal((await readStore(page, "tasks")).length, 1000);
-    assert.equal(await page.locator("html").getAttribute("data-theme"), "dark");
+    assert.equal(await page.locator("html").getAttribute("data-theme"), "light");
 
     await page.click("#main-menu-open");
     await page.click("#settings-open");
@@ -109,7 +110,7 @@ async function readStore(page, name) {
     await page.click("#backup-export");
     await fullDownloadPromise;
     const exported = await page.evaluate(async () => JSON.parse(await window.lastBackupBlob.text()));
-    assert.equal(exported.formatVersion, 12);
+    assert.equal(exported.formatVersion, 13);
     assert.equal(exported.data.tasks.length, 1000);
     assert.equal(exported.data.tasks[0].todayPosition, null);
     assert.equal(exported.data.projects.length, 100);

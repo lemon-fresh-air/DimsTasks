@@ -16,8 +16,8 @@ const context = vm.createContext({
   URL: { createObjectURL: () => "blob:test", revokeObjectURL: () => {} },
   document: { createElement: () => ({ click() {} }) }
 });
-vm.runInContext(`${model}\n${importExport}\nthis.backup = { parseBackup, readBackup, validateBackupData, mergeBackupData, backupFileName, BACKUP_FORMAT_VERSION };`, context);
-const { parseBackup, readBackup, validateBackupData, mergeBackupData, backupFileName, BACKUP_FORMAT_VERSION } = context.backup;
+vm.runInContext(`${model}\n${importExport}\nthis.backup = { parseBackup, readBackup, validateBackupData, mergeBackupData, completeBackupFields, backupFileName, BACKUP_FORMAT_VERSION };`, context);
+const { parseBackup, readBackup, validateBackupData, mergeBackupData, completeBackupFields, backupFileName, BACKUP_FORMAT_VERSION } = context.backup;
 const file = value => ({ text: async () => JSON.stringify(value) });
 const stamp = "2026-01-01T00:00:00.000Z";
 const base = id => ({ id, entityVersion: 1, createdAt: stamp, updatedAt: stamp, customFields: {} });
@@ -25,13 +25,14 @@ const data = {
   lists: [{ ...base("inbox"), title: "Інбокс", description: "", kind: "inbox", position: 0 }],
   sections: [], projects: [],
   tasks: [{ ...base("late"), listId: "inbox", sectionId: null, projectId: null, title: "Пізно", description: "", status: "active", completedAt: null, dueDate: null, dueTime: null, position: 0, todayPosition: 2, projectPosition: null, returnedToInboxAt: "2026-01-02T00:00:00.000Z" }],
-  settings: [{ ...base("workflow"), returnOverdueToInbox: true }, { ...base("navigation"), startScreen: "projects" }]
+  settings: [{ ...base("appearance"), theme: "dark", useSystemTheme: false }, { ...base("workflow"), returnOverdueToInbox: true }, { ...base("navigation"), startScreen: "projects" }]
 };
 
-test("current backup round-trip parser preserves workflow setting and return marker", async () => {
+test("current backup round-trip parser preserves appearance, workflow, and return marker", async () => {
   const restored = await parseBackup(file({ format: "local-first-pwa-backup", appId: "dims-tasks", formatVersion: BACKUP_FORMAT_VERSION, data }));
-  assert.equal(restored.settings[0].returnOverdueToInbox, true);
-  assert.equal(restored.settings[1].startScreen, "projects");
+  assert.equal(restored.settings[0].useSystemTheme, false);
+  assert.equal(restored.settings[1].returnOverdueToInbox, true);
+  assert.equal(restored.settings[2].startScreen, "projects");
   assert.equal(restored.tasks[0].returnedToInboxAt, data.tasks[0].returnedToInboxAt);
   assert.equal(restored.tasks[0].todayPosition, 2);
 });
@@ -53,6 +54,21 @@ test("format 11 remains importable without navigation settings", async () => {
   old.settings = old.settings.filter(record => record.id !== "navigation");
   const restored = await parseBackup(file({ format: "local-first-pwa-backup", appId: "dims-tasks", formatVersion: 11, data: old }));
   assert.equal(restored.settings.some(record => record.id === "navigation"), false);
+});
+
+test("format 12 appearance defaults to the system theme", async () => {
+  const old = structuredClone(data);
+  delete old.settings.find(record => record.id === "appearance").useSystemTheme;
+  const restored = await parseBackup(file({ format: "local-first-pwa-backup", appId: "dims-tasks", formatVersion: 12, data: old }));
+  assert.equal(restored.settings.find(record => record.id === "appearance").useSystemTheme, true);
+});
+
+test("export normalizes a legacy local appearance record", () => {
+  const local = structuredClone(data);
+  delete local.settings.find(record => record.id === "appearance").useSystemTheme;
+  const completed = completeBackupFields(local);
+  assert.equal(completed.settings.find(record => record.id === "appearance").useSystemTheme, true);
+  assert.doesNotThrow(() => validateBackupData(completed));
 });
 
 test("backup filename uses a safe prefix, sequence number, and readable date", () => {
@@ -113,10 +129,10 @@ test("merge keeps local on equal time, uses newer records, and retains unique re
   incoming.tasks[0].updatedAt = "2026-01-02T00:00:00.000Z";
   merged = mergeBackupData(local, incoming);
   assert.equal(merged.data.tasks[0].title, "Із файлу");
-  assert.deepEqual({ ...merged.changes }, { added: 1, updated: 1, kept: 3 });
+  assert.deepEqual({ ...merged.changes }, { added: 1, updated: 1, kept: 4 });
 });
 
 test("future and malformed files are rejected before restoration", async () => {
-  await assert.rejects(readBackup(file({ format: "local-first-pwa-backup", appId: "dims-tasks", formatVersion: 13, data })), /ще не підтримано/);
+  await assert.rejects(readBackup(file({ format: "local-first-pwa-backup", appId: "dims-tasks", formatVersion: 14, data })), /ще не підтримано/);
   await assert.rejects(readBackup({ text: async () => "{" }), /JSON-файл/);
 });

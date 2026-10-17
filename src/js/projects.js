@@ -42,6 +42,7 @@ const projectEls = {
   selectionToolbar: document.querySelector("#project-selection-toolbar"),
   selectionClose: document.querySelector("#project-selection-close"),
   selectionCount: document.querySelector("#project-selection-count"),
+  selectAll: document.querySelector("#project-select-all-tasks"),
   dateSelected: document.querySelector("#project-date-selected"),
   listSelected: document.querySelector("#project-list-selected"),
   listOptions: document.querySelector("#project-list-options"),
@@ -208,6 +209,11 @@ function renderOpenProject() {
   const steps = projectSteps(project.id);
   const completedCount = steps.filter(isTaskCompleted).length;
   const selectedHere = new Set(steps.filter(task => selectedTaskIds.has(task.id)).map(task => task.id));
+  if (selectedHere.size && steps.length > 3) {
+    projectEls.steps.classList.add("is-expanded");
+    projectEls.tasksExpand.setAttribute("aria-expanded", "true");
+    projectEls.tasksExpand.setAttribute("aria-label", "Згорнути завдання");
+  }
   projectEls.heading.textContent = project.title;
   projectEls.goalSummary.textContent = project.goal ? `Мета: ${project.goal}` : "";
   projectEls.descriptionSummary.textContent = project.description || "";
@@ -228,7 +234,8 @@ function renderOpenProject() {
   renderProjectCountdown();
   projectEls.progress.textContent = `${steps.length} завд. · ${completedCount} виконано`;
   projectEls.tasksEmpty.hidden = steps.length > 0;
-  projectEls.tasksExpand.hidden = steps.length < 5;
+  projectEls.tasksExpand.hidden = steps.length <= 3 || selectedHere.size > 0;
+  projectEls.selectAll.setAttribute("aria-pressed", String(steps.length > 0 && steps.every(task => selectedHere.has(task.id))));
   projectEls.addNewFirst.checked = project.addNewTasksFirst !== false;
   projectEls.complete.textContent = project.status === "completed" ? "Повернути в активні" : "Завершити проєкт";
   projectEls.mainComplete.textContent = projectEls.complete.textContent;
@@ -270,7 +277,6 @@ function toggleProjectTasks() {
   projectEls.steps.classList.toggle("is-expanded", expanded);
   projectEls.tasksExpand.setAttribute("aria-expanded", String(expanded));
   projectEls.tasksExpand.setAttribute("aria-label", expanded ? "Згорнути завдання" : "Розгорнути всі завдання");
-  document.body.classList.toggle("project-tasks-open", expanded);
   if (expanded) projectEls.tasksExpand.focus();
 }
 
@@ -602,6 +608,12 @@ projectEls.taskList.addEventListener("click", async event => {
 });
 
 projectEls.selectionClose.addEventListener("click", clearTaskSelection);
+projectEls.selectAll.addEventListener("click", () => {
+  const ids = projectSteps(activeProjectId).map(task => task.id);
+  const allSelected = ids.length > 0 && ids.every(id => selectedTaskIds.has(id));
+  selectedTaskIds = allSelected ? new Set() : new Set(ids);
+  renderCurrentTasks();
+});
 projectEls.dateSelected.addEventListener("click", openSelectedTaskDatePicker);
 projectEls.listSelected.addEventListener("click", () => {
   projectEls.listOptions.hidden = !projectEls.listOptions.hidden;

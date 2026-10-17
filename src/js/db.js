@@ -239,6 +239,11 @@ const listDb = {
         cursor.continue();
       };
     }
+  }),
+  restoreDeleted: ({ lists, sections, tasks }) => transact(["lists", "sections", "tasks"], "readwrite", (_tx, stores) => {
+    for (const list of lists) stores.lists.put(list);
+    for (const section of sections) stores.sections.put(section);
+    for (const task of tasks) stores.tasks.put(task);
   })
 };
 
@@ -293,6 +298,13 @@ const projectDb = {
 };
 
 const settingsDb = {
+  appearance: async () => {
+    const settings = await appDb.get("settings", APPEARANCE_SETTINGS_ID);
+    return {
+      theme: settings?.theme === "dark" ? "dark" : "light",
+      useSystemTheme: settings?.useSystemTheme !== false
+    };
+  },
   theme: async () => {
     const settings = await appDb.get("settings", APPEARANCE_SETTINGS_ID);
     return settings?.theme === "dark" ? "dark" : "light";
@@ -304,6 +316,19 @@ const settingsDb = {
       id: APPEARANCE_SETTINGS_ID,
       entityVersion: 1,
       theme: theme === "dark" ? "dark" : "light",
+      useSystemTheme: current?.useSystemTheme !== false,
+      createdAt: current?.createdAt || now,
+      updatedAt: now
+    });
+  },
+  setUseSystemTheme: async useSystemTheme => {
+    const current = await appDb.get("settings", APPEARANCE_SETTINGS_ID);
+    const now = new Date().toISOString();
+    await appDb.put("settings", {
+      id: APPEARANCE_SETTINGS_ID,
+      entityVersion: 1,
+      theme: current?.theme === "dark" ? "dark" : "light",
+      useSystemTheme: useSystemTheme === true,
       createdAt: current?.createdAt || now,
       updatedAt: now
     });

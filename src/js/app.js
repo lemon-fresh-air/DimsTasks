@@ -4,6 +4,9 @@ let activeListId = INBOX_LIST_ID;
 let todayDefaultListId = INBOX_LIST_ID;
 let returnOverdueToInbox = false;
 let startScreen = "inbox";
+let manualTheme = "light";
+let useSystemTheme = true;
+const systemThemeQuery = matchMedia("(prefers-color-scheme: dark)");
 let selectedTaskIds = new Set();
 let selectedListIds = new Set();
 let completionAudioContext;
@@ -19,6 +22,18 @@ let pendingBackup = null;
 let pendingBackupMode = null;
 let backupBusy = false;
 let backupNextVersion = 1;
+
+function renderAppearanceSettings() {
+  const theme = useSystemTheme ? (systemThemeQuery.matches ? "dark" : "light") : manualTheme;
+  applyTheme(theme, { manualTheme, useSystemTheme });
+}
+
+async function loadAppearanceSettings() {
+  const appearance = await settingsDb.appearance();
+  manualTheme = appearance.theme;
+  useSystemTheme = appearance.useSystemTheme;
+  renderAppearanceSettings();
+}
 function clearPreparedBackupDownload() {
   if (!els.backupDownloadLink?.href) return;
   const url = els.backupDownloadLink.href;
@@ -173,6 +188,7 @@ async function loadLists() {
 
 async function initializeApp({ openStartScreen = false } = {}) {
   await loadLists();
+  await loadAppearanceSettings();
   todayDefaultListId = await settingsDb.todayListId() || INBOX_LIST_ID;
   returnOverdueToInbox = await settingsDb.returnOverdueToInbox();
   startScreen = await settingsDb.startScreen();
@@ -265,7 +281,6 @@ async function applyBackup() {
     selectedProjectIds = new Set();
     activeProjectId = null;
     await initializeApp();
-    applyTheme(await settingsDb.theme());
     els.backupStatus.textContent = `${report}. ${backupSummary(result)}.`;
   } catch (error) {
     els.backupStatus.textContent = error.message || "Не вдалося відновити дані";
@@ -489,9 +504,13 @@ function closeSelectedListsDeleteDialog() {
 async function deleteSelectedLists() {
   const ids = new Set(selectedListIds);
   if (!ids.size) return;
+  const deletedLists = lists.filter(list => ids.has(list.id));
+  const deletedTasks = tasks.filter(task => ids.has(task.listId));
+  const previousActiveListId = activeListId;
   const now = new Date().toISOString();
   els.listSelectionDeleteConfirm.disabled = true;
   try {
+    const deletedSections = (await appDb.all("sections")).filter(section => ids.has(section.listId));
     await listDb.deleteManyAndMoveTasksToInbox([...ids], now);
     tasks = tasks.map(task => ids.has(task.listId) ? { ...task, listId: INBOX_LIST_ID, sectionId: null, updatedAt: now } : task);
     lists = lists.filter(list => !ids.has(list.id));
@@ -500,7 +519,23 @@ async function deleteSelectedLists() {
     closeSelectedListsDeleteDialog();
     renderListNavigation();
     renderCurrentTasks();
-    toast(ids.size === 1 ? "Список видалено, задачі перенесено до «Нові»" : `Видалено списків: ${ids.size}. Задачі перенесено до «Нові»`);
+    toast(ids.size === 1 ? "Список видалено, задачі перенесено до «Нові»" : `Видалено списків: ${ids.size}. Задачі перенесено до «Нові»`, {
+      duration: 3000,
+      action: async () => {
+        try {
+          await listDb.restoreDeleted({ lists: deletedLists, sections: deletedSections, tasks: deletedTasks });
+          const restoredTasks = new Map(deletedTasks.map(task => [task.id, task]));
+          lists = [...lists.filter(list => !ids.has(list.id)), ...deletedLists].sort(compareLists);
+          tasks = tasks.map(task => restoredTasks.get(task.id) || task);
+          activeListId = previousActiveListId;
+          renderListNavigation();
+          renderCurrentTasks();
+          toast(ids.size === 1 ? "Список відновлено" : `Відновлено списків: ${ids.size}`);
+        } catch (_error) {
+          toast("Не вдалося відновити списки");
+        }
+      }
+    });
   } catch (_error) {
     toast("Не вдалося видалити списки. Спробуйте ще раз.");
   } finally {
@@ -970,19 +1005,15 @@ window.addEventListener("popstate", () => {
 });
 enableHorizontalSwipe(els.shell, {
   direction: "right",
-  canStart: event => projectEls.overview.hidden && !event.target.closest(".task-card"),
-  onSwipe: () => {
-    if (selectedTaskIds.size) clearTaskSelection();
-    openMainMenu();
-  }
+  canStart: event => projectEls.overview.hidden && selectedTaskIds.size === 0 && !event.target.closest(".task-card"),
+  canComplete: () => selectedTaskIds.size === 0,
+  onSwipe: openMainMenu
 });
 enableHorizontalSwipe(els.mainMenu.querySelector(".main-menu-panel"), {
   direction: "left",
-  canStart: event => !event.target.closest(".main-menu-item"),
-  onSwipe: () => {
-    if (selectedListIds.size) clearListSelection();
-    closeMainMenu();
-  }
+  canStart: event => selectedListIds.size === 0 && !event.target.closest(".main-menu-footer"),
+  canComplete: () => selectedListIds.size === 0,
+  onSwipe: closeMainMenu
 });
 enableListReordering({
   onReorder: reorderTaskLists,
@@ -993,14 +1024,27 @@ enableListReordering({
   getSelectedIds: () => new Set(selectedListIds)
 });
 els.themeToggle.addEventListener("change", async () => {
-  const previousTheme = document.documentElement.dataset.theme === "dark" ? "dark" : "light";
-  const theme = els.themeToggle.checked ? "dark" : "light";
-  applyTheme(theme);
+  const previousTheme = manualTheme;
+  manualTheme = els.themeToggle.checked ? "dark" : "light";
+  renderAppearanceSettings();
   try {
-    await settingsDb.setTheme(theme);
+    await settingsDb.setTheme(manualTheme);
   } catch (_error) {
-    applyTheme(previousTheme);
+    manualTheme = previousTheme;
+    renderAppearanceSettings();
     toast("Не вдалося зберегти тему");
+  }
+});
+els.systemThemeToggle.addEventListener("change", async () => {
+  const previous = useSystemTheme;
+  useSystemTheme = els.systemThemeToggle.checked;
+  renderAppearanceSettings();
+  try {
+    await settingsDb.setUseSystemTheme(useSystemTheme);
+  } catch (_error) {
+    useSystemTheme = previous;
+    renderAppearanceSettings();
+    toast("Не вдалося зберегти режим теми");
   }
 });
 els.returnOverdueToggle.addEventListener("change", async () => {
@@ -1266,5 +1310,5 @@ enableTaskGestures({
 if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("./service-worker.js"));
 document.addEventListener("visibilitychange", () => { if (!document.hidden) checkForDateChange(); });
 window.addEventListener("focus", checkForDateChange);
-settingsDb.theme().then(applyTheme).catch(() => toast("Не вдалося завантажити тему"));
+systemThemeQuery.addEventListener("change", () => { if (useSystemTheme) renderAppearanceSettings(); });
 initializeApp({ openStartScreen: true }).then(scheduleDateChangeCheck).catch(() => toast("Не вдалося відкрити локальне сховище"));

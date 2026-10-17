@@ -3,6 +3,8 @@ const { openTestApp } = require("./e2e-helper");
 
 async function swipe(page, selector, { startX, startY, endX, endY, pointerId }) {
   await page.locator(selector).evaluate((element, gesture) => {
+    const setPointerCapture = element.setPointerCapture;
+    element.setPointerCapture = () => {};
     element.dispatchEvent(new PointerEvent("pointerdown", {
       bubbles: true, cancelable: true, isPrimary: true, pointerId: gesture.pointerId,
       pointerType: "touch", clientX: gesture.startX, clientY: gesture.startY
@@ -15,6 +17,7 @@ async function swipe(page, selector, { startX, startY, endX, endY, pointerId }) 
       bubbles: true, isPrimary: true, pointerId: gesture.pointerId,
       pointerType: "touch", clientX: gesture.endX, clientY: gesture.endY
     }));
+    element.setPointerCapture = setPointerCapture;
   }, { startX, startY, endX, endY, pointerId });
 }
 
@@ -40,13 +43,15 @@ async function touchEnd(session) {
     await swipe(page, ".page-header", { startX: 30, startY: 130, endX: 120, endY: 170, pointerId: 51 });
     await page.waitForFunction(() => document.querySelector("#main-menu").classList.contains("is-open"));
 
-    await swipe(page, ".main-menu-header", { startX: 330, startY: 70, endX: 245, endY: 120, pointerId: 52 });
+    await swipe(page, ".main-menu-header", { startX: 70, startY: 70, endX: 170, endY: 100, pointerId: 52 });
     await page.waitForSelector("#main-menu", { state: "hidden" });
     assert.equal(await page.locator("#current-list-heading").textContent(), previousHeading, "swipe must return to the previously open list");
 
     await page.click("#main-menu-open");
     await page.waitForFunction(() => document.querySelector("#main-menu").classList.contains("is-open"));
-    await swipe(page, ".main-menu-header", { startX: 220, startY: 60, endX: 190, endY: 150, pointerId: 53 });
+    await swipe(page, ".main-menu-footer", { startX: 60, startY: 790, endX: 165, endY: 770, pointerId: 53 });
+    assert.equal(await page.locator("#main-menu").getAttribute("class"), "main-menu is-open", "footer swipe must leave the menu open");
+    await swipe(page, ".main-menu-header", { startX: 220, startY: 60, endX: 190, endY: 150, pointerId: 54 });
     assert.equal(await page.locator("#main-menu").getAttribute("class"), "main-menu is-open", "mostly vertical movement must leave the menu open");
 
     for (const title of ["Перший", "Другий"]) {
@@ -67,6 +72,20 @@ async function touchEnd(session) {
     await page.waitForFunction(() => document.querySelector("#main-menu").classList.contains("is-open"));
     await page.waitForFunction(() => new DOMMatrix(getComputedStyle(document.querySelector("#main-menu")).transform).m41 === 0);
     first = page.locator('.main-menu-item[data-list-kind="regular"]').filter({ hasText: "Перший" });
+    const firstSelector = `#main-menu-lists [data-list-id="${await first.getAttribute("data-list-id")}"]`;
+    const listCountBeforeSwipe = await page.locator('.main-menu-item[data-list-kind="regular"]').count();
+    await swipe(page, firstSelector, { startX: 320, startY: 300, endX: 220, endY: 315, pointerId: 55 });
+    assert.equal(await page.locator('.main-menu-item[data-list-kind="regular"]').count(), listCountBeforeSwipe, "left swipe must not delete a list");
+    assert.equal(await page.locator("#main-menu").getAttribute("class"), "main-menu is-open", "left swipe must leave the menu open");
+
+    const rowBox = await first.boundingBox();
+    await swipe(page, firstSelector, { startX: rowBox.x + 25, startY: rowBox.y + 25, endX: rowBox.x + 130, endY: rowBox.y + 35, pointerId: 56 });
+    await page.waitForSelector("#main-menu", { state: "hidden" });
+    assert.equal(await page.locator("#current-list-heading").textContent(), "Перший", "swipe from a list row must return to the open list");
+    await page.click("#main-menu-open");
+    await page.waitForFunction(() => document.querySelector("#main-menu").classList.contains("is-open"));
+    await page.waitForFunction(() => new DOMMatrix(getComputedStyle(document.querySelector("#main-menu")).transform).m41 === 0);
+    first = page.locator('.main-menu-item[data-list-kind="regular"]').filter({ hasText: "Перший" });
     const firstBox = await first.boundingBox();
     await touchStart(session, firstBox.x + 30, firstBox.y + 30);
     await page.waitForFunction(() => document.querySelector('.main-menu-item[data-list-kind="regular"].selected')?.textContent.includes("Перший"));
@@ -74,10 +93,11 @@ async function touchEnd(session) {
     await page.waitForFunction(() => !document.querySelector("#main-menu-selection-toolbar").hidden && document.querySelector("#main-menu-selection-count").textContent === "Вибрано: 1");
 
     const selectedBeforeSwipe = await first.boundingBox();
-    await touchStart(session, 330, selectedBeforeSwipe.y + 30);
-    await touchMove(session, 230, selectedBeforeSwipe.y + 55);
+    await touchStart(session, 80, selectedBeforeSwipe.y + 30);
+    await touchMove(session, 190, selectedBeforeSwipe.y + 55);
     await touchEnd(session);
-    assert.equal(await page.locator("#main-menu").getAttribute("class"), "main-menu is-open", "swipe on a list item must not close the menu");
+    assert.equal(await page.locator("#main-menu").getAttribute("class"), "main-menu is-open", "selection mode must block menu swipe");
+    assert.equal(await page.locator("#main-menu-selection-count").textContent(), "Вибрано: 1");
 
     const regularBeforeDrag = await page.locator('.main-menu-item[data-list-kind="regular"]').allTextContents();
     const moveToStart = regularBeforeDrag.at(-1).includes("Перший");
@@ -102,6 +122,20 @@ async function touchEnd(session) {
     await page.click("#list-selection-delete-cancel");
     assert.equal(await page.locator('.main-menu-item[data-list-kind="regular"]').count(), 2, "cancel must preserve selected lists");
 
+    await page.click("#main-menu-delete-selected");
+    await page.click("#list-selection-delete-confirm");
+    await page.waitForFunction(() => document.querySelectorAll('.main-menu-item[data-list-kind="regular"]').length === 0);
+    assert.equal(await page.locator("#toast").evaluate(node => node.style.getPropertyValue("--toast-duration")), "3000ms");
+    await page.click("#toast-action");
+    await page.waitForFunction(() => document.querySelectorAll('.main-menu-item[data-list-kind="regular"]').length === 2);
+    assert.equal(await page.locator("#task-list").textContent().then(text => text.includes("Задача зі списку")), true, "undo must restore list tasks");
+
+    first = page.locator('.main-menu-item[data-list-kind="regular"]').filter({ hasText: "Перший" });
+    const restoredBox = await first.boundingBox();
+    await touchStart(session, restoredBox.x + 30, restoredBox.y + 30);
+    await page.waitForFunction(() => document.querySelector('.main-menu-item[data-list-kind="regular"].selected')?.textContent.includes("Перший"));
+    await touchEnd(session);
+    await page.locator('.main-menu-item[data-list-kind="regular"]').filter({ hasText: "Другий" }).click();
     await page.click("#main-menu-delete-selected");
     await page.click("#list-selection-delete-confirm");
     await page.waitForFunction(() => document.querySelectorAll('.main-menu-item[data-list-kind="regular"]').length === 0);
