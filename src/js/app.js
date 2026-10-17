@@ -3,6 +3,7 @@ let lists = [];
 let activeListId = INBOX_LIST_ID;
 let todayDefaultListId = INBOX_LIST_ID;
 let returnOverdueToInbox = false;
+let startScreen = "inbox";
 let selectedTaskIds = new Set();
 let selectedListIds = new Set();
 let completionAudioContext;
@@ -42,7 +43,7 @@ function visibleTasks() {
 }
 
 function renderCurrentTasks() {
-  renderTasks(visibleTasks(), selectedTaskIds, lists, projects);
+  renderTasks(visibleTasks(), selectedTaskIds, lists, projects, activeList());
   updateMainMenuTaskCounts(tasks);
   renderSelectedListOptions(lists, activeListId);
   renderProjects();
@@ -170,18 +171,32 @@ async function loadLists() {
   renderListNavigation();
 }
 
-async function initializeApp() {
+async function initializeApp({ openStartScreen = false } = {}) {
   await loadLists();
   todayDefaultListId = await settingsDb.todayListId() || INBOX_LIST_ID;
   returnOverdueToInbox = await settingsDb.returnOverdueToInbox();
+  startScreen = await settingsDb.startScreen();
   const backupNaming = await settingsDb.backupNaming();
   els.backupPrefix.value = backupNaming.prefix;
   backupNextVersion = backupNaming.nextVersion;
   els.returnOverdueToggle.checked = returnOverdueToInbox;
+  els.startScreenSelect.value = startScreen;
   await loadAndNormalizeTaskOrder();
   await loadProjects();
   renderCurrentTasks();
   await processOverdueTasks();
+  if (openStartScreen) applyStartScreen();
+}
+
+function applyStartScreen() {
+  if (startScreen === "today") openList(TODAY_LIST_ID);
+  else if (startScreen === "projects") openProjects();
+  else if (startScreen === "overview") openMainMenu();
+  else if (startScreen === "upcoming") {
+    closeProjects();
+    setActivePrimaryNav("upcoming");
+    toast("Розділ «Скоро» з’явиться згодом");
+  } else openList(INBOX_LIST_ID);
 }
 
 function validTodayDefaultListId() {
@@ -532,6 +547,13 @@ function toggleTaskSelection(id) {
 function clearTaskSelection() {
   selectedTaskIds = new Set();
   closeSelectedListDropdown();
+  renderCurrentTasks();
+}
+
+function toggleAllVisibleTasks() {
+  const visibleIds = visibleTasks().filter(task => !isTaskCompleted(task)).map(task => task.id);
+  const allSelected = visibleIds.length > 0 && visibleIds.every(id => selectedTaskIds.has(id));
+  selectedTaskIds = allSelected ? new Set() : new Set(visibleIds);
   renderCurrentTasks();
 }
 
@@ -993,9 +1015,22 @@ els.returnOverdueToggle.addEventListener("change", async () => {
     toast("Не вдалося зберегти налаштування");
   }
 });
+els.startScreenSelect.addEventListener("change", async () => {
+  const previous = startScreen;
+  startScreen = els.startScreenSelect.value;
+  try {
+    await settingsDb.setStartScreen(startScreen);
+    toast("Стартовий екран збережено");
+  } catch (_error) {
+    startScreen = previous;
+    els.startScreenSelect.value = previous;
+    toast("Не вдалося зберегти стартовий екран");
+  }
+});
 els.editorBack.addEventListener("click", () => saveAndLeaveTaskEditor({ allowEmptyNew: true }));
 els.desktopSaveTask.addEventListener("click", () => saveAndLeaveTaskEditor({ allowEmptyNew: true }));
 els.selectionClose.addEventListener("click", clearTaskSelection);
+els.selectAllTasks.addEventListener("click", toggleAllVisibleTasks);
 els.dateSelected.addEventListener("click", openSelectedTaskDatePicker);
 els.listSelected.addEventListener("click", () => els.selectedListOptions.hidden ? openSelectedListDropdown() : closeSelectedListDropdown());
 els.selectedListOptions.addEventListener("click", event => {
@@ -1232,4 +1267,4 @@ if ("serviceWorker" in navigator) window.addEventListener("load", () => navigato
 document.addEventListener("visibilitychange", () => { if (!document.hidden) checkForDateChange(); });
 window.addEventListener("focus", checkForDateChange);
 settingsDb.theme().then(applyTheme).catch(() => toast("Не вдалося завантажити тему"));
-initializeApp().then(scheduleDateChangeCheck).catch(() => toast("Не вдалося відкрити локальне сховище"));
+initializeApp({ openStartScreen: true }).then(scheduleDateChangeCheck).catch(() => toast("Не вдалося відкрити локальне сховище"));

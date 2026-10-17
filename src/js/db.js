@@ -7,6 +7,8 @@ const APPEARANCE_SETTINGS_ID = "appearance";
 const TASK_DEFAULTS_SETTINGS_ID = "task-defaults";
 const WORKFLOW_SETTINGS_ID = "workflow";
 const BACKUP_NAMING_SETTINGS_ID = "backup-naming";
+const NAVIGATION_SETTINGS_ID = "navigation";
+const START_SCREEN_IDS = ["today", "upcoming", "projects", "inbox", "overview"];
 
 function ensureIndex(store, name, keyPath, options = {}) {
   if (!store.indexNames.contains(name)) store.createIndex(name, keyPath, options);
@@ -332,6 +334,21 @@ const settingsDb = {
       id: WORKFLOW_SETTINGS_ID,
       entityVersion: 1,
       returnOverdueToInbox: enabled === true,
+      createdAt: current?.createdAt || now,
+      updatedAt: now
+    });
+  },
+  startScreen: async () => {
+    const settings = await appDb.get("settings", NAVIGATION_SETTINGS_ID);
+    return START_SCREEN_IDS.includes(settings?.startScreen) ? settings.startScreen : "inbox";
+  },
+  setStartScreen: async startScreen => {
+    const current = await appDb.get("settings", NAVIGATION_SETTINGS_ID);
+    const now = new Date().toISOString();
+    await appDb.put("settings", {
+      id: NAVIGATION_SETTINGS_ID,
+      entityVersion: 1,
+      startScreen: START_SCREEN_IDS.includes(startScreen) ? startScreen : "inbox",
       createdAt: current?.createdAt || now,
       updatedAt: now
     });

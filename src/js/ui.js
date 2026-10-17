@@ -4,6 +4,7 @@ const els = {
   selectionToolbar: document.querySelector("#selection-toolbar"),
   selectionClose: document.querySelector("#selection-close"),
   selectionCount: document.querySelector("#selection-count"),
+  selectAllTasks: document.querySelector("#select-all-tasks"),
   dateSelected: document.querySelector("#date-selected"),
   listSelected: document.querySelector("#list-selected"),
   selectedListOptions: document.querySelector("#selected-list-options"),
@@ -88,6 +89,7 @@ const els = {
   themeToggle: document.querySelector("#theme-toggle"),
   themeLabel: document.querySelector("#theme-label"),
   returnOverdueToggle: document.querySelector("#return-overdue-toggle"),
+  startScreenSelect: document.querySelector("#start-screen-select"),
   backupExport: document.querySelector("#backup-export"),
   backupPrefix: document.querySelector("#backup-prefix"),
   backupDownloadLink: document.querySelector("#backup-download-link"),
@@ -106,7 +108,6 @@ const els = {
   backupConfirmCancel: document.querySelector("#backup-confirm-cancel"),
   listSwipeZone: document.querySelector("#list-swipe-zone"),
   currentListHeading: document.querySelector("#current-list-heading"),
-  inboxTitle: document.querySelector("#inbox-title"),
   editorListLabel: document.querySelector("#editor-list-label"),
   composerListLabel: document.querySelector("#composer-list-label"),
   add: document.querySelector("#add-task-btn"),
@@ -262,7 +263,6 @@ function updateMainMenuTaskCounts(tasks) {
 function setActiveListUI(list) {
   const title = displayListTitle(list);
   els.currentListHeading.textContent = title;
-  els.inboxTitle.textContent = title;
   const primaryNav = list.kind === "today" ? "today" : list.kind === "inbox" ? "inbox" : "overview";
   els.mainMenuOpen.dataset.currentPrimaryNav = primaryNav;
   if (els.mainMenu.hidden) setActivePrimaryNav(primaryNav);
@@ -506,13 +506,16 @@ els.toastAction.addEventListener("click", async () => {
   if (action) await action();
 });
 
-function renderTasks(tasks, selectedIds = new Set(), taskLists = [], taskProjects = []) {
+function renderTasks(tasks, selectedIds = new Set(), taskLists = [], taskProjects = [], contextList = null) {
   const active = tasks.filter(task => !isTaskCompleted(task));
   const selectionMode = selectedIds.size > 0;
   els.shell.classList.toggle("selection-active", selectionMode);
   els.normalHeader.hidden = selectionMode;
   els.selectionToolbar.hidden = !selectionMode;
   els.selectionCount.textContent = `Вибрано: ${selectedIds.size}`;
+  const allSelected = active.length > 0 && active.every(task => selectedIds.has(task.id));
+  els.selectAllTasks.setAttribute("aria-pressed", String(allSelected));
+  els.selectAllTasks.setAttribute("aria-label", allSelected ? "Зняти вибір з усіх завдань" : "Вибрати всі завдання");
   els.list.classList.toggle("selection-mode", selectionMode);
   els.list.replaceChildren(...active.map(task => {
     const row = els.template.content.firstElementChild.cloneNode(true);
@@ -533,9 +536,13 @@ function renderTasks(tasks, selectedIds = new Set(), taskLists = [], taskProject
     row.querySelector(".task-project-name").textContent = taskProject?.title || "";
     const taskList = taskLists.find(list => list.id === (task.listId || INBOX_LIST_ID))
       || taskLists.find(list => list.kind === "inbox");
+    const taskListBadge = row.querySelector(".task-list");
+    const showTaskList = contextList?.kind !== "regular" || taskList?.id !== contextList.id;
+    taskListBadge.hidden = !showTaskList;
     row.querySelector(".task-list-name").textContent = displayListTitle(taskList);
-    const taskListIcon = row.querySelector(".task-list .inbox-icon");
+    const taskListIcon = taskListBadge.querySelector(".inbox-icon");
     taskListIcon.className = taskList?.kind === "regular" ? "list-menu-icon" : "inbox-icon";
+    row.querySelector(".task-meta").hidden = !taskProject && !showTaskList;
     row.querySelector(".task-open").setAttribute("aria-label", `Відкрити деталі: ${task.title}`);
     return row;
   }));

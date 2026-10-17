@@ -1,9 +1,15 @@
 <div class="app-shell">
   <header class="page-header">
-    <div id="normal-header"><h1 id="current-list-heading">Нові</h1><p id="task-count">0 задач</p></div>
+    <div id="normal-header">
+      <div class="page-title-row"><h1 id="current-list-heading">Нові</h1><button id="list-editor-open" class="list-editor-open" type="button" aria-label="Редагувати список" aria-controls="list-editor" aria-expanded="false" hidden><span class="edit-list-icon" aria-hidden="true"></span></button></div>
+      <p id="task-count">0 задач</p>
+    </div>
     <div id="selection-toolbar" class="selection-toolbar" hidden>
       <button id="selection-close" class="toolbar-action" type="button" aria-label="Завершити виділення"><span class="back-icon" aria-hidden="true"></span></button>
-      <p id="selection-count">Вибрано: 0</p>
+      <div class="selection-summary">
+        <p id="selection-count">Вибрано: 0</p>
+        <button id="select-all-tasks" class="toolbar-action" type="button" aria-label="Вибрати всі завдання" aria-pressed="false"><span class="select-all-icon" aria-hidden="true"></span></button>
+      </div>
       <div class="selection-actions" aria-label="Дії з вибраними завданнями">
         <button id="date-selected" class="toolbar-action" type="button" aria-label="Змінити дату вибраних завдань" aria-haspopup="dialog"><span class="calendar-icon" aria-hidden="true"></span></button>
         <span class="bulk-list-dropdown">
@@ -14,11 +20,8 @@
       </div>
     </div>
   </header>
-  <main><section class="task-section" aria-labelledby="inbox-title">
-    <div class="list-heading-row">
-      <h2 id="inbox-title">Нові</h2>
-      <button id="list-editor-open" class="list-editor-open" type="button" aria-label="Редагувати список" aria-controls="list-editor" aria-expanded="false" hidden><span class="edit-list-icon" aria-hidden="true"></span></button>
-    </div><ul id="task-list" aria-live="polite"></ul>
+  <main><section class="task-section" aria-labelledby="current-list-heading">
+    <ul id="task-list" aria-live="polite"></ul>
     <div id="empty-state" class="empty"><span class="empty-icon" aria-hidden="true">✓</span><p>У цьому списку поки немає задач</p><small>Натисніть кнопку внизу, щоб додати першу.</small></div>
   </section><div id="list-swipe-zone" class="list-swipe-zone" aria-hidden="true"></div></main>
   <section id="projects-overview" class="projects-overview" aria-labelledby="projects-title" hidden>
@@ -41,11 +44,11 @@
   </section>
   <button id="add-task-btn" class="fab" aria-label="Додати задачу"><span aria-hidden="true">＋</span></button>
   <nav class="bottom-nav" aria-label="Основна навігація"><div class="bottom-nav-inner">
-    <button id="nav-today" class="nav-item" type="button" data-nav="today"><span class="calendar-icon" aria-hidden="true"></span><span>Сьогодні</span></button>
-    <button id="nav-upcoming" class="nav-item" type="button" data-nav="upcoming" aria-label="Скоро — розділ у розробці"><span class="upcoming-icon" aria-hidden="true"></span><span>Скоро</span></button>
-    <button id="nav-projects" class="nav-item" type="button" data-nav="projects"><span class="projects-icon" aria-hidden="true"></span><span>Проєкти</span></button>
-    <button id="nav-inbox" class="nav-item active" type="button" data-nav="inbox" aria-current="page"><span class="inbox-icon" aria-hidden="true"></span><span>Нові</span></button>
-    <button id="main-menu-open" class="nav-item" type="button" data-nav="overview" aria-label="Відкрити огляд" aria-controls="main-menu" aria-expanded="false"><span class="overview-icon" aria-hidden="true"></span><span>Огляд</span></button>
+    <button id="nav-today" class="nav-item" type="button" data-nav="today"><span class="nav-icon-field" aria-hidden="true"><span class="calendar-icon"></span></span><span>Сьогодні</span></button>
+    <button id="nav-upcoming" class="nav-item" type="button" data-nav="upcoming" aria-label="Скоро — розділ у розробці"><span class="nav-icon-field" aria-hidden="true"><span class="upcoming-icon"></span></span><span>Скоро</span></button>
+    <button id="nav-projects" class="nav-item" type="button" data-nav="projects"><span class="nav-icon-field" aria-hidden="true"><span class="projects-icon"></span></span><span>Проєкти</span></button>
+    <button id="nav-inbox" class="nav-item active" type="button" data-nav="inbox" aria-current="page"><span class="nav-icon-field" aria-hidden="true"><span class="inbox-icon"></span></span><span>Нові</span></button>
+    <button id="main-menu-open" class="nav-item" type="button" data-nav="overview" aria-label="Відкрити огляд" aria-controls="main-menu" aria-expanded="false"><span class="nav-icon-field" aria-hidden="true"><span class="overview-icon"></span></span><span>Огляд</span></button>
   </div></nav>
 </div>
 <section id="main-menu" class="main-menu" aria-label="Головне меню" hidden>
@@ -107,6 +110,17 @@
           <span aria-hidden="true"></span>
         </label>
       </div>
+      <label class="settings-row start-screen-setting" for="start-screen-select">
+        <span class="overview-icon" aria-hidden="true"></span>
+        <span class="settings-copy"><strong>Стартовий екран</strong><small>Відкривати після запуску</small></span>
+        <select id="start-screen-select">
+          <option value="today">Сьогодні</option>
+          <option value="upcoming">Скоро</option>
+          <option value="projects">Проєкти</option>
+          <option value="inbox">Нові</option>
+          <option value="overview">Огляд</option>
+        </select>
+      </label>
       <div class="backup-setting">
         <h3>Резервна копія</h3>
         <p>Перенесіть усі списки, проєкти, завдання й налаштування між пристроями через JSON-файл.</p>
@@ -162,7 +176,7 @@
 </section>
 <section id="project-screen" class="project-screen" aria-labelledby="project-screen-title" hidden>
   <div class="project-panel">
-    <header class="project-screen-header"><button id="project-back" class="editor-back" type="button" aria-label="Повернутися до всіх проєктів"><span aria-hidden="true"></span></button><h2 id="project-screen-title">Проєкт</h2><button id="project-edit-open" class="project-edit-open" type="button" aria-label="Редагувати проєкт" aria-controls="project-editor"><span class="edit-list-icon" aria-hidden="true"></span></button></header>
+    <header class="project-screen-header"><button id="project-back" class="editor-back" type="button" aria-label="Повернутися до всіх проєктів"><span aria-hidden="true"></span></button><div class="project-screen-title-copy"><h2 id="project-screen-title">Проєкт</h2><p id="project-progress">0 завдань</p></div><button id="project-edit-open" class="project-edit-open" type="button" aria-label="Редагувати проєкт" aria-controls="project-editor"><span class="edit-list-icon" aria-hidden="true"></span></button></header>
     <div id="project-selection-toolbar" class="project-selection-toolbar" hidden>
       <button id="project-selection-close" class="toolbar-action" type="button" aria-label="Завершити виділення"><span class="back-icon" aria-hidden="true"></span></button>
       <strong id="project-selection-count">Вибрано: 0</strong>
@@ -178,7 +192,7 @@
       <button id="project-description-toggle" class="project-description-toggle" type="button" aria-expanded="false"><span class="description-icon" aria-hidden="true"></span><span id="project-description-summary"></span></button>
       <p id="project-deadline-summary" class="project-deadline-summary" hidden></p>
     </section>
-    <section id="project-steps" class="project-steps" aria-labelledby="project-steps-title"><div class="project-steps-heading"><h3 id="project-steps-title">Завдання проєкту</h3><span id="project-progress">0/0</span><button id="project-tasks-expand" class="project-tasks-expand" type="button" aria-label="Розгорнути всі завдання" aria-expanded="false"><span aria-hidden="true"></span></button></div>
+    <section id="project-steps" class="project-steps" aria-label="Завдання проєкту"><div class="project-steps-heading"><button id="project-tasks-expand" class="project-tasks-expand" type="button" aria-label="Розгорнути всі завдання" aria-expanded="false"><span aria-hidden="true"></span></button></div>
       <ul id="project-task-list"></ul>
       <p id="project-tasks-empty" class="project-tasks-empty" hidden>Додайте перше завдання, щоб почати рух проєктом.</p>
       <form id="project-step-form" class="project-step-form"><label class="sr-only" for="project-step-title">Нове завдання</label><input id="project-step-title" maxlength="160" autocomplete="off" placeholder="Додати завдання"><button type="submit" aria-label="Додати завдання">＋</button></form>

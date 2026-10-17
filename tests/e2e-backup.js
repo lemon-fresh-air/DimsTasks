@@ -14,7 +14,10 @@ const data = {
   sections: [],
   projects: Array.from({ length: 100 }, (_, i) => ({ ...base(`project-${i}`), title: `Проєкт ${i}`, goal: "", description: "", status: "active", dueDate: null, dueTime: null, showCountdown: false, lastListId: null, addNewTasksFirst: true, completedAt: null, position: i })),
   tasks: Array.from({ length: 1000 }, (_, i) => ({ ...base(`task-${i}`), listId: `list-${i % 100}`, sectionId: null, projectId: `project-${i % 100}`, title: `Крок ${i}`, description: "", status: "active", completedAt: null, dueDate: null, dueTime: null, position: Math.floor(i / 100), projectPosition: Math.floor(i / 100), returnedToInboxAt: null })),
-  settings: [{ id: "appearance", entityVersion: 1, createdAt: stamp, updatedAt: stamp, theme: "dark" }]
+  settings: [
+    { id: "appearance", entityVersion: 1, createdAt: stamp, updatedAt: stamp, theme: "dark" },
+    { id: "navigation", entityVersion: 1, createdAt: stamp, updatedAt: stamp, startScreen: "projects" }
+  ]
 };
 const backup = records => ({ format: "local-first-pwa-backup", appId: "dims-tasks", formatVersion: 9, exportedAt: stamp, data: records });
 
@@ -89,7 +92,9 @@ async function readStore(page, name) {
     assert.equal((await readStore(page, "tasks")).length, 1000);
     assert.equal((await readStore(page, "projects")).length, 100);
     assert.equal((await readStore(page, "lists")).length, 101);
-    assert.equal((await readStore(page, "settings"))[0].theme, "dark");
+    const replacedSettings = await readStore(page, "settings");
+    assert.equal(replacedSettings.find(item => item.id === "appearance").theme, "dark");
+    assert.equal(replacedSettings.find(item => item.id === "navigation").startScreen, "projects");
     await page.reload({ waitUntil: "networkidle" });
     assert.equal((await readStore(page, "tasks")).length, 1000);
     assert.equal(await page.locator("html").getAttribute("data-theme"), "dark");
@@ -104,10 +109,11 @@ async function readStore(page, name) {
     await page.click("#backup-export");
     await fullDownloadPromise;
     const exported = await page.evaluate(async () => JSON.parse(await window.lastBackupBlob.text()));
-    assert.equal(exported.formatVersion, 11);
+    assert.equal(exported.formatVersion, 12);
     assert.equal(exported.data.tasks.length, 1000);
     assert.equal(exported.data.tasks[0].todayPosition, null);
     assert.equal(exported.data.projects.length, 100);
+    assert.equal(exported.data.settings.find(item => item.id === "navigation").startScreen, "projects");
     await upload(page, exported);
     await page.click("#backup-replace");
     await page.check("#backup-safe-copy");

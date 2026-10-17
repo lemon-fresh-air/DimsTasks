@@ -226,7 +226,7 @@ function renderOpenProject() {
   applyDateTone(projectEls.datePickerOpen, project.dueDate, project.dueTime);
   projectEls.showCountdown.checked = project.showCountdown === true;
   renderProjectCountdown();
-  projectEls.progress.textContent = `${completedCount}/${steps.length}`;
+  projectEls.progress.textContent = `${steps.length} завд. · ${completedCount} виконано`;
   projectEls.tasksEmpty.hidden = steps.length > 0;
   projectEls.tasksExpand.hidden = steps.length < 5;
   projectEls.addNewFirst.checked = project.addNewTasksFirst !== false;
