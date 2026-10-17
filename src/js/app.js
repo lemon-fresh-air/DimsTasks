@@ -725,12 +725,13 @@ async function addTask() {
 }
 
 async function reorderSelectedTasks({ beforeId }) {
-  if (activeListId === TODAY_LIST_ID) return false;
-  const selected = tasks.filter(task => selectedTaskIds.has(task.id)).sort(compareTasks);
+  const isToday = activeListId === TODAY_LIST_ID;
+  const selected = tasks.filter(task => selectedTaskIds.has(task.id)).sort(isToday ? compareTodayTasks : compareTasks);
   if (!selected.length) return false;
   const previous = tasks;
-  const scope = taskOrderScope(selected[0]);
-  const reordered = reorderTaskBlock(tasks, selectedTaskIds, beforeId, scope);
+  const reordered = isToday
+    ? reorderTodayTaskBlock(tasks, visibleTasks(), selectedTaskIds, beforeId)
+    : reorderTaskBlock(tasks, selectedTaskIds, beforeId, taskOrderScope(selected[0]));
   const changed = reordered.filter((task, index) => task !== tasks[index]);
   if (!changed.length) return false;
   tasks = reordered.sort(compareTasks);
@@ -878,10 +879,11 @@ els.settingsClose.addEventListener("click", () => closeSettings());
 els.backupExport.addEventListener("click", async () => {
   if (backupBusy) return;
   backupBusy = true;
+  els.backupDownloadLink.hidden = true;
   els.backupStatus.textContent = "Підготовка копії…";
   try {
-    const counts = await downloadBackup();
-    els.backupStatus.textContent = `Копію підготовлено: ${counts.tasks} завдань, ${counts.projects} проєктів, ${counts.lists} списків.`;
+    const counts = await downloadBackup(els.backupDownloadLink);
+    els.backupStatus.textContent = `Копію підготовлено: ${counts.tasks} завдань, ${counts.projects} проєктів, ${counts.lists} списків. Якщо завантаження не почалося, натисніть «Зберегти файл».`;
   } catch (error) {
     els.backupStatus.textContent = error.message || "Не вдалося створити копію";
   } finally { backupBusy = false; }

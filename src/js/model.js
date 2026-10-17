@@ -83,7 +83,7 @@ function projectCountdown(dueDate, today) {
   return { text: `Лишилося ${days} днів`, overdue: false };
 }
 function createTask(values = {}) {
-  return { ...baseRecord(values), ...values, listId: values.listId || INBOX_LIST_ID, sectionId: values.sectionId || null, projectId: values.projectId || null, title: String(values.title || "").trim(), description: values.description || "", status: values.status || "active", completedAt: values.completedAt || null, dueDate: values.dueDate || null, dueTime: values.dueDate && values.dueTime ? values.dueTime : null, position: Number.isFinite(values.position) ? values.position : 0, projectPosition: Number.isFinite(values.projectPosition) ? values.projectPosition : null, returnedToInboxAt: values.returnedToInboxAt || null };
+  return { ...baseRecord(values), ...values, listId: values.listId || INBOX_LIST_ID, sectionId: values.sectionId || null, projectId: values.projectId || null, title: String(values.title || "").trim(), description: values.description || "", status: values.status || "active", completedAt: values.completedAt || null, dueDate: values.dueDate || null, dueTime: values.dueDate && values.dueTime ? values.dueTime : null, position: Number.isFinite(values.position) ? values.position : 0, todayPosition: Number.isSafeInteger(values.todayPosition) && values.todayPosition >= 0 ? values.todayPosition : null, projectPosition: Number.isFinite(values.projectPosition) ? values.projectPosition : null, returnedToInboxAt: values.returnedToInboxAt || null };
 }
 function isTaskCompleted(task) { return task.status === "completed" || task.done === true; }
 function isTaskOverdue(task, localDate, localTime) {
@@ -122,7 +122,27 @@ function compareTasks(a, b) {
   return positionA - positionB || String(b.createdAt || "").localeCompare(String(a.createdAt || "")) || String(a.id).localeCompare(String(b.id));
 }
 function compareTodayTasks(a, b) {
+  const positionA = Number.isSafeInteger(a.todayPosition) && a.todayPosition >= 0 ? a.todayPosition : null;
+  const positionB = Number.isSafeInteger(b.todayPosition) && b.todayPosition >= 0 ? b.todayPosition : null;
+  if (positionA !== null || positionB !== null) {
+    if (positionA === null) return -1;
+    if (positionB === null) return 1;
+    if (positionA !== positionB) return positionA - positionB;
+  }
   return String(b.createdAt || "").localeCompare(String(a.createdAt || "")) || String(a.id).localeCompare(String(b.id));
+}
+function reorderTodayTaskBlock(records, visible, selectedIds, beforeId) {
+  const inScope = visible.slice().sort(compareTodayTasks);
+  const selected = inScope.filter(task => selectedIds.has(task.id));
+  if (!selected.length) return records;
+  const ordered = inScope.filter(task => !selectedIds.has(task.id));
+  const index = beforeId ? ordered.findIndex(task => task.id === beforeId) : ordered.length;
+  ordered.splice(index < 0 ? ordered.length : index, 0, ...selected);
+  const updatedAt = nowIso();
+  const replacements = new Map(ordered.map((task, todayPosition) => [task.id,
+    task.todayPosition === todayPosition ? task : { ...task, todayPosition, updatedAt }
+  ]));
+  return records.map(task => replacements.get(task.id) || task);
 }
 function normalizeTaskOrder(records) {
   const groups = new Map();

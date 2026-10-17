@@ -44,6 +44,11 @@ async function readStore(page, name) {
     await page.click("#backup-export");
     const download = await downloadPromise;
     assert.match(download.suggestedFilename(), /^dims-tasks-.*\.json$/);
+    await page.locator("#backup-download-link:visible").waitFor();
+    const directDownloadPromise = page.waitForEvent("download");
+    await page.locator("#backup-download-link").click();
+    const directDownload = await directDownloadPromise;
+    assert.equal(directDownload.suggestedFilename(), download.suggestedFilename());
 
     await upload(page, backup(data));
     assert.match(await page.locator("#backup-summary").innerText(), /1000 завдань, 100 проєктів, 101 списків/);
@@ -75,8 +80,9 @@ async function readStore(page, name) {
     await page.click("#backup-export");
     await fullDownloadPromise;
     const exported = await page.evaluate(async () => JSON.parse(await window.lastBackupBlob.text()));
-    assert.equal(exported.formatVersion, 9);
+    assert.equal(exported.formatVersion, 10);
     assert.equal(exported.data.tasks.length, 1000);
+    assert.equal(exported.data.tasks[0].todayPosition, null);
     assert.equal(exported.data.projects.length, 100);
     await upload(page, exported);
     await page.click("#backup-replace");

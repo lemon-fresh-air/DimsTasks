@@ -24,7 +24,7 @@ const base = id => ({ id, entityVersion: 1, createdAt: stamp, updatedAt: stamp, 
 const data = {
   lists: [{ ...base("inbox"), title: "Інбокс", description: "", kind: "inbox", position: 0 }],
   sections: [], projects: [],
-  tasks: [{ ...base("late"), listId: "inbox", sectionId: null, projectId: null, title: "Пізно", description: "", status: "active", completedAt: null, dueDate: null, dueTime: null, position: 0, projectPosition: null, returnedToInboxAt: "2026-01-02T00:00:00.000Z" }],
+  tasks: [{ ...base("late"), listId: "inbox", sectionId: null, projectId: null, title: "Пізно", description: "", status: "active", completedAt: null, dueDate: null, dueTime: null, position: 0, todayPosition: 2, projectPosition: null, returnedToInboxAt: "2026-01-02T00:00:00.000Z" }],
   settings: [{ ...base("workflow"), returnOverdueToInbox: true }]
 };
 
@@ -32,6 +32,14 @@ test("current backup round-trip parser preserves workflow setting and return mar
   const restored = await parseBackup(file({ format: "local-first-pwa-backup", appId: "dims-tasks", formatVersion: BACKUP_FORMAT_VERSION, data }));
   assert.equal(restored.settings[0].returnOverdueToInbox, true);
   assert.equal(restored.tasks[0].returnedToInboxAt, data.tasks[0].returnedToInboxAt);
+  assert.equal(restored.tasks[0].todayPosition, 2);
+});
+
+test("format 9 remains importable without today positions", async () => {
+  const old = structuredClone(data);
+  delete old.tasks[0].todayPosition;
+  const restored = await parseBackup(file({ format: "local-first-pwa-backup", appId: "dims-tasks", formatVersion: 9, data: old }));
+  assert.equal(restored.tasks[0].todayPosition, null);
 });
 
 test("format 4 remains importable and invalid backup is rejected before writing", async () => {
@@ -70,6 +78,9 @@ test("current backup rejects duplicate IDs and broken references", async () => {
   const broken = structuredClone(data);
   broken.tasks[0].projectId = "missing";
   assert.throws(() => validateBackupData(broken), /Порушений зв’язок/);
+  const invalidPosition = structuredClone(data);
+  invalidPosition.tasks[0].todayPosition = -1;
+  assert.throws(() => validateBackupData(invalidPosition), /Некоректне завдання/);
 });
 
 test("merge keeps local on equal time, uses newer records, and retains unique records", () => {
@@ -88,6 +99,6 @@ test("merge keeps local on equal time, uses newer records, and retains unique re
 });
 
 test("future and malformed files are rejected before restoration", async () => {
-  await assert.rejects(readBackup(file({ format: "local-first-pwa-backup", appId: "dims-tasks", formatVersion: 10, data })), /ще не підтримано/);
+  await assert.rejects(readBackup(file({ format: "local-first-pwa-backup", appId: "dims-tasks", formatVersion: 11, data })), /ще не підтримано/);
   await assert.rejects(readBackup({ text: async () => "{" }), /JSON-файл/);
 });

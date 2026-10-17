@@ -1,6 +1,6 @@
 const BACKUP_FORMAT = "local-first-pwa-backup";
 const APP_ID = "dims-tasks";
-const BACKUP_FORMAT_VERSION = 9;
+const BACKUP_FORMAT_VERSION = 10;
 const BACKUP_MAX_BYTES = 50 * 1024 * 1024;
 
 function backupCounts(data) { return Object.fromEntries(STORE_NAMES.map(name => [name, data[name].length])); }
@@ -28,7 +28,7 @@ function validateBackupData(data, { strict = true } = {}) {
       if (name === "lists" && (typeof record.title !== "string" || typeof record.description !== "string" || !["inbox", "regular"].includes(record.kind) || !validPosition(record.position))) throw new Error(`Некоректний список: ${record.id}`);
       if (name === "sections" && (typeof record.listId !== "string" || typeof record.title !== "string" || typeof record.description !== "string" || !validPosition(record.position))) throw new Error(`Некоректна секція: ${record.id}`);
       if (name === "projects" && (typeof record.title !== "string" || typeof record.goal !== "string" || typeof record.description !== "string" || !["active", "completed"].includes(record.status) || !validDate(record.dueDate) || !validTime(record.dueTime) || record.dueTime && !record.dueDate || typeof record.showCountdown !== "boolean" || !validOptionalId(record.lastListId) || typeof record.addNewTasksFirst !== "boolean" || record.completedAt !== null && !validIso(record.completedAt) || !validPosition(record.position))) throw new Error(`Некоректний проєкт: ${record.id}`);
-      if (name === "tasks" && (typeof record.listId !== "string" || !validOptionalId(record.sectionId) || !validOptionalId(record.projectId) || typeof record.title !== "string" || typeof record.description !== "string" || !["active", "completed", "archived"].includes(record.status) || record.completedAt !== null && !validIso(record.completedAt) || !validDate(record.dueDate) || !validTime(record.dueTime) || record.dueTime && !record.dueDate || !validPosition(record.position) || record.projectPosition !== null && !validPosition(record.projectPosition) || record.returnedToInboxAt !== null && !validIso(record.returnedToInboxAt))) throw new Error(`Некоректне завдання: ${record.id}`);
+      if (name === "tasks" && (typeof record.listId !== "string" || !validOptionalId(record.sectionId) || !validOptionalId(record.projectId) || typeof record.title !== "string" || typeof record.description !== "string" || !["active", "completed", "archived"].includes(record.status) || record.completedAt !== null && !validIso(record.completedAt) || !validDate(record.dueDate) || !validTime(record.dueTime) || record.dueTime && !record.dueDate || !validPosition(record.position) || record.todayPosition !== null && !validPosition(record.todayPosition) || record.projectPosition !== null && !validPosition(record.projectPosition) || record.returnedToInboxAt !== null && !validIso(record.returnedToInboxAt))) throw new Error(`Некоректне завдання: ${record.id}`);
       if (name === "settings" && (record.id === "appearance" && !["light", "dark"].includes(record.theme) || record.id === "task-defaults" && typeof record.todayListId !== "string" || record.id === "workflow" && typeof record.returnOverdueToInbox !== "boolean")) throw new Error(`Некоректне налаштування: ${record.id}`);
     }
   }
@@ -100,19 +100,17 @@ function completeBackupFields(data) {
   };
 }
 
-async function downloadBackup() {
+async function downloadBackup(link) {
   const data = validateBackupData(completeBackupFields(await appDb.exportAll()));
   const payload = { format: BACKUP_FORMAT, appId: APP_ID, formatVersion: BACKUP_FORMAT_VERSION, databaseVersion: DB_VERSION, exportedAt: new Date().toISOString(), data };
   const blob = new Blob([JSON.stringify(payload)], { type: "application/json" });
   if (blob.size > BACKUP_MAX_BYTES) throw new Error("Копія завелика для імпорту (понад 50 МБ)");
   const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
+  if (link.href) URL.revokeObjectURL(link.href);
   link.href = url;
   link.download = `dims-tasks-${payload.exportedAt.replace(/[:.]/g, "-")}.json`;
-  document.body.append(link);
+  link.hidden = false;
   link.click();
-  link.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 60000);
   return backupCounts(data);
 }
 
