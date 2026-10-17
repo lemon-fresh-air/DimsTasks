@@ -123,7 +123,19 @@ const appDb = {
   },
   put: (storeName, record) => transact(storeName, "readwrite", (_tx, stores) => stores[storeName].put(record)),
   delete: (storeName, id) => transact(storeName, "readwrite", (_tx, stores) => stores[storeName].delete(id)),
-  exportAll: async () => Object.fromEntries(await Promise.all(STORE_NAMES.map(async name => [name, await appDb.all(name)]))),
+  exportAll: async () => {
+    const db = await openDatabase();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(STORE_NAMES, "readonly");
+      const data = {};
+      for (const name of STORE_NAMES) {
+        tx.objectStore(name).getAll().onsuccess = event => { data[name] = event.target.result; };
+      }
+      tx.oncomplete = () => { db.close(); resolve(data); };
+      tx.onerror = () => { db.close(); reject(tx.error); };
+      tx.onabort = () => { db.close(); reject(tx.error || new Error("Не вдалося прочитати дані")); };
+    });
+  },
   replaceAll: data => transact(STORE_NAMES, "readwrite", (_tx, stores) => {
     for (const name of STORE_NAMES) {
       stores[name].clear();
@@ -133,7 +145,36 @@ const appDb = {
       const now = new Date().toISOString();
       stores.lists.put({ id: INBOX_LIST_ID, entityVersion: 1, title: "Інбокс", description: "", kind: "inbox", position: 0, customFields: {}, createdAt: now, updatedAt: now });
     }
-  })
+  }),
+  mergeAll: async (incoming, merge) => {
+    const db = await openDatabase();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(STORE_NAMES, "readwrite");
+      const stores = Object.fromEntries(STORE_NAMES.map(name => [name, tx.objectStore(name)]));
+      const local = {};
+      let result;
+      let failure;
+      for (const name of STORE_NAMES) {
+        stores[name].getAll().onsuccess = event => {
+          local[name] = event.target.result;
+          if (Object.keys(local).length !== STORE_NAMES.length) return;
+          try {
+            result = merge(local, incoming);
+            for (const storeName of STORE_NAMES) {
+              stores[storeName].clear();
+              for (const record of result.data[storeName]) stores[storeName].put(record);
+            }
+          } catch (error) {
+            failure = error;
+            tx.abort();
+          }
+        };
+      }
+      tx.oncomplete = () => { db.close(); resolve(result); };
+      tx.onerror = () => { db.close(); reject(tx.error); };
+      tx.onabort = () => { db.close(); reject(failure || tx.error || new Error("Злиття скасовано")); };
+    });
+  }
 };
 
 const taskDb = {

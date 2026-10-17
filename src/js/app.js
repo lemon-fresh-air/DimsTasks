@@ -14,6 +14,9 @@ let overdueProcessing;
 let dateChangeTimer;
 let listEditorCloseTimer;
 let listEditorOpenFrame;
+let pendingBackup = null;
+let pendingBackupMode = null;
+let backupBusy = false;
 const todayList = { id: TODAY_LIST_ID, title: "Сьогодні", kind: "today" };
 
 function activeList() {
@@ -172,6 +175,78 @@ async function initializeApp() {
 
 function validTodayDefaultListId() {
   return lists.some(list => list.id === todayDefaultListId) ? todayDefaultListId : INBOX_LIST_ID;
+}
+
+function clearBackupSelection() {
+  pendingBackup = null;
+  pendingBackupMode = null;
+  els.backupFile.value = "";
+  els.backupPreview.hidden = true;
+  els.backupConfirm.hidden = true;
+  els.backupSafeCopy.checked = false;
+  els.backupApply.disabled = true;
+}
+
+function backupSummary(data) {
+  const counts = backupCounts(data);
+  return `${counts.tasks} завдань, ${counts.projects} проєктів, ${counts.lists} списків, ${counts.sections} секцій, ${counts.settings} налаштувань`;
+}
+
+async function chooseBackup(file) {
+  clearBackupSelection();
+  if (!file) return;
+  els.backupStatus.textContent = "Перевірка файлу…";
+  try {
+    const parsed = await readBackup(file);
+    pendingBackup = parsed;
+    const date = parsed.exportedAt ? new Date(parsed.exportedAt).toLocaleString("uk-UA") : "дата невідома";
+    els.backupSummary.textContent = `Копія від ${date}. ${backupSummary(parsed.data)}. Формат ${parsed.formatVersion}.`;
+    els.backupPreview.hidden = false;
+    els.backupStatus.textContent = "Файл перевірено. Оберіть спосіб відновлення.";
+  } catch (error) {
+    els.backupStatus.textContent = error.message || "Не вдалося перевірити файл";
+  }
+}
+
+function confirmBackupMode(mode) {
+  if (!pendingBackup || backupBusy) return;
+  pendingBackupMode = mode;
+  els.backupConfirmText.textContent = mode === "replace"
+    ? "Усі поточні дані буде замінено вмістом файлу. Спершу завантажте копію поточних даних, якщо вони потрібні."
+    : "Дані буде об’єднано за ID. У конфліктах переможе запис із новішим часом зміни; видалення не передаються.";
+  els.backupSafeCopy.checked = false;
+  els.backupApply.disabled = true;
+  els.backupConfirm.hidden = false;
+  els.backupSafeCopy.focus();
+}
+
+async function applyBackup() {
+  if (!pendingBackup || !pendingBackupMode || !els.backupSafeCopy.checked || backupBusy) return;
+  backupBusy = true;
+  els.backupApply.disabled = true;
+  els.backupStatus.textContent = "Відновлення даних…";
+  try {
+    let result = pendingBackup.data;
+    let report = "Дані замінено";
+    if (pendingBackupMode === "merge") {
+      const merged = await appDb.mergeAll(result, (local, incoming) => mergeBackupData(completeBackupFields(local), incoming));
+      result = merged.data;
+      report = `Дані злито: додано ${merged.changes.added}, оновлено ${merged.changes.updated}, збережено локальних ${merged.changes.kept}`;
+    } else await appDb.replaceAll(result);
+    clearBackupSelection();
+    selectedTaskIds = new Set();
+    selectedListIds = new Set();
+    selectedProjectIds = new Set();
+    activeProjectId = null;
+    await initializeApp();
+    applyTheme(await settingsDb.theme());
+    els.backupStatus.textContent = `${report}. ${backupSummary(result)}.`;
+  } catch (error) {
+    els.backupStatus.textContent = error.message || "Не вдалося відновити дані";
+    els.backupApply.disabled = !els.backupSafeCopy.checked;
+  } finally {
+    backupBusy = false;
+  }
 }
 
 function localTimeValue(date = new Date()) {
@@ -762,6 +837,25 @@ els.newListTitle.addEventListener("keydown", event => {
 });
 els.settingsOpen.addEventListener("click", openSettings);
 els.settingsClose.addEventListener("click", () => closeSettings());
+els.backupExport.addEventListener("click", async () => {
+  if (backupBusy) return;
+  backupBusy = true;
+  els.backupStatus.textContent = "Підготовка копії…";
+  try {
+    const counts = await downloadBackup();
+    els.backupStatus.textContent = `Копію підготовлено: ${counts.tasks} завдань, ${counts.projects} проєктів, ${counts.lists} списків.`;
+  } catch (error) {
+    els.backupStatus.textContent = error.message || "Не вдалося створити копію";
+  } finally { backupBusy = false; }
+});
+els.backupImportOpen.addEventListener("click", () => { if (!backupBusy) els.backupFile.click(); });
+els.backupFile.addEventListener("change", () => chooseBackup(els.backupFile.files[0]));
+els.backupMerge.addEventListener("click", () => confirmBackupMode("merge"));
+els.backupReplace.addEventListener("click", () => confirmBackupMode("replace"));
+els.backupCancel.addEventListener("click", () => { clearBackupSelection(); els.backupStatus.textContent = "Імпорт скасовано"; });
+els.backupConfirmCancel.addEventListener("click", () => { pendingBackupMode = null; els.backupConfirm.hidden = true; });
+els.backupSafeCopy.addEventListener("change", () => { els.backupApply.disabled = !els.backupSafeCopy.checked; });
+els.backupApply.addEventListener("click", applyBackup);
 els.listEditorOpen.addEventListener("click", openListEditor);
 els.listEditorClose.addEventListener("click", saveActiveListName);
 els.listEditorForm.addEventListener("submit", saveActiveListName);
