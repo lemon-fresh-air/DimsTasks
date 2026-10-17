@@ -6,8 +6,8 @@ const vm = require("node:vm");
 
 const source = fs.readFileSync(path.join(__dirname, "..", "src", "js", "model.js"), "utf8");
 const context = vm.createContext({ crypto: { randomUUID: () => "generated-id" }, INBOX_LIST_ID: "inbox" });
-vm.runInContext(`${source}\nthis.model = { createTask, createProject, reorderProjects, reorderProjectBlock, projectCountdown, currentProjectTask, compareProjectTasks, visibleListTasks, reorderProjectSteps, reorderProjectStepBlock, normalizeTaskOrder };`, context);
-const { createTask, createProject, reorderProjects, reorderProjectBlock, projectCountdown, currentProjectTask, compareProjectTasks, visibleListTasks, reorderProjectSteps, reorderProjectStepBlock, normalizeTaskOrder } = context.model;
+vm.runInContext(`${source}\nthis.model = { createTask, createProject, compareProjects, nextProjectPosition, reorderProjects, reorderProjectBlock, projectCountdown, currentProjectTask, compareProjectTasks, visibleListTasks, reorderProjectSteps, reorderProjectStepBlock, normalizeTaskOrder };`, context);
+const { createTask, createProject, compareProjects, nextProjectPosition, reorderProjects, reorderProjectBlock, projectCountdown, currentProjectTask, compareProjectTasks, visibleListTasks, reorderProjectSteps, reorderProjectStepBlock, normalizeTaskOrder } = context.model;
 
 const step = (id, projectPosition, values = {}) => createTask({
   id, projectId: "project", projectPosition, listId: "inbox", title: id,
@@ -55,6 +55,22 @@ test("several selected projects move as one ordered block", () => {
   const records = ["first", "second", "third", "fourth"].map((id, position) => createProject({ id, title: id, position }));
   const reordered = reorderProjectBlock(records, new Set(["second", "third"]), null);
   assert.deepEqual(Array.from(reordered.slice().sort((a, b) => a.position - b.position), project => project.id), ["first", "fourth", "second", "third"]);
+});
+
+test("completing a middle project, creating another, and restoring keeps a stable order", () => {
+  const records = [
+    createProject({ id: "first", title: "first", position: 0, createdAt: "2026-10-15T00:00:00.000Z" }),
+    createProject({ id: "middle", title: "middle", position: 1, createdAt: "2026-10-15T00:01:00.000Z" }),
+    createProject({ id: "last", title: "last", position: 1, createdAt: "2026-10-15T00:02:00.000Z" })
+  ];
+  records[1] = { ...records[1], status: "completed" };
+  const created = createProject({ id: "new", title: "new", position: nextProjectPosition(records), createdAt: "2026-10-15T00:03:00.000Z" });
+  records.push(created);
+  records[1] = { ...records[1], status: "active" };
+
+  assert.equal(created.position, 2);
+  assert.equal(records.filter(project => project.status === "active" && project.position === created.position).length, 1);
+  assert.deepEqual(Array.from(records.filter(project => project.status === "active").sort(compareProjects), project => project.id), ["first", "middle", "last", "new"]);
 });
 
 test("legacy tasks are normalized with null project fields without changing identity", () => {

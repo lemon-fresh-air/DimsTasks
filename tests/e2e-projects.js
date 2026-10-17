@@ -8,7 +8,7 @@ const { chromium } = require("playwright");
 const python = "C:/Users/38066/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/python.exe";
 const chrome = "C:/Program Files/Google/Chrome/Application/chrome.exe";
 const env = { ...process.env, NO_PROXY: "127.0.0.1,localhost,::1", no_proxy: "127.0.0.1,localhost,::1" };
-const fileMode = process.env.E2E_FILE === "1";
+const fileMode = true;
 const server = fileMode ? null : spawn(python, ["-m", "http.server", "8000", "--bind", "127.0.0.1", "--directory", "dist"], { env, stdio: ["ignore", "pipe", "pipe"] });
 const appUrl = fileMode ? pathToFileURL(path.resolve("dist/index.html")).href : "http://127.0.0.1:8000";
 const errors = [];
@@ -70,6 +70,7 @@ async function waitForServer() {
   await page.click("#project-back");
   assert.equal(await page.locator("#projects-overview").isVisible(), true);
   await page.click(".project-card");
+  await page.uncheck("#project-add-new-first");
 
   await page.fill("#project-step-title", "Перший крок");
   await page.click("#project-step-form button");

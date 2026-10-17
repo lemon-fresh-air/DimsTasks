@@ -126,7 +126,7 @@ function renderProjectCard(project, container) {
 }
 
 function renderProjects() {
-  const active = projects.filter(project => project.status !== "completed").sort((a, b) => (a.position ?? 0) - (b.position ?? 0));
+  const active = projects.filter(project => project.status !== "completed").sort(compareProjects);
   const completed = projects.filter(project => project.status === "completed").sort((a, b) => String(b.completedAt || b.updatedAt).localeCompare(String(a.completedAt || a.updatedAt)));
   projectEls.activeList.replaceChildren();
   projectEls.completedList.replaceChildren();
@@ -319,7 +319,7 @@ function markProjectDirty() {
 async function addProject(title) {
   const value = title.trim();
   if (!value) return;
-  const project = createProject({ title: value, position: projects.filter(item => item.status !== "completed").length });
+  const project = createProject({ title: value, position: nextProjectPosition(projects) });
   await projectDb.put(project);
   projects.push(project);
   projectEls.createForm.hidden = true;

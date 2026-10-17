@@ -19,6 +19,7 @@ const chrome = "C:/Program Files/Google/Chrome/Application/chrome.exe";
   await page.click("#project-add");
   await page.fill("#project-create-title", "Drag test");
   await page.click("#project-create-form button[type=submit]");
+  await page.uncheck("#project-add-new-first");
   for (const title of ["Перший", "Другий", "Третій", "Четвертий"]) {
     await page.fill("#project-step-title", title);
     await page.click("#project-step-form button");

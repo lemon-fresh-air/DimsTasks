@@ -39,9 +39,20 @@ function createSection(values = {}) {
 function createProject(values = {}) {
   return { ...baseRecord(values), ...values, title: String(values.title || "").trim(), goal: values.goal || "", description: values.description || "", status: values.status === "completed" ? "completed" : "active", dueDate: values.dueDate || null, dueTime: values.dueDate && values.dueTime ? values.dueTime : null, showCountdown: values.showCountdown === true, lastListId: typeof values.lastListId === "string" ? values.lastListId : null, addNewTasksFirst: values.addNewTasksFirst !== false, completedAt: values.completedAt || null, position: Number.isFinite(values.position) ? values.position : 0 };
 }
+function compareProjects(a, b) {
+  return (a.position ?? Number.MAX_SAFE_INTEGER) - (b.position ?? Number.MAX_SAFE_INTEGER)
+    || String(a.createdAt || "").localeCompare(String(b.createdAt || ""))
+    || String(a.id).localeCompare(String(b.id));
+}
+function nextProjectPosition(records) {
+  const positions = records
+    .filter(project => project.status !== "completed" && Number.isFinite(project.position))
+    .map(project => project.position);
+  return positions.length ? Math.max(...positions) + 1 : 0;
+}
 function reorderProjectBlock(records, selectedIds, beforeId) {
   const active = records.filter(project => project.status !== "completed")
-    .sort((a, b) => (a.position ?? Number.MAX_SAFE_INTEGER) - (b.position ?? Number.MAX_SAFE_INTEGER));
+    .sort(compareProjects);
   const selected = active.filter(project => selectedIds.has(project.id));
   if (!selected.length) return records;
   const remaining = active.filter(project => !selectedIds.has(project.id));
