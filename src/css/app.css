@@ -187,12 +187,21 @@ h1 { font-size:clamp(2.25rem,9vw,3.4rem); line-height:1; letter-spacing:-.05em; 
 .backup-setting { margin-top:20px; padding:18px 14px; border:1px solid var(--line); border-radius:18px; background:var(--surface); }
 .backup-setting h3 { margin:0 0 8px; font-size:1.08rem; }
 .backup-setting p { margin:8px 0; color:var(--muted); font-size:.9rem; line-height:1.45; }
+.backup-prefix-field { display:grid; gap:6px; margin-top:14px; color:var(--muted); font-size:.82rem; font-weight:700; }
+.backup-prefix-field input { width:100%; min-height:44px; padding:9px 12px; border:1px solid var(--line); border-radius:12px; background:var(--control); color:var(--text); font:inherit; font-size:1rem; font-weight:600; }
+.backup-prefix-field input:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
 .backup-actions { display:flex; flex-wrap:wrap; gap:8px; margin-top:14px; }
-.backup-actions button { min-height:44px; padding:9px 13px; border:1px solid var(--line); border-radius:12px; background:var(--control); color:var(--text); font-weight:700; }
-.backup-actions a:not([hidden]) { display:inline-flex; min-height:44px; align-items:center; padding:9px 13px; border:1px solid var(--line); border-radius:12px; background:var(--control); color:var(--text); font-weight:700; text-decoration:none; }
+.backup-actions button { min-height:44px; display:inline-flex; align-items:center; justify-content:center; gap:9px; padding:9px 13px; border:1px solid var(--line); border-radius:12px; background:var(--control); color:var(--text); font-weight:700; }
 .backup-actions button:first-child { background:var(--accent); color:var(--on-accent); border-color:var(--accent); }
 .backup-actions button.backup-danger { background:color-mix(in srgb,var(--danger) 12%,var(--surface)); color:var(--danger); border-color:var(--danger); }
 .backup-actions button:disabled { opacity:.55; cursor:default; }
+.backup-action-icon { width:18px; height:20px; flex:0 0 auto; position:relative; border-bottom:2px solid currentColor; }
+.backup-action-icon::before { content:""; position:absolute; width:2px; height:14px; left:8px; background:currentColor; border-radius:2px; }
+.backup-action-icon::after { content:""; position:absolute; width:8px; height:8px; left:4px; border-left:2px solid currentColor; border-top:2px solid currentColor; }
+.backup-export-icon::before { top:0; }
+.backup-export-icon::after { top:0; transform:rotate(45deg); }
+.backup-import-icon::before { top:1px; }
+.backup-import-icon::after { top:5px; transform:rotate(225deg); }
 .backup-preview { margin-top:16px; padding-top:12px; border-top:1px solid var(--line); }
 .backup-preview #backup-summary { color:var(--text); font-weight:700; }
 .backup-confirm { margin-top:16px; padding:12px; border-radius:12px; background:var(--bg); }

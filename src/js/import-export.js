@@ -1,6 +1,6 @@
 const BACKUP_FORMAT = "local-first-pwa-backup";
 const APP_ID = "dims-tasks";
-const BACKUP_FORMAT_VERSION = 10;
+const BACKUP_FORMAT_VERSION = 11;
 const BACKUP_MAX_BYTES = 50 * 1024 * 1024;
 
 function backupCounts(data) { return Object.fromEntries(STORE_NAMES.map(name => [name, data[name].length])); }
@@ -14,6 +14,15 @@ function validDate(value) {
 function validTime(value) { return value === null || typeof value === "string" && /^([01]\d|2[0-3]):[0-5]\d$/.test(value); }
 function validOptionalId(value) { return value === null || typeof value === "string" && value.length > 0; }
 function validPosition(value) { return Number.isSafeInteger(value) && value >= 0; }
+function normalizeBackupPrefix(value) {
+  const cleaned = String(value || "").trim().replace(/[<>:"/\\|?*\u0000-\u001f]/g, "-").replace(/[. ]+$/g, "");
+  return cleaned || "Dimstasks";
+}
+function backupFileName(prefix, version, date = new Date()) {
+  const day = String(date.getDate()).padStart(2, "0");
+  const month = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][date.getMonth()];
+  return `${normalizeBackupPrefix(prefix)}-${version}---${day}-${month}-${date.getFullYear()}.json`;
+}
 
 function validateBackupData(data, { strict = true } = {}) {
   if (!data || typeof data !== "object" || !STORE_NAMES.every(name => Array.isArray(data[name]))) throw new Error("Копія має неповну структуру даних");
@@ -29,7 +38,7 @@ function validateBackupData(data, { strict = true } = {}) {
       if (name === "sections" && (typeof record.listId !== "string" || typeof record.title !== "string" || typeof record.description !== "string" || !validPosition(record.position))) throw new Error(`Некоректна секція: ${record.id}`);
       if (name === "projects" && (typeof record.title !== "string" || typeof record.goal !== "string" || typeof record.description !== "string" || !["active", "completed"].includes(record.status) || !validDate(record.dueDate) || !validTime(record.dueTime) || record.dueTime && !record.dueDate || typeof record.showCountdown !== "boolean" || !validOptionalId(record.lastListId) || typeof record.addNewTasksFirst !== "boolean" || record.completedAt !== null && !validIso(record.completedAt) || !validPosition(record.position))) throw new Error(`Некоректний проєкт: ${record.id}`);
       if (name === "tasks" && (typeof record.listId !== "string" || !validOptionalId(record.sectionId) || !validOptionalId(record.projectId) || typeof record.title !== "string" || typeof record.description !== "string" || !["active", "completed", "archived"].includes(record.status) || record.completedAt !== null && !validIso(record.completedAt) || !validDate(record.dueDate) || !validTime(record.dueTime) || record.dueTime && !record.dueDate || !validPosition(record.position) || record.todayPosition !== null && !validPosition(record.todayPosition) || record.projectPosition !== null && !validPosition(record.projectPosition) || record.returnedToInboxAt !== null && !validIso(record.returnedToInboxAt))) throw new Error(`Некоректне завдання: ${record.id}`);
-      if (name === "settings" && (record.id === "appearance" && !["light", "dark"].includes(record.theme) || record.id === "task-defaults" && typeof record.todayListId !== "string" || record.id === "workflow" && typeof record.returnOverdueToInbox !== "boolean")) throw new Error(`Некоректне налаштування: ${record.id}`);
+      if (name === "settings" && (record.id === "appearance" && !["light", "dark"].includes(record.theme) || record.id === "task-defaults" && typeof record.todayListId !== "string" || record.id === "workflow" && typeof record.returnOverdueToInbox !== "boolean" || record.id === "backup-naming" && (typeof record.prefix !== "string" || !record.prefix.trim() || !Number.isSafeInteger(record.nextVersion) || record.nextVersion < 1))) throw new Error(`Некоректне налаштування: ${record.id}`);
     }
   }
   if (!strict) return data;
@@ -84,7 +93,8 @@ function normalizeOlderBackup(data) {
     customFields: record.customFields || {},
     ...(record.id === "appearance" ? { theme: record.theme === "dark" ? "dark" : "light" } : {}),
     ...(record.id === "task-defaults" ? { todayListId: listIds.has(record.todayListId) ? record.todayListId : INBOX_LIST_ID } : {}),
-    ...(record.id === "workflow" ? { returnOverdueToInbox: record.returnOverdueToInbox === true } : {})
+    ...(record.id === "workflow" ? { returnOverdueToInbox: record.returnOverdueToInbox === true } : {}),
+    ...(record.id === "backup-naming" ? { prefix: normalizeBackupPrefix(record.prefix), nextVersion: Number.isSafeInteger(record.nextVersion) && record.nextVersion > 0 ? record.nextVersion : 1 } : {})
   }));
   return { lists, sections, projects, tasks, settings };
 }
@@ -100,7 +110,7 @@ function completeBackupFields(data) {
   };
 }
 
-async function downloadBackup(link) {
+async function downloadBackup(link, { prefix = "Dimstasks", version = 1 } = {}) {
   const data = validateBackupData(completeBackupFields(await appDb.exportAll()));
   const payload = { format: BACKUP_FORMAT, appId: APP_ID, formatVersion: BACKUP_FORMAT_VERSION, databaseVersion: DB_VERSION, exportedAt: new Date().toISOString(), data };
   const blob = new Blob([JSON.stringify(payload)], { type: "application/json" });
@@ -108,8 +118,7 @@ async function downloadBackup(link) {
   const url = URL.createObjectURL(blob);
   if (link.href) URL.revokeObjectURL(link.href);
   link.href = url;
-  link.download = `dims-tasks-${payload.exportedAt.replace(/[:.]/g, "-")}.json`;
-  link.hidden = false;
+  link.download = backupFileName(prefix, version);
   link.click();
   return backupCounts(data);
 }

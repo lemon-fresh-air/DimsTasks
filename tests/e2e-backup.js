@@ -2,6 +2,11 @@ const assert = require("node:assert/strict");
 const { openTestApp } = require("./e2e-helper");
 
 const stamp = "2026-10-17T10:00:00.000Z";
+const localFileDate = () => {
+  const value = new Date();
+  const month = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][value.getMonth()];
+  return `${String(value.getDate()).padStart(2, "0")}-${month}-${value.getFullYear()}`;
+};
 const base = id => ({ id, entityVersion: 1, createdAt: stamp, updatedAt: stamp, customFields: {} });
 const inbox = { ...base("system-list-inbox"), title: "Інбокс", description: "", kind: "inbox", position: 0 };
 const data = {
@@ -40,15 +45,34 @@ async function readStore(page, name) {
   try {
     await page.click("#main-menu-open");
     await page.click("#settings-open");
+    assert.deepEqual(await page.locator(".backup-setting > .backup-actions > button").allTextContents(), ["Експорт бекапу", "Імпорт бекапу"]);
     const downloadPromise = page.waitForEvent("download");
     await page.click("#backup-export");
     const download = await downloadPromise;
-    assert.match(download.suggestedFilename(), /^dims-tasks-.*\.json$/);
-    await page.locator("#backup-download-link:visible").waitFor();
+    assert.equal(download.suggestedFilename(), `Dimstasks-1---${localFileDate()}.json`);
+    assert.equal(await page.locator("#backup-download-link").isHidden(), true);
     const directDownloadPromise = page.waitForEvent("download");
-    await page.locator("#backup-download-link").click();
+    await page.click("#backup-export");
     const directDownload = await directDownloadPromise;
     assert.equal(directDownload.suggestedFilename(), download.suggestedFilename());
+
+    await page.reload({ waitUntil: "networkidle" });
+    await page.click("#main-menu-open");
+    await page.click("#settings-open");
+    assert.equal(await page.locator("#backup-prefix").inputValue(), "Dimstasks");
+    const nextDownloadPromise = page.waitForEvent("download");
+    await page.click("#backup-export");
+    const nextDownload = await nextDownloadPromise;
+    assert.equal(nextDownload.suggestedFilename(), `Dimstasks-2---${localFileDate()}.json`);
+    await page.locator("#backup-prefix").fill("Робота");
+    const renamedDownloadPromise = page.waitForEvent("download");
+    await page.click("#backup-export");
+    const renamedDownload = await renamedDownloadPromise;
+    assert.equal(renamedDownload.suggestedFilename(), `Робота-3---${localFileDate()}.json`);
+    await page.reload({ waitUntil: "networkidle" });
+    await page.click("#main-menu-open");
+    await page.click("#settings-open");
+    assert.equal(await page.locator("#backup-prefix").inputValue(), "Робота");
 
     await upload(page, backup(data));
     assert.match(await page.locator("#backup-summary").innerText(), /1000 завдань, 100 проєктів, 101 списків/);
@@ -80,7 +104,7 @@ async function readStore(page, name) {
     await page.click("#backup-export");
     await fullDownloadPromise;
     const exported = await page.evaluate(async () => JSON.parse(await window.lastBackupBlob.text()));
-    assert.equal(exported.formatVersion, 10);
+    assert.equal(exported.formatVersion, 11);
     assert.equal(exported.data.tasks.length, 1000);
     assert.equal(exported.data.tasks[0].todayPosition, null);
     assert.equal(exported.data.projects.length, 100);

@@ -110,10 +110,11 @@
       <div class="backup-setting">
         <h3>Резервна копія</h3>
         <p>Перенесіть усі списки, проєкти, завдання й налаштування між пристроями через JSON-файл.</p>
+        <label class="backup-prefix-field" for="backup-prefix"><span>Префікс назви файлу</span><input id="backup-prefix" type="text" value="Dimstasks" maxlength="48" autocomplete="off" spellcheck="false"></label>
         <div class="backup-actions">
-          <button id="backup-export" type="button">Завантажити копію</button>
-          <a id="backup-download-link" hidden>Зберегти файл</a>
-          <button id="backup-import-open" type="button">Вибрати файл</button>
+          <button id="backup-export" type="button"><span class="backup-action-icon backup-export-icon" aria-hidden="true"></span><span>Експорт бекапу</span></button>
+          <button id="backup-import-open" type="button"><span class="backup-action-icon backup-import-icon" aria-hidden="true"></span><span>Імпорт бекапу</span></button>
+          <a id="backup-download-link" hidden aria-hidden="true" tabindex="-1"></a>
           <input id="backup-file" type="file" accept=".json,application/json" aria-label="Резервна копія JSON" hidden>
         </div>
         <p id="backup-status" class="backup-status" role="status" aria-live="polite"></p>

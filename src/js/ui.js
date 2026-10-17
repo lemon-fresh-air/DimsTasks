@@ -89,6 +89,7 @@ const els = {
   themeLabel: document.querySelector("#theme-label"),
   returnOverdueToggle: document.querySelector("#return-overdue-toggle"),
   backupExport: document.querySelector("#backup-export"),
+  backupPrefix: document.querySelector("#backup-prefix"),
   backupDownloadLink: document.querySelector("#backup-download-link"),
   backupImportOpen: document.querySelector("#backup-import-open"),
   backupFile: document.querySelector("#backup-file"),

@@ -6,6 +6,7 @@ const TODAY_LIST_ID = "system-list-today";
 const APPEARANCE_SETTINGS_ID = "appearance";
 const TASK_DEFAULTS_SETTINGS_ID = "task-defaults";
 const WORKFLOW_SETTINGS_ID = "workflow";
+const BACKUP_NAMING_SETTINGS_ID = "backup-naming";
 
 function ensureIndex(store, name, keyPath, options = {}) {
   if (!store.indexNames.contains(name)) store.createIndex(name, keyPath, options);
@@ -331,6 +332,25 @@ const settingsDb = {
       id: WORKFLOW_SETTINGS_ID,
       entityVersion: 1,
       returnOverdueToInbox: enabled === true,
+      createdAt: current?.createdAt || now,
+      updatedAt: now
+    });
+  },
+  backupNaming: async () => {
+    const settings = await appDb.get("settings", BACKUP_NAMING_SETTINGS_ID);
+    return {
+      prefix: typeof settings?.prefix === "string" && settings.prefix.trim() ? settings.prefix : "Dimstasks",
+      nextVersion: Number.isSafeInteger(settings?.nextVersion) && settings.nextVersion > 0 ? settings.nextVersion : 1
+    };
+  },
+  setBackupNaming: async (prefix, nextVersion) => {
+    const current = await appDb.get("settings", BACKUP_NAMING_SETTINGS_ID);
+    const now = new Date().toISOString();
+    await appDb.put("settings", {
+      id: BACKUP_NAMING_SETTINGS_ID,
+      entityVersion: 1,
+      prefix: typeof prefix === "string" && prefix.trim() ? prefix : "Dimstasks",
+      nextVersion: Number.isSafeInteger(nextVersion) && nextVersion > 0 ? nextVersion : 1,
       createdAt: current?.createdAt || now,
       updatedAt: now
     });

@@ -16,8 +16,8 @@ const context = vm.createContext({
   URL: { createObjectURL: () => "blob:test", revokeObjectURL: () => {} },
   document: { createElement: () => ({ click() {} }) }
 });
-vm.runInContext(`${model}\n${importExport}\nthis.backup = { parseBackup, readBackup, validateBackupData, mergeBackupData, BACKUP_FORMAT_VERSION };`, context);
-const { parseBackup, readBackup, validateBackupData, mergeBackupData, BACKUP_FORMAT_VERSION } = context.backup;
+vm.runInContext(`${model}\n${importExport}\nthis.backup = { parseBackup, readBackup, validateBackupData, mergeBackupData, backupFileName, BACKUP_FORMAT_VERSION };`, context);
+const { parseBackup, readBackup, validateBackupData, mergeBackupData, backupFileName, BACKUP_FORMAT_VERSION } = context.backup;
 const file = value => ({ text: async () => JSON.stringify(value) });
 const stamp = "2026-01-01T00:00:00.000Z";
 const base = id => ({ id, entityVersion: 1, createdAt: stamp, updatedAt: stamp, customFields: {} });
@@ -40,6 +40,16 @@ test("format 9 remains importable without today positions", async () => {
   delete old.tasks[0].todayPosition;
   const restored = await parseBackup(file({ format: "local-first-pwa-backup", appId: "dims-tasks", formatVersion: 9, data: old }));
   assert.equal(restored.tasks[0].todayPosition, null);
+});
+
+test("format 10 remains importable without backup naming settings", async () => {
+  const restored = await parseBackup(file({ format: "local-first-pwa-backup", appId: "dims-tasks", formatVersion: 10, data }));
+  assert.equal(restored.settings.some(record => record.id === "backup-naming"), false);
+});
+
+test("backup filename uses a safe prefix, sequence number, and readable date", () => {
+  assert.equal(backupFileName("Dimstasks", 1, new Date(2026, 9, 18)), "Dimstasks-1---18-Oct-2026.json");
+  assert.equal(backupFileName(" Мої/справи ", 3, new Date(2026, 0, 2)), "Мої-справи-3---02-Jan-2026.json");
 });
 
 test("format 4 remains importable and invalid backup is rejected before writing", async () => {
@@ -99,6 +109,6 @@ test("merge keeps local on equal time, uses newer records, and retains unique re
 });
 
 test("future and malformed files are rejected before restoration", async () => {
-  await assert.rejects(readBackup(file({ format: "local-first-pwa-backup", appId: "dims-tasks", formatVersion: 11, data })), /ще не підтримано/);
+  await assert.rejects(readBackup(file({ format: "local-first-pwa-backup", appId: "dims-tasks", formatVersion: 12, data })), /ще не підтримано/);
   await assert.rejects(readBackup({ text: async () => "{" }), /JSON-файл/);
 });

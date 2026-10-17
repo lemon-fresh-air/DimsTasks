@@ -17,6 +17,14 @@ let listEditorOpenFrame;
 let pendingBackup = null;
 let pendingBackupMode = null;
 let backupBusy = false;
+let backupNextVersion = 1;
+function clearPreparedBackupDownload() {
+  if (!els.backupDownloadLink?.href) return;
+  const url = els.backupDownloadLink.href;
+  els.backupDownloadLink.removeAttribute("href");
+  els.backupDownloadLink.removeAttribute("download");
+  setTimeout(() => URL.revokeObjectURL(url), 60000);
+}
 const todayList = { id: TODAY_LIST_ID, title: "Сьогодні", kind: "today" };
 
 function activeList() {
@@ -166,6 +174,9 @@ async function initializeApp() {
   await loadLists();
   todayDefaultListId = await settingsDb.todayListId() || INBOX_LIST_ID;
   returnOverdueToInbox = await settingsDb.returnOverdueToInbox();
+  const backupNaming = await settingsDb.backupNaming();
+  els.backupPrefix.value = backupNaming.prefix;
+  backupNextVersion = backupNaming.nextVersion;
   els.returnOverdueToggle.checked = returnOverdueToInbox;
   await loadAndNormalizeTaskOrder();
   await loadProjects();
@@ -878,17 +889,30 @@ els.settingsOpen.addEventListener("click", openSettings);
 els.settingsClose.addEventListener("click", () => closeSettings());
 els.backupExport.addEventListener("click", async () => {
   if (backupBusy) return;
+  if (els.backupDownloadLink.href) {
+    els.backupDownloadLink.click();
+    clearPreparedBackupDownload();
+    els.backupStatus.textContent = "Завантаження бекапу повторено.";
+    return;
+  }
   backupBusy = true;
-  els.backupDownloadLink.hidden = true;
   els.backupStatus.textContent = "Підготовка копії…";
   try {
-    const counts = await downloadBackup(els.backupDownloadLink);
-    els.backupStatus.textContent = `Копію підготовлено: ${counts.tasks} завдань, ${counts.projects} проєктів, ${counts.lists} списків. Якщо завантаження не почалося, натисніть «Зберегти файл».`;
+    const prefix = normalizeBackupPrefix(els.backupPrefix.value);
+    els.backupPrefix.value = prefix;
+    const version = backupNextVersion;
+    const counts = await downloadBackup(els.backupDownloadLink, { prefix, version });
+    backupNextVersion = version + 1;
+    try { await settingsDb.setBackupNaming(prefix, backupNextVersion); } catch (_error) {
+      // The file is ready; keep the next number for this session.
+    }
+    els.backupStatus.textContent = `Бекап підготовлено: ${counts.tasks} завдань, ${counts.projects} проєктів, ${counts.lists} списків. Якщо завантаження не почалося, натисніть «Експорт бекапу» ще раз.`;
   } catch (error) {
     els.backupStatus.textContent = error.message || "Не вдалося створити копію";
   } finally { backupBusy = false; }
 });
 els.backupImportOpen.addEventListener("click", () => { if (!backupBusy) els.backupFile.click(); });
+els.backupPrefix.addEventListener("input", clearPreparedBackupDownload);
 els.backupFile.addEventListener("change", () => chooseBackup(els.backupFile.files[0]));
 els.backupMerge.addEventListener("click", () => confirmBackupMode("merge"));
 els.backupReplace.addEventListener("click", () => confirmBackupMode("replace"));
