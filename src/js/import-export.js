@@ -23,6 +23,12 @@ function backupFileName(prefix, version, date = new Date()) {
   const month = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][date.getMonth()];
   return `${normalizeBackupPrefix(prefix)}-${version}---${day}-${month}-${date.getFullYear()}.json`;
 }
+function backupNumberFromFileName(name) {
+  const match = typeof name === "string" && name.match(/^(.+)-([1-9]\d*)---\d{2}-[A-Z][a-z]{2}-\d{4}\.json$/i);
+  if (!match) return null;
+  const number = Number(match[2]);
+  return Number.isSafeInteger(number) && Number.isSafeInteger(number + 1) ? { prefix: match[1], nextVersion: number + 1 } : null;
+}
 
 function backupNamingRecord(data) {
   return data.settings.find(record => record.id === "backup-naming");
@@ -165,6 +171,11 @@ async function readBackup(file) {
   validateBackupData(data, { strict: version === BACKUP_FORMAT_VERSION });
   if (version < BACKUP_FORMAT_VERSION) data = normalizeOlderBackup(data);
   validateBackupData(data);
+  const fileNumber = backupNumberFromFileName(file.name);
+  if (fileNumber) {
+    const naming = backupNamingRecord(data);
+    data = withBackupNaming(data, naming?.prefix || fileNumber.prefix, fileNumber.nextVersion);
+  }
   return { data, formatVersion: version, exportedAt: validIso(value.exportedAt) ? value.exportedAt : null };
 }
 async function parseBackup(file) { return (await readBackup(file)).data; }

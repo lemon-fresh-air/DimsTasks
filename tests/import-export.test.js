@@ -18,7 +18,7 @@ const context = vm.createContext({
 });
 vm.runInContext(`${model}\n${importExport}\nthis.backup = { parseBackup, readBackup, validateBackupData, mergeBackupData, completeBackupFields, backupFileName, withBackupNaming, preserveBackupNaming, BACKUP_FORMAT_VERSION };`, context);
 const { parseBackup, readBackup, validateBackupData, mergeBackupData, completeBackupFields, backupFileName, withBackupNaming, preserveBackupNaming, BACKUP_FORMAT_VERSION } = context.backup;
-const file = value => ({ text: async () => JSON.stringify(value) });
+const file = (value, name) => ({ name, text: async () => JSON.stringify(value) });
 const stamp = "2026-01-01T00:00:00.000Z";
 const base = id => ({ id, entityVersion: 1, createdAt: stamp, updatedAt: stamp, customFields: {} });
 const data = {
@@ -81,6 +81,21 @@ test("an exported backup carries the next version to another device", () => {
   assert.equal(exported.settings.find(record => record.id === "backup-naming").nextVersion, 4);
   assert.equal(exported.settings.find(record => record.id === "backup-naming").prefix, "Робота");
   assert.doesNotThrow(() => validateBackupData(exported));
+});
+
+test("import continues after the version in an older backup filename", async () => {
+  const payload = { format: "local-first-pwa-backup", appId: "dims-tasks", formatVersion: 10, data };
+  const restored = await parseBackup(file(payload, "Dimstasks-3---18-Oct-2026.json"));
+  assert.equal(restored.settings.find(record => record.id === "backup-naming").nextVersion, 4);
+});
+
+test("filename and JSON keep the higher next version", async () => {
+  const payload = { format: "local-first-pwa-backup", appId: "dims-tasks", formatVersion: BACKUP_FORMAT_VERSION,
+    data: withBackupNaming(structuredClone(data), "Робота", 7) };
+  const restored = await parseBackup(file(payload, "Робота-3---18-Oct-2026.json"));
+  assert.equal(restored.settings.find(record => record.id === "backup-naming").nextVersion, 7);
+  const stale = await parseBackup(file({ ...payload, data: withBackupNaming(structuredClone(data), "Робота", 3) }, "Робота-3---18-Oct-2026.json"));
+  assert.equal(stale.settings.find(record => record.id === "backup-naming").nextVersion, 4);
 });
 
 test("replacing from an older backup retains the highest local version", () => {

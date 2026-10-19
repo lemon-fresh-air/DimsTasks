@@ -21,8 +21,8 @@ const data = {
 };
 const backup = records => ({ format: "local-first-pwa-backup", appId: "dims-tasks", formatVersion: 9, exportedAt: stamp, data: records });
 
-async function upload(page, payload) {
-  await page.locator("#backup-file").setInputFiles({ name: "dims-tasks.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(payload)) });
+async function upload(page, payload, name = "dims-tasks.json") {
+  await page.locator("#backup-file").setInputFiles({ name, mimeType: "application/json", buffer: Buffer.from(JSON.stringify(payload)) });
   await page.locator("#backup-preview:visible").waitFor();
 }
 
@@ -140,6 +140,16 @@ async function readStore(page, name) {
     assert.equal(tasks.length, 1001);
     assert.equal(tasks.find(item => item.id === "task-0").title, "Оновлений крок");
     assert.equal(tasks.find(item => item.id === "task-new").projectId, "project-0");
+
+    await upload(page, backup(data), "Dimstasks-50---18-Oct-2026.json");
+    await page.click("#backup-merge");
+    await page.check("#backup-safe-copy");
+    await page.click("#backup-apply");
+    await page.waitForFunction(() => document.querySelector("#backup-status").textContent.includes("Дані злито"));
+    const transferredDownloadPromise = page.waitForEvent("download");
+    await page.click("#backup-export");
+    const transferredDownload = await transferredDownloadPromise;
+    assert.equal(transferredDownload.suggestedFilename(), `Dimstasks-51---${localFileDate()}.json`);
 
     await page.locator("#backup-file").setInputFiles({ name: "broken.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(backup({ ...data, tasks: [data.tasks[0], data.tasks[0]] }))) });
     await page.waitForFunction(() => document.querySelector("#backup-status").textContent.includes("Повторний id"));

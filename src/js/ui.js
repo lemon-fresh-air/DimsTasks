@@ -609,7 +609,7 @@ function openNewTaskEditor(listId, originListId = listId) {
   els.taskProjectLink.hidden = true;
   delete els.taskProjectLink.dataset.projectId;
   setTaskEditorListUI(listId);
-  els.date.value = localDateValue();
+  els.date.value = originListId === INBOX_LIST_ID ? "" : localDateValue();
   els.time.value = "";
   els.dateLabel.textContent = readableDueDate(els.date.value);
   applyDateTone(els.datePickerOpen, els.date.value, els.time.value);
