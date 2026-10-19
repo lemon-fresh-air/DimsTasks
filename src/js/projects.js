@@ -37,6 +37,12 @@ const projectEls = {
   deleteKeepTasks: document.querySelector("#project-delete-keep-tasks"),
   deleteNo: document.querySelector("#project-delete-no"),
   deleteYes: document.querySelector("#project-delete-yes"),
+  convertTask: document.querySelector("#project-convert-task"),
+  convertDialogBackdrop: document.querySelector("#project-convert-dialog-backdrop"),
+  convertDialog: document.querySelector("#project-convert-dialog"),
+  convertKeepSteps: document.querySelector("#project-convert-keep-steps"),
+  convertCancel: document.querySelector("#project-convert-cancel"),
+  convertConfirm: document.querySelector("#project-convert-confirm"),
   cardTemplate: document.querySelector("#project-card-template"),
   screen: document.querySelector("#project-screen"),
   selectionToolbar: document.querySelector("#project-selection-toolbar"),
@@ -238,6 +244,7 @@ function renderOpenProject() {
   projectEls.selectAll.setAttribute("aria-pressed", String(steps.length > 0 && steps.every(task => selectedHere.has(task.id))));
   projectEls.addNewFirst.checked = project.addNewTasksFirst !== false;
   projectEls.complete.textContent = project.status === "completed" ? "Повернути в активні" : "Завершити проєкт";
+  projectEls.convertTask.hidden = project.status === "completed";
   projectEls.mainComplete.textContent = projectEls.complete.textContent;
   projectEls.taskList.replaceChildren();
   steps.forEach(renderProjectTask);
@@ -402,6 +409,55 @@ async function deleteProject() {
   closeProject();
   renderCurrentTasks();
   toast(detachTasks ? "Проєкт видалено, завдання збережено" : "Проєкт і його завдання видалено");
+}
+
+function closeProjectConvertDialog() {
+  projectEls.convertDialogBackdrop.hidden = true;
+  document.body.classList.remove("project-delete-dialog-open");
+  projectEls.convertTask.focus();
+}
+
+function openProjectConvertDialog() {
+  const project = projects.find(item => item.id === activeProjectId);
+  if (!project || project.status !== "active") return;
+  projectEls.convertKeepSteps.checked = true;
+  projectEls.convertDialogBackdrop.hidden = false;
+  document.body.classList.add("project-delete-dialog-open");
+  requestAnimationFrame(() => projectEls.convertDialog.focus());
+}
+
+async function convertOpenProjectToTask() {
+  const project = projects.find(item => item.id === activeProjectId);
+  if (!project || project.status !== "active") { closeProjectConvertDialog(); return; }
+  const title = projectEls.title.value.trim();
+  if (!title) {
+    closeProjectConvertDialog();
+    projectEls.saveStatus.textContent = "Назва не може бути порожньою";
+    projectEls.title.focus();
+    return;
+  }
+  const editedProject = { ...project, title, description: projectEls.description.value.trim(),
+    dueDate: projectEls.dueDate.value || null,
+    dueTime: projectEls.dueDate.value && projectEls.dueTime.value ? projectEls.dueTime.value : null };
+  const keepSteps = projectEls.convertKeepSteps.checked;
+  const plan = projectToTaskChanges(editedProject, tasks, keepSteps, new Date().toISOString());
+  closeProjectConvertDialog();
+  projectEls.convertTask.disabled = true;
+  try {
+    await projectDb.convertToTask(project.id, plan.task, plan.updates, plan.deletedIds);
+    const replacements = new Map(plan.updates.map(task => [task.id, task]));
+    const deleted = new Set(plan.deletedIds);
+    tasks = [...tasks.filter(task => !deleted.has(task.id)).map(task => replacements.get(task.id) || task), plan.task].sort(compareTasks);
+    projects = projects.filter(item => item.id !== project.id);
+    await closeProject();
+    openList(INBOX_LIST_ID);
+    openTaskDetails(plan.task);
+    toast(keepSteps ? "Проєкт став завданням, кроки збережено" : "Проєкт став завданням, кроки видалено");
+  } catch (_error) {
+    toast("Не вдалося перетворити проєкт. Дані не змінено");
+  } finally {
+    projectEls.convertTask.disabled = false;
+  }
 }
 
 async function reorderSelectedProjectSteps({ beforeId }) {
@@ -592,6 +648,15 @@ projectEls.addNewFirst.addEventListener("change", async () => {
 });
 projectEls.complete.addEventListener("click", toggleProjectStatus);
 projectEls.delete.addEventListener("click", deleteProject);
+projectEls.convertTask.addEventListener("click", openProjectConvertDialog);
+projectEls.convertCancel.addEventListener("click", closeProjectConvertDialog);
+projectEls.convertConfirm.addEventListener("click", convertOpenProjectToTask);
+projectEls.convertDialogBackdrop.addEventListener("click", event => {
+  if (event.target === projectEls.convertDialogBackdrop) closeProjectConvertDialog();
+});
+projectEls.convertDialog.addEventListener("keydown", event => {
+  if (event.key === "Escape") { event.preventDefault(); closeProjectConvertDialog(); }
+});
 projectEls.taskList.addEventListener("click", async event => {
   const row = event.target.closest(".swipe-row");
   if (!row || row.dataset.swiped) { if (row) delete row.dataset.swiped; return; }

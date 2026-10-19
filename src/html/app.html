@@ -229,7 +229,7 @@
       <div class="project-deadline"><span class="project-deadline-label">Термін</span><div class="project-deadline-controls"><button id="project-date-picker-open" class="meta-chip date-chip" type="button" aria-haspopup="dialog"><span class="calendar-icon" aria-hidden="true"></span><span id="project-date-label">Без дати</span></button><label class="project-countdown-toggle"><input id="project-show-countdown" type="checkbox"><span>Показувати зворотний відлік</span></label></div><small id="project-countdown" class="project-countdown" hidden></small><input id="project-due-date" type="hidden"><input id="project-due-time" type="hidden"></div>
       <p id="project-save-status" class="project-save-status" aria-live="polite"></p>
       </div>
-      <div class="project-actions"><button id="project-save" class="primary-action" type="button">Зберегти</button><button id="project-complete" class="secondary-action" type="button">Завершити проєкт</button><button id="project-delete" class="danger-action" type="button"><span class="trash-icon" aria-hidden="true"></span>Видалити проєкт</button></div>
+      <div class="project-actions"><button id="project-save" class="primary-action" type="button">Зберегти</button><button id="project-complete" class="secondary-action" type="button">Завершити проєкт</button><button id="project-convert-task" class="secondary-action" type="button">Зробити завданням</button><button id="project-delete" class="danger-action" type="button"><span class="trash-icon" aria-hidden="true"></span>Видалити проєкт</button></div>
     </div>
   </section>
 </section>
@@ -269,6 +269,8 @@
           <span id="task-list-options" class="list-dropdown-options" role="listbox" aria-label="Список завдання" hidden></span>
         </span></span>
       </div>
+      <button id="task-convert-project" class="project-attribute" type="button" aria-label="Перетворити завдання на проєкт" hidden><span class="projects-icon" aria-hidden="true"></span><span>Перетворити на проєкт</span></button>
+      <button id="task-detach-project" class="project-attribute" type="button" aria-label="Змінити зв’язок завдання з проєктом" hidden><span class="projects-icon" aria-hidden="true"></span><span>Від’єднати від проєкту</span></button>
       <button id="desktop-save-task" class="desktop-save-task" type="button" disabled>Зберегти</button>
     </div>
   </form>
@@ -327,6 +329,22 @@
     <h2 id="project-delete-dialog-title">Видалити проєкт?</h2>
     <label class="project-delete-keep"><input id="project-delete-keep-tasks" type="checkbox" checked><span>Залишити завдання без проєкту</span></label>
     <footer><button id="project-delete-no" type="button">Ні</button><button id="project-delete-yes" type="button">Так</button></footer>
+  </section>
+</div>
+<div id="project-convert-dialog-backdrop" class="project-delete-dialog-backdrop" hidden>
+  <section id="project-convert-dialog" class="project-delete-dialog" role="dialog" aria-modal="true" aria-labelledby="project-convert-dialog-title" tabindex="-1">
+    <h2 id="project-convert-dialog-title">Зробити проєкт завданням?</h2>
+    <p>Нове завдання буде в списку «Нові».</p>
+    <label class="project-delete-keep"><input id="project-convert-keep-steps" type="checkbox" checked><span>Залишити кроки окремими завданнями у своїх списках</span></label>
+    <footer><button id="project-convert-cancel" type="button">Скасувати</button><button id="project-convert-confirm" type="button">Гаразд</button></footer>
+  </section>
+</div>
+<div id="task-detach-dialog-backdrop" class="project-delete-dialog-backdrop" hidden>
+  <section id="task-detach-dialog" class="project-delete-dialog" role="dialog" aria-modal="true" aria-labelledby="task-detach-dialog-title" tabindex="-1">
+    <h2 id="task-detach-dialog-title">Що зробити з кроком?</h2>
+    <label class="task-detach-choice"><input type="radio" name="task-detach-choice" value="task" checked><span>Зробити самостійним завданням</span></label>
+    <label class="task-detach-choice"><input type="radio" name="task-detach-choice" value="project"><span>Перетворити на новий проєкт</span></label>
+    <footer><button id="task-detach-cancel" type="button">Скасувати</button><button id="task-detach-confirm" type="button">Гаразд</button></footer>
   </section>
 </div>
 <template id="task-template"><li class="swipe-row"><div class="delete-reveal" aria-hidden="true"><span class="delete-icon"></span><span>Видалити</span></div><article class="task-card"><button class="toggle" aria-label="Позначити виконаною"><span>✓</span></button><button class="task-open" type="button" aria-label="Відкрити деталі завдання"><span class="task-copy"><span class="task-text"></span><span class="task-description-preview" hidden></span></span><span class="task-meta"><span class="task-meta-primary"><span class="task-date"></span><span class="task-list"><span class="task-list-name"></span><span class="inbox-icon" aria-hidden="true"></span></span></span><span class="task-project" hidden><span class="projects-icon" aria-hidden="true"></span><span class="task-project-name"></span></span></span></button></article></li></template>

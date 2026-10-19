@@ -920,6 +920,143 @@ async function saveOpenTask() {
   return true;
 }
 
+async function convertOpenTaskToProject() {
+  const task = tasks.find(item => item.id === els.editor.dataset.taskId);
+  if (!task || task.status !== "active" || task.projectId) return;
+  const title = els.input.value.trim();
+  if (!title) {
+    toast("Введіть назву завдання");
+    els.input.focus();
+    return;
+  }
+  const editedTask = { ...task, title, description: els.description.value.trim(),
+    dueDate: els.date.value || null, dueTime: els.date.value && els.time.value ? els.time.value : null };
+  const project = projectFromTask(editedTask, projects);
+  els.taskConvertProject.disabled = true;
+  try {
+    await projectDb.convertTask(task.id, project);
+    tasks = tasks.filter(item => item.id !== task.id);
+    selectedTaskIds.delete(task.id);
+    projects.push(project);
+    els.editor.dataset.taskId = "";
+    hideTaskEditor();
+    openProjects();
+    openProject(project.id);
+    toast("Проєкт створено");
+  } catch (_error) {
+    toast("Не вдалося створити проєкт. Завдання залишилося без змін");
+  } finally {
+    els.taskConvertProject.disabled = false;
+  }
+}
+
+async function detachOpenTaskFromProject(task, editedTask) {
+  const updates = detachProjectTask(editedTask, tasks, new Date().toISOString());
+  const changedIds = new Set(updates.map(item => item.id));
+  const originals = tasks.filter(item => changedIds.has(item.id))
+    .map(item => item.id === task.id ? { ...editedTask, updatedAt: new Date().toISOString() } : item);
+  els.taskDetachProject.disabled = true;
+  try {
+    await taskDb.putMany(updates);
+    const replacements = new Map(updates.map(item => [item.id, item]));
+    tasks = tasks.map(item => replacements.get(item.id) || item).sort(compareTasks);
+    await closeProject();
+    openList(updates[0].listId);
+    openTaskDetails(updates[0]);
+    toast(`Завдання перенесено до «${displayListTitle(lists.find(list => list.id === updates[0].listId))}»`, {
+      duration: 3000,
+      action: async () => {
+        try {
+          await taskDb.restoreDetached(originals, updates, task.projectId);
+          const restored = new Map(originals.map(item => [item.id, item]));
+          tasks = tasks.map(item => restored.get(item.id) || item).sort(compareTasks);
+          renderCurrentTasks();
+          openProjects();
+          openProject(task.projectId);
+          openTaskDetails(restored.get(task.id));
+          toast("Від’єднання скасовано");
+        } catch (_error) { toast("Не вдалося скасувати від’єднання"); }
+      }
+    });
+  } catch (_error) {
+    toast("Не вдалося від’єднати завдання. Зміни не збережено");
+  } finally {
+    els.taskDetachProject.disabled = false;
+  }
+}
+
+async function convertOpenStepToProject(task, editedTask) {
+  const project = projectFromTask(editedTask, projects);
+  els.taskDetachProject.disabled = true;
+  try {
+    await projectDb.convertStep(task.id, task.projectId, project);
+    tasks = tasks.filter(item => item.id !== task.id);
+    selectedTaskIds.delete(task.id);
+    projects.push(project);
+    els.editor.dataset.taskId = "";
+    hideTaskEditor();
+    openProjects();
+    openProject(project.id);
+    toast("Новий проєкт створено", {
+      duration: 3000,
+      action: async () => {
+        const restoredTask = { ...editedTask, updatedAt: new Date().toISOString() };
+        try {
+          await projectDb.undoConvertedStep(project, restoredTask);
+          projects = projects.filter(item => item.id !== project.id);
+          tasks = [...tasks, restoredTask].sort(compareTasks);
+          await closeProject();
+          renderCurrentTasks();
+          openProjects();
+          openProject(task.projectId);
+          openTaskDetails(restoredTask);
+          toast("Перетворення скасовано");
+        } catch (_error) { toast("Не вдалося скасувати перетворення"); }
+      }
+    });
+  } catch (_error) {
+    toast("Не вдалося створити проєкт. Крок залишився на місці");
+  } finally {
+    els.taskDetachProject.disabled = false;
+  }
+}
+
+function closeTaskDetachDialog() {
+  els.taskDetachDialogBackdrop.hidden = true;
+  document.body.classList.remove("project-delete-dialog-open");
+  els.taskDetachProject.focus();
+}
+
+function openTaskDetachDialog() {
+  const task = tasks.find(item => item.id === els.editor.dataset.taskId);
+  if (!task || task.status !== "active" || !projects.some(project => project.id === task.projectId)) return;
+  els.taskDetachDialog.querySelector('input[value="task"]').checked = true;
+  els.taskDetachDialogBackdrop.hidden = false;
+  document.body.classList.add("project-delete-dialog-open");
+  requestAnimationFrame(() => els.taskDetachDialog.focus());
+}
+
+function confirmTaskDetachChoice() {
+  const task = tasks.find(item => item.id === els.editor.dataset.taskId);
+  if (!task || task.status !== "active" || !projects.some(project => project.id === task.projectId)) {
+    closeTaskDetachDialog();
+    return;
+  }
+  const title = els.input.value.trim();
+  if (!title) {
+    closeTaskDetachDialog();
+    toast("Введіть назву завдання");
+    els.input.focus();
+    return;
+  }
+  const editedTask = { ...task, title, description: els.description.value.trim(),
+    dueDate: els.date.value || null, dueTime: els.date.value && els.time.value ? els.time.value : null };
+  const choice = els.taskDetachDialog.querySelector('input[name="task-detach-choice"]:checked').value;
+  closeTaskDetachDialog();
+  if (choice === "project") convertOpenStepToProject(task, editedTask);
+  else detachOpenTaskFromProject(task, editedTask);
+}
+
 async function saveAndLeaveTaskEditor({ allowEmptyNew = false } = {}) {
   const editing = Boolean(els.editor.dataset.taskId);
   const title = els.input.value.trim();
@@ -1431,6 +1568,17 @@ els.taskProjectLink.addEventListener("click", async () => {
   els.editor.dataset.taskId = "";
   hideTaskEditor();
   openProject(projectId);
+});
+
+els.taskConvertProject.addEventListener("click", convertOpenTaskToProject);
+els.taskDetachProject.addEventListener("click", openTaskDetachDialog);
+els.taskDetachCancel.addEventListener("click", closeTaskDetachDialog);
+els.taskDetachConfirm.addEventListener("click", confirmTaskDetachChoice);
+els.taskDetachDialogBackdrop.addEventListener("click", event => {
+  if (event.target === els.taskDetachDialogBackdrop) closeTaskDetachDialog();
+});
+els.taskDetachDialog.addEventListener("keydown", event => {
+  if (event.key === "Escape") { event.preventDefault(); closeTaskDetachDialog(); }
 });
 
 enableTaskGestures({

@@ -39,6 +39,13 @@ function createSection(values = {}) {
 function createProject(values = {}) {
   return { ...baseRecord(values), ...values, title: String(values.title || "").trim(), goal: values.goal || "", description: values.description || "", status: values.status === "completed" ? "completed" : "active", dueDate: values.dueDate || null, dueTime: values.dueDate && values.dueTime ? values.dueTime : null, showCountdown: values.showCountdown === true, lastListId: typeof values.lastListId === "string" ? values.lastListId : null, addNewTasksFirst: values.addNewTasksFirst !== false, completedAt: values.completedAt || null, position: Number.isFinite(values.position) ? values.position : 0 };
 }
+function projectFromTask(task, projectRecords) {
+  if (task.status !== "active") throw new Error("Лише активне завдання можна перетворити на проєкт");
+  const title = String(task.title || "").trim();
+  if (!title) throw new Error("Введіть назву завдання");
+  return createProject({ title, description: task.description || "", dueDate: task.dueDate || null,
+    dueTime: task.dueTime || null, position: nextProjectPosition(projectRecords) });
+}
 function compareProjects(a, b) {
   return (a.position ?? Number.MAX_SAFE_INTEGER) - (b.position ?? Number.MAX_SAFE_INTEGER)
     || String(a.createdAt || "").localeCompare(String(b.createdAt || ""))
@@ -85,6 +92,28 @@ function projectCountdown(dueDate, today) {
 function createTask(values = {}) {
   return { ...baseRecord(values), ...values, listId: values.listId || INBOX_LIST_ID, sectionId: values.sectionId || null, projectId: values.projectId || null, title: String(values.title || "").trim(), description: values.description || "", status: values.status || "active", completedAt: values.completedAt || null, dueDate: values.dueDate || null, dueTime: values.dueDate && values.dueTime ? values.dueTime : null, position: Number.isFinite(values.position) ? values.position : 0, todayPosition: Number.isSafeInteger(values.todayPosition) && values.todayPosition >= 0 ? values.todayPosition : null, projectPosition: Number.isFinite(values.projectPosition) ? values.projectPosition : null, returnedToInboxAt: values.returnedToInboxAt || null };
 }
+function taskFromProject(project) {
+  if (project.status === "completed") throw new Error("Лише активний проєкт можна перетворити на завдання");
+  const title = String(project.title || "").trim();
+  if (!title) throw new Error("Введіть назву проєкту");
+  return createTask({ title, description: project.description || "", dueDate: project.dueDate || null,
+    dueTime: project.dueTime || null, listId: INBOX_LIST_ID, position: 0 });
+}
+function projectToTaskChanges(project, records, keepSteps, updatedAt) {
+  const steps = records.filter(task => task.projectId === project.id);
+  const deletedIds = keepSteps ? [] : steps.map(task => task.id);
+  const deleted = new Set(deletedIds);
+  const updates = records.filter(task => !deleted.has(task.id)).map(task => {
+    const isStep = task.projectId === project.id;
+    const isInboxRoot = taskOrderScope(task) === `${INBOX_LIST_ID}\u0000`;
+    if (!isStep && !isInboxRoot) return task;
+    return { ...task,
+      ...(isStep ? { projectId: null, projectPosition: null } : {}),
+      ...(isInboxRoot ? { position: (Number.isFinite(task.position) ? task.position : 0) + 1 } : {}),
+      updatedAt };
+  });
+  return { task: taskFromProject(project), updates: updates.filter(task => !records.includes(task)), deletedIds };
+}
 function isTaskCompleted(task) { return task.status === "completed" || task.done === true; }
 function completedTasksInRange(records, start, end) {
   return records.filter(task => task.status === "completed" && task.completedAt
@@ -124,6 +153,14 @@ function returnOverdueTasksToInbox(records, { enabled, localDate, localTime, ret
 }
 function taskOrderScope(task) {
   return `${task.listId || INBOX_LIST_ID}\u0000${task.sectionId || ""}`;
+}
+function detachProjectTask(task, records, updatedAt) {
+  if (task.status !== "active" || !task.projectId) throw new Error("Лише активний крок проєкту можна від’єднати");
+  const detached = { ...task, listId: task.listId || INBOX_LIST_ID, sectionId: null, projectId: null,
+    projectPosition: null, position: 0, updatedAt };
+  const shifted = records.filter(item => item.id !== task.id && taskOrderScope(item) === taskOrderScope(detached))
+    .map(item => ({ ...item, position: (Number.isFinite(item.position) ? item.position : 0) + 1, updatedAt }));
+  return [detached, ...shifted];
 }
 function compareTasks(a, b) {
   const positionA = Number.isFinite(a.position) ? a.position : Number.MAX_SAFE_INTEGER;

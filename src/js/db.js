@@ -187,6 +187,20 @@ const taskDb = {
   putMany: tasks => transact("tasks", "readwrite", (_tx, stores) => {
     for (const task of tasks) stores.tasks.put(task);
   }),
+  restoreDetached: (originals, expected, projectId) => transact(["tasks", "projects"], "readwrite", (tx, stores) => {
+    const request = stores.tasks.getAll();
+    request.onsuccess = () => {
+      const current = new Map(request.result.map(task => [task.id, task]));
+      if (expected.some(task => current.get(task.id)?.updatedAt !== task.updatedAt
+        || current.get(task.id)?.projectId !== task.projectId
+        || current.get(task.id)?.listId !== task.listId)) { tx.abort(); return; }
+      const projectRequest = stores.projects.get(projectId);
+      projectRequest.onsuccess = () => {
+        if (!projectRequest.result) { tx.abort(); return; }
+        for (const task of originals) stores.tasks.put(task);
+      };
+    };
+  }),
   deleteMany: ids => transact("tasks", "readwrite", (_tx, stores) => {
     for (const id of ids) stores.tasks.delete(id);
   }),
@@ -250,6 +264,54 @@ const listDb = {
 const projectDb = {
   all: () => appDb.all("projects"),
   put: project => appDb.put("projects", project),
+  convertToTask: (projectId, task, updates, deletedIds) => transact(["projects", "tasks"], "readwrite", (tx, stores) => {
+    const request = stores.projects.get(projectId);
+    request.onsuccess = () => {
+      if (!request.result || request.result.status !== "active") { tx.abort(); return; }
+      stores.tasks.add(task);
+      for (const updated of updates) stores.tasks.put(updated);
+      for (const id of deletedIds) stores.tasks.delete(id);
+      stores.projects.delete(projectId);
+    };
+  }),
+  convertTask: (taskId, project) => transact(["projects", "tasks"], "readwrite", (tx, stores) => {
+    const request = stores.tasks.get(taskId);
+    request.onsuccess = () => {
+      const task = request.result;
+      if (!task || task.status !== "active" || task.projectId) { tx.abort(); return; }
+      stores.projects.add(project);
+      stores.tasks.delete(taskId);
+    };
+  }),
+  convertStep: (taskId, sourceProjectId, project) => transact(["projects", "tasks"], "readwrite", (tx, stores) => {
+    const request = stores.tasks.get(taskId);
+    request.onsuccess = () => {
+      const step = request.result;
+      if (!step || step.status !== "active" || step.projectId !== sourceProjectId) { tx.abort(); return; }
+      const sourceRequest = stores.projects.get(sourceProjectId);
+      sourceRequest.onsuccess = () => {
+        if (!sourceRequest.result) { tx.abort(); return; }
+        stores.projects.add(project);
+        stores.tasks.delete(taskId);
+      };
+    };
+  }),
+  undoConvertedStep: (project, step) => transact(["projects", "tasks"], "readwrite", (tx, stores) => {
+    const projectRequest = stores.projects.get(project.id);
+    projectRequest.onsuccess = () => {
+      if (!projectRequest.result || projectRequest.result.updatedAt !== project.updatedAt) { tx.abort(); return; }
+      const sourceRequest = stores.projects.get(step.projectId);
+      sourceRequest.onsuccess = () => {
+        if (!sourceRequest.result) { tx.abort(); return; }
+        const tasksRequest = stores.tasks.getAll();
+        tasksRequest.onsuccess = () => {
+          if (tasksRequest.result.some(task => task.id === step.id || task.projectId === project.id)) { tx.abort(); return; }
+          stores.projects.delete(project.id);
+          stores.tasks.add(step);
+        };
+      };
+    };
+  }),
   putMany: projects => transact("projects", "readwrite", (_tx, stores) => {
     for (const project of projects) stores.projects.put(project);
   }),

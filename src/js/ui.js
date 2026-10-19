@@ -13,6 +13,12 @@ const els = {
   input: document.querySelector("#task-title"),
   description: document.querySelector("#task-description"),
   taskProjectLink: document.querySelector("#task-project-link"),
+  taskConvertProject: document.querySelector("#task-convert-project"),
+  taskDetachProject: document.querySelector("#task-detach-project"),
+  taskDetachDialogBackdrop: document.querySelector("#task-detach-dialog-backdrop"),
+  taskDetachDialog: document.querySelector("#task-detach-dialog"),
+  taskDetachCancel: document.querySelector("#task-detach-cancel"),
+  taskDetachConfirm: document.querySelector("#task-detach-confirm"),
   taskProjectValue: document.querySelector("#task-project-value"),
   date: document.querySelector("#task-date"),
   time: document.querySelector("#task-time"),
@@ -602,9 +608,11 @@ function openNewTaskEditor(listId, originListId = listId) {
   els.detailFields.hidden = false;
   els.detailToggle.hidden = true;
   els.taskProjectLink.hidden = true;
+  els.taskConvertProject.hidden = true;
+  els.taskDetachProject.hidden = true;
   delete els.taskProjectLink.dataset.projectId;
   setTaskEditorListUI(listId);
-  els.date.value = originListId === INBOX_LIST_ID ? "" : localDateValue();
+  els.date.value = originListId === TODAY_LIST_ID ? localDateValue() : "";
   els.time.value = "";
   els.dateLabel.textContent = readableDueDate(els.date.value);
   applyDateTone(els.datePickerOpen, els.date.value, els.time.value);
@@ -622,6 +630,8 @@ function openTaskDetails(task) {
   els.detailToggle.hidden = false;
   const project = projects.find(item => item.id === task.projectId);
   els.taskProjectLink.hidden = !project;
+  els.taskConvertProject.hidden = task.status !== "active" || Boolean(task.projectId);
+  els.taskDetachProject.hidden = task.status !== "active" || !project;
   els.taskProjectLink.dataset.projectId = project?.id || "";
   els.taskProjectValue.textContent = project?.title || "";
   setTaskEditorListUI(task.listId || INBOX_LIST_ID);
