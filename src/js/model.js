@@ -188,9 +188,12 @@ function compareProjectTasks(a, b) {
     || String(a.createdAt || "").localeCompare(String(b.createdAt || ""))
     || String(a.id).localeCompare(String(b.id));
 }
-function visibleListTasks(records, listId) {
+function visibleProjectTasks(records) {
   const currentIds = new Set(records.filter(task => task.projectId).map(task => currentProjectTask(records, task.projectId)?.id).filter(Boolean));
-  return records.filter(task => (task.listId || INBOX_LIST_ID) === listId && (!task.projectId || currentIds.has(task.id)));
+  return records.filter(task => !task.projectId || currentIds.has(task.id));
+}
+function visibleListTasks(records, listId) {
+  return visibleProjectTasks(records).filter(task => (task.listId || INBOX_LIST_ID) === listId);
 }
 function reorderProjectSteps(records, projectId, movedId, beforeId) {
   return reorderProjectStepBlock(records, projectId, new Set([movedId]), beforeId);

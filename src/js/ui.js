@@ -212,11 +212,10 @@ function taskCountsByList(tasks) {
   let todayCount = 0;
   const today = localDateValue();
   const localTime = `${String(new Date().getHours()).padStart(2, "0")}:${String(new Date().getMinutes()).padStart(2, "0")}`;
-  const currentProjectTaskIds = new Set(tasks.filter(task => task.projectId).map(task => currentProjectTask(tasks, task.projectId)?.id).filter(Boolean));
-  for (const task of tasks) {
+  for (const task of visibleProjectTasks(tasks)) {
     if (isTaskCompleted(task)) continue;
     const listId = task.listId || INBOX_LIST_ID;
-    if (!task.projectId || currentProjectTaskIds.has(task.id)) counts.set(listId, (counts.get(listId) || 0) + 1);
+    counts.set(listId, (counts.get(listId) || 0) + 1);
     if (task.dueDate === today && !isTaskOverdue(task, today, localTime)) todayCount += 1;
   }
   counts.set(TODAY_LIST_ID, todayCount);

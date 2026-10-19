@@ -24,6 +24,28 @@ function backupFileName(prefix, version, date = new Date()) {
   return `${normalizeBackupPrefix(prefix)}-${version}---${day}-${month}-${date.getFullYear()}.json`;
 }
 
+function backupNamingRecord(data) {
+  return data.settings.find(record => record.id === "backup-naming");
+}
+function withBackupNaming(data, prefix, nextVersion, localRecord = null) {
+  const incoming = backupNamingRecord(data);
+  const now = new Date().toISOString();
+  const record = {
+    id: "backup-naming", entityVersion: 1,
+    prefix: normalizeBackupPrefix(prefix),
+    nextVersion: Math.max(nextVersion, incoming?.nextVersion || 1, localRecord?.nextVersion || 1),
+    createdAt: incoming?.createdAt || localRecord?.createdAt || now,
+    updatedAt: now
+  };
+  return { ...data, settings: [...data.settings.filter(item => item.id !== "backup-naming"), record] };
+}
+function preserveBackupNaming(data, localRecord) {
+  const incoming = backupNamingRecord(data);
+  if (!incoming && !localRecord) return data;
+  if (!localRecord || incoming && incoming.nextVersion >= localRecord.nextVersion) return data;
+  return withBackupNaming(data, incoming?.prefix || localRecord.prefix, localRecord.nextVersion, localRecord);
+}
+
 function validateBackupData(data, { strict = true } = {}) {
   if (!data || typeof data !== "object" || !STORE_NAMES.every(name => Array.isArray(data[name]))) throw new Error("Копія має неповну структуру даних");
   for (const name of STORE_NAMES) {
@@ -65,8 +87,9 @@ function mergeBackupData(local, incoming) {
     }
     merged[name] = [...records.values()];
   }
-  validateBackupData(merged);
-  return { data: merged, changes };
+  const reconciled = preserveBackupNaming(merged, backupNamingRecord(local));
+  validateBackupData(reconciled);
+  return { data: reconciled, changes };
 }
 
 function normalizeOlderBackup(data) {
@@ -113,7 +136,7 @@ function completeBackupFields(data) {
 }
 
 async function downloadBackup(link, { prefix = "Dimstasks", version = 1 } = {}) {
-  const data = validateBackupData(completeBackupFields(await appDb.exportAll()));
+  const data = validateBackupData(withBackupNaming(completeBackupFields(await appDb.exportAll()), prefix, version + 1));
   const payload = { format: BACKUP_FORMAT, appId: APP_ID, formatVersion: BACKUP_FORMAT_VERSION, databaseVersion: DB_VERSION, exportedAt: new Date().toISOString(), data };
   const blob = new Blob([JSON.stringify(payload)], { type: "application/json" });
   if (blob.size > BACKUP_MAX_BYTES) throw new Error("Копія завелика для імпорту (понад 50 МБ)");

@@ -6,8 +6,8 @@ const vm = require("node:vm");
 
 const source = fs.readFileSync(path.join(__dirname, "..", "src", "js", "model.js"), "utf8");
 const context = vm.createContext({ crypto: { randomUUID: () => "generated-id" }, INBOX_LIST_ID: "inbox" });
-vm.runInContext(`${source}\nthis.model = { createTask, createProject, compareProjects, nextProjectPosition, reorderProjects, reorderProjectBlock, projectCountdown, currentProjectTask, compareProjectTasks, visibleListTasks, reorderProjectSteps, reorderProjectStepBlock, normalizeTaskOrder };`, context);
-const { createTask, createProject, compareProjects, nextProjectPosition, reorderProjects, reorderProjectBlock, projectCountdown, currentProjectTask, compareProjectTasks, visibleListTasks, reorderProjectSteps, reorderProjectStepBlock, normalizeTaskOrder } = context.model;
+vm.runInContext(`${source}\nthis.model = { createTask, createProject, compareProjects, nextProjectPosition, reorderProjects, reorderProjectBlock, projectCountdown, currentProjectTask, compareProjectTasks, visibleProjectTasks, visibleListTasks, reorderProjectSteps, reorderProjectStepBlock, normalizeTaskOrder };`, context);
+const { createTask, createProject, compareProjects, nextProjectPosition, reorderProjects, reorderProjectBlock, projectCountdown, currentProjectTask, compareProjectTasks, visibleProjectTasks, visibleListTasks, reorderProjectSteps, reorderProjectStepBlock, normalizeTaskOrder } = context.model;
 
 const step = (id, projectPosition, values = {}) => createTask({
   id, projectId: "project", projectPosition, listId: "inbox", title: id,
@@ -18,6 +18,17 @@ test("a regular list shows only the current project step plus ordinary tasks", (
   const records = [step("first", 0), step("second", 1), createTask({ id: "ordinary", listId: "inbox", title: "ordinary" })];
   assert.equal(currentProjectTask(records, "project").id, "first");
   assert.deepEqual(Array.from(visibleListTasks(records, "inbox"), task => task.id).sort(), ["first", "ordinary"]);
+});
+
+test("today candidates contain only the first unfinished project step across lists", () => {
+  const records = [
+    step("first", 0, { dueDate: "2026-10-19", listId: "inbox" }),
+    step("second", 1, { dueDate: "2026-10-19", listId: "other" }),
+    createTask({ id: "ordinary", listId: "other", dueDate: "2026-10-19", title: "ordinary" })
+  ];
+  assert.deepEqual(Array.from(visibleProjectTasks(records), task => task.id), ["first", "ordinary"]);
+  records[0] = { ...records[0], status: "completed" };
+  assert.deepEqual(Array.from(visibleProjectTasks(records), task => task.id), ["second", "ordinary"]);
 });
 
 test("completing a step advances the computed current step", () => {

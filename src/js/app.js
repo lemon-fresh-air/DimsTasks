@@ -52,7 +52,7 @@ function visibleTasks() {
   if (activeListId === TODAY_LIST_ID) {
     const today = localDateValue();
     const time = localTimeValue();
-    return tasks.filter(task => task.dueDate === today && !isTaskOverdue(task, today, time)).sort(compareTodayTasks);
+    return visibleProjectTasks(tasks).filter(task => task.dueDate === today && !isTaskOverdue(task, today, time)).sort(compareTodayTasks);
   }
   return visibleListTasks(tasks, activeListId).sort(compareTasks);
 }
@@ -274,7 +274,11 @@ async function applyBackup() {
       const merged = await appDb.mergeAll(result, (local, incoming) => mergeBackupData(completeBackupFields(local), incoming));
       result = merged.data;
       report = `Дані злито: додано ${merged.changes.added}, оновлено ${merged.changes.updated}, збережено локальних ${merged.changes.kept}`;
-    } else await appDb.replaceAll(result);
+    } else {
+      result = preserveBackupNaming(result, await appDb.get("settings", BACKUP_NAMING_SETTINGS_ID));
+      await appDb.replaceAll(result);
+    }
+    clearPreparedBackupDownload();
     clearBackupSelection();
     selectedTaskIds = new Set();
     selectedListIds = new Set();

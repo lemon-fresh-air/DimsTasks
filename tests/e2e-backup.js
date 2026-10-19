@@ -115,12 +115,17 @@ async function readStore(page, name) {
     assert.equal(exported.data.tasks[0].todayPosition, null);
     assert.equal(exported.data.projects.length, 100);
     assert.equal(exported.data.settings.find(item => item.id === "navigation").startScreen, "projects");
+    assert.equal(exported.data.settings.find(item => item.id === "backup-naming").nextVersion, 5);
     await upload(page, exported);
     await page.click("#backup-replace");
     await page.check("#backup-safe-copy");
     await page.click("#backup-apply");
     await page.waitForFunction(() => document.querySelector("#backup-status").textContent.includes("Дані замінено"));
     assert.equal((await readStore(page, "tasks")).length, 1000);
+    const continuedDownloadPromise = page.waitForEvent("download");
+    await page.click("#backup-export");
+    const continuedDownload = await continuedDownloadPromise;
+    assert.equal(continuedDownload.suggestedFilename(), `Робота-5---${localFileDate()}.json`);
 
     const incoming = structuredClone(data);
     incoming.tasks[0].title = "Оновлений крок";

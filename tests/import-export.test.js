@@ -16,8 +16,8 @@ const context = vm.createContext({
   URL: { createObjectURL: () => "blob:test", revokeObjectURL: () => {} },
   document: { createElement: () => ({ click() {} }) }
 });
-vm.runInContext(`${model}\n${importExport}\nthis.backup = { parseBackup, readBackup, validateBackupData, mergeBackupData, completeBackupFields, backupFileName, BACKUP_FORMAT_VERSION };`, context);
-const { parseBackup, readBackup, validateBackupData, mergeBackupData, completeBackupFields, backupFileName, BACKUP_FORMAT_VERSION } = context.backup;
+vm.runInContext(`${model}\n${importExport}\nthis.backup = { parseBackup, readBackup, validateBackupData, mergeBackupData, completeBackupFields, backupFileName, withBackupNaming, preserveBackupNaming, BACKUP_FORMAT_VERSION };`, context);
+const { parseBackup, readBackup, validateBackupData, mergeBackupData, completeBackupFields, backupFileName, withBackupNaming, preserveBackupNaming, BACKUP_FORMAT_VERSION } = context.backup;
 const file = value => ({ text: async () => JSON.stringify(value) });
 const stamp = "2026-01-01T00:00:00.000Z";
 const base = id => ({ id, entityVersion: 1, createdAt: stamp, updatedAt: stamp, customFields: {} });
@@ -74,6 +74,30 @@ test("export normalizes a legacy local appearance record", () => {
 test("backup filename uses a safe prefix, sequence number, and readable date", () => {
   assert.equal(backupFileName("Dimstasks", 1, new Date(2026, 9, 18)), "Dimstasks-1---18-Oct-2026.json");
   assert.equal(backupFileName(" Мої/справи ", 3, new Date(2026, 0, 2)), "Мої-справи-3---02-Jan-2026.json");
+});
+
+test("an exported backup carries the next version to another device", () => {
+  const exported = withBackupNaming(structuredClone(data), "Робота", 4);
+  assert.equal(exported.settings.find(record => record.id === "backup-naming").nextVersion, 4);
+  assert.equal(exported.settings.find(record => record.id === "backup-naming").prefix, "Робота");
+  assert.doesNotThrow(() => validateBackupData(exported));
+});
+
+test("replacing from an older backup retains the highest local version", () => {
+  const older = withBackupNaming(structuredClone(data), "Із файлу", 3);
+  const local = withBackupNaming(structuredClone(data), "Локально", 8).settings.find(record => record.id === "backup-naming");
+  const replaced = preserveBackupNaming(older, local);
+  assert.equal(replaced.settings.find(record => record.id === "backup-naming").nextVersion, 8);
+  assert.equal(replaced.settings.find(record => record.id === "backup-naming").prefix, "Із файлу");
+  assert.equal(preserveBackupNaming(structuredClone(data), local).settings.find(record => record.id === "backup-naming").nextVersion, 8);
+});
+
+test("merging devices retains the highest version despite a newer timestamp on the lower one", () => {
+  const local = withBackupNaming(structuredClone(data), "Локально", 8);
+  const incoming = withBackupNaming(structuredClone(data), "Із файлу", 3);
+  incoming.settings.find(record => record.id === "backup-naming").updatedAt = "2099-01-01T00:00:00.000Z";
+  const merged = mergeBackupData(local, incoming).data;
+  assert.equal(merged.settings.find(record => record.id === "backup-naming").nextVersion, 8);
 });
 
 test("format 4 remains importable and invalid backup is rejected before writing", async () => {
