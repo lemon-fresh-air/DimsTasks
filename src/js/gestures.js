@@ -184,6 +184,7 @@ function enableTaskGestures({ container = els.list, onDelete, isSelectionMode, i
   let momentumFrame = null;
 
   container.addEventListener("pointerdown", event => {
+    if (event.target.closest(".toggle")) return;
     const card = event.target.closest(".task-card");
     if (!card || event.button > 0) return;
     cancelAnimationFrame(momentumFrame);
