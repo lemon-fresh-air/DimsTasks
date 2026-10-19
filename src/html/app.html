@@ -129,6 +129,7 @@
           <option value="overview">Огляд</option>
         </select>
       </label>
+      <button id="completed-tasks-open" class="settings-row" type="button" aria-controls="completed-tasks-screen"><span class="completed-tasks-icon" aria-hidden="true">✓</span><span class="settings-copy"><strong>Завершені завдання</strong><small>Історія виконання за тижнями</small></span><span aria-hidden="true">›</span></button>
       <div class="backup-setting">
         <h3>Резервна копія</h3>
         <p>Перенесіть усі списки, проєкти, завдання й налаштування між пристроями через JSON-файл.</p>
@@ -158,6 +159,23 @@
           </div>
         </div>
       </div>
+    </div>
+  </div>
+</section>
+<section id="completed-tasks-screen" class="completed-tasks-screen" aria-labelledby="completed-tasks-title" hidden>
+  <div class="completed-tasks-panel">
+    <header class="settings-header"><button id="completed-tasks-close" class="settings-close" type="button" aria-label="Повернутися до налаштувань"><span aria-hidden="true"></span></button><h2 id="completed-tasks-title">Завершені завдання</h2></header>
+    <div id="completed-tasks-overview">
+      <div class="completed-tasks-week"><button id="completed-tasks-newer" type="button">← Новіший тиждень</button><strong id="completed-tasks-range"></strong><button id="completed-tasks-older" type="button">Попередній тиждень →</button></div>
+      <p id="completed-tasks-empty" class="completed-tasks-empty" hidden>За цей тиждень завершених завдань немає.</p>
+      <div id="completed-tasks-list"></div>
+    </div>
+    <div id="completed-task-detail" class="completed-task-detail" hidden>
+      <button id="completed-task-detail-back" type="button">← До завершених завдань</button>
+      <h3 id="completed-task-detail-title"></h3>
+      <p id="completed-task-detail-meta"></p>
+      <p id="completed-task-detail-description" hidden></p>
+      <button id="completed-task-restore" class="primary-action" type="button">Повернути в активні</button>
     </div>
   </div>
 </section>

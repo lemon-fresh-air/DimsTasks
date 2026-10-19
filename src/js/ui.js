@@ -76,6 +76,21 @@ const els = {
   settingsOpen: document.querySelector("#settings-open"),
   settingsScreen: document.querySelector("#settings-screen"),
   settingsClose: document.querySelector("#settings-close"),
+  completedTasksOpen: document.querySelector("#completed-tasks-open"),
+  completedTasksScreen: document.querySelector("#completed-tasks-screen"),
+  completedTasksClose: document.querySelector("#completed-tasks-close"),
+  completedTasksOverview: document.querySelector("#completed-tasks-overview"),
+  completedTasksNewer: document.querySelector("#completed-tasks-newer"),
+  completedTasksOlder: document.querySelector("#completed-tasks-older"),
+  completedTasksRange: document.querySelector("#completed-tasks-range"),
+  completedTasksEmpty: document.querySelector("#completed-tasks-empty"),
+  completedTasksList: document.querySelector("#completed-tasks-list"),
+  completedTaskDetail: document.querySelector("#completed-task-detail"),
+  completedTaskDetailBack: document.querySelector("#completed-task-detail-back"),
+  completedTaskDetailTitle: document.querySelector("#completed-task-detail-title"),
+  completedTaskDetailMeta: document.querySelector("#completed-task-detail-meta"),
+  completedTaskDetailDescription: document.querySelector("#completed-task-detail-description"),
+  completedTaskRestore: document.querySelector("#completed-task-restore"),
   listEditorOpen: document.querySelector("#list-editor-open"),
   listEditor: document.querySelector("#list-editor"),
   listEditorClose: document.querySelector("#list-editor-close"),
@@ -211,12 +226,11 @@ function taskCountsByList(tasks) {
   const counts = new Map();
   let todayCount = 0;
   const today = localDateValue();
-  const localTime = `${String(new Date().getHours()).padStart(2, "0")}:${String(new Date().getMinutes()).padStart(2, "0")}`;
   for (const task of visibleProjectTasks(tasks)) {
     if (isTaskCompleted(task)) continue;
     const listId = task.listId || INBOX_LIST_ID;
     counts.set(listId, (counts.get(listId) || 0) + 1);
-    if (task.dueDate === today && !isTaskOverdue(task, today, localTime)) todayCount += 1;
+    if (isTaskDueToday(task, today)) todayCount += 1;
   }
   counts.set(TODAY_LIST_ID, todayCount);
   return counts;

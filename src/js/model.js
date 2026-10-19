@@ -86,10 +86,19 @@ function createTask(values = {}) {
   return { ...baseRecord(values), ...values, listId: values.listId || INBOX_LIST_ID, sectionId: values.sectionId || null, projectId: values.projectId || null, title: String(values.title || "").trim(), description: values.description || "", status: values.status || "active", completedAt: values.completedAt || null, dueDate: values.dueDate || null, dueTime: values.dueDate && values.dueTime ? values.dueTime : null, position: Number.isFinite(values.position) ? values.position : 0, todayPosition: Number.isSafeInteger(values.todayPosition) && values.todayPosition >= 0 ? values.todayPosition : null, projectPosition: Number.isFinite(values.projectPosition) ? values.projectPosition : null, returnedToInboxAt: values.returnedToInboxAt || null };
 }
 function isTaskCompleted(task) { return task.status === "completed" || task.done === true; }
+function completedTasksInRange(records, start, end) {
+  return records.filter(task => task.status === "completed" && task.completedAt
+    && !Number.isNaN(Date.parse(task.completedAt))
+    && new Date(task.completedAt) >= start && new Date(task.completedAt) < end)
+    .sort((a, b) => b.completedAt.localeCompare(a.completedAt) || String(a.id).localeCompare(String(b.id)));
+}
 function isTaskOverdue(task, localDate, localTime) {
   if (!task.dueDate || task.status !== "active" || isTaskCompleted(task)) return false;
   if (task.dueDate < localDate) return true;
   return task.dueDate === localDate && Boolean(task.dueTime) && task.dueTime <= localTime;
+}
+function isTaskDueToday(task, localDate) {
+  return task.dueDate === localDate && task.status === "active" && !isTaskCompleted(task);
 }
 function compareOverdueTasks(a, b) {
   return String(a.dueDate || "").localeCompare(String(b.dueDate || ""))

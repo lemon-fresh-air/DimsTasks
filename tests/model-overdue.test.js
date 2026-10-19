@@ -6,8 +6,8 @@ const vm = require("node:vm");
 
 const source = fs.readFileSync(path.join(__dirname, "..", "src", "js", "model.js"), "utf8");
 const context = vm.createContext({ crypto: { randomUUID: () => "generated-id" }, INBOX_LIST_ID: "inbox" });
-vm.runInContext(`${source}\nthis.model = { isTaskOverdue, returnOverdueTasksToInbox, compareTasks };`, context);
-const { isTaskOverdue, returnOverdueTasksToInbox, compareTasks } = context.model;
+vm.runInContext(`${source}\nthis.model = { isTaskOverdue, isTaskDueToday, returnOverdueTasksToInbox, compareTasks };`, context);
+const { isTaskOverdue, isTaskDueToday, returnOverdueTasksToInbox, compareTasks } = context.model;
 
 const base = { status: "active", sectionId: null, projectId: null, returnedToInboxAt: null, updatedAt: "2026-10-10T00:00:00.000Z" };
 const task = (id, values = {}) => ({ ...base, id, title: id, listId: "work", dueDate: "2026-10-14", dueTime: null, position: 0, createdAt: `2026-10-0${id.length}T00:00:00.000Z`, ...values });
@@ -25,6 +25,24 @@ test("overdue rules cover prior days and elapsed times but not date-only today o
   assert.equal(isTaskOverdue(task("today", { dueDate: options.localDate }), options.localDate, options.localTime), false);
   assert.equal(isTaskOverdue(task("done", { status: "completed" }), options.localDate, options.localTime), false);
   assert.equal(isTaskOverdue(task("archived", { status: "archived" }), options.localDate, options.localTime), false);
+});
+
+test("elapsed timed task stays due today until the next calendar day", () => {
+  const timed = task("timed", { dueDate: options.localDate, dueTime: "11:59" });
+  assert.equal(isTaskOverdue(timed, options.localDate, options.localTime), true);
+  assert.equal(isTaskDueToday(timed, options.localDate), true);
+  assert.equal(isTaskDueToday(timed, "2026-10-16"), false);
+  assert.equal(isTaskDueToday({ ...timed, status: "completed" }, options.localDate), false);
+});
+
+test("auto-return moves an elapsed timed task once without removing its Today membership", () => {
+  const timed = task("timed", { dueDate: options.localDate, dueTime: "11:59" });
+  const first = returnOverdueTasksToInbox([timed], options);
+  const second = returnOverdueTasksToInbox(first, options);
+  assert.equal(first.length, 1);
+  assert.equal(first[0].listId, "inbox");
+  assert.equal(isTaskDueToday(first[0], options.localDate), true);
+  assert.strictEqual(second, first);
 });
 
 test("two returned tasks precede five inbox tasks in stable order and a new task can precede all", () => {

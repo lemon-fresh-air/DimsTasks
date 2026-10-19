@@ -22,6 +22,93 @@ let pendingBackup = null;
 let pendingBackupMode = null;
 let backupBusy = false;
 let backupNextVersion = 1;
+let completedWeekOffset = 0;
+let completedDetailId = null;
+let skipCompletedPopstate = false;
+
+function completedWeekBounds(offset = completedWeekOffset) {
+  const end = new Date();
+  end.setHours(0, 0, 0, 0);
+  end.setDate(end.getDate() + 1 - offset * 7);
+  const start = new Date(end);
+  start.setDate(start.getDate() - 7);
+  return { start, end };
+}
+
+function completedTaskMeta(task) {
+  const list = lists.find(item => item.id === task.listId);
+  const project = projects.find(item => item.id === task.projectId);
+  const when = new Intl.DateTimeFormat("uk-UA", { dateStyle: "long", timeStyle: "short" }).format(new Date(task.completedAt));
+  return `Список: ${list?.title || "Нові"}${project ? ` · Проєкт: ${project.title}` : ""} · Завершено: ${when}`;
+}
+
+function renderCompletedTasks() {
+  if (els.completedTasksScreen.hidden) return;
+  const { start, end } = completedWeekBounds();
+  const entries = completedTasksInRange(tasks, start, end);
+  const format = new Intl.DateTimeFormat("uk-UA", { day: "numeric", month: "short" });
+  const last = new Date(end);
+  last.setDate(last.getDate() - 1);
+  els.completedTasksRange.textContent = `${format.format(start)} – ${format.format(last)}`;
+  els.completedTasksNewer.hidden = completedWeekOffset === 0;
+  els.completedTasksOlder.hidden = !tasks.some(task => task.status === "completed" && task.completedAt && new Date(task.completedAt) < start);
+  els.completedTasksEmpty.hidden = entries.length > 0;
+  els.completedTasksList.replaceChildren();
+  let previousDay = "";
+  for (const task of entries) {
+    const day = localDateValue(new Date(task.completedAt));
+    if (day !== previousDay) {
+      const heading = document.createElement("h3");
+      heading.className = "completed-tasks-day";
+      heading.textContent = new Intl.DateTimeFormat("uk-UA", { weekday: "long", day: "numeric", month: "long" }).format(new Date(task.completedAt));
+      els.completedTasksList.append(heading);
+      previousDay = day;
+    }
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "completed-task-row";
+    button.dataset.taskId = task.id;
+    const title = document.createElement("strong");
+    title.textContent = task.title;
+    const meta = document.createElement("small");
+    meta.textContent = completedTaskMeta(task);
+    button.append(title, meta);
+    els.completedTasksList.append(button);
+  }
+  if (completedDetailId) {
+    const task = tasks.find(item => item.id === completedDetailId && item.status === "completed");
+    if (task) {
+      els.completedTaskDetailTitle.textContent = task.title;
+      els.completedTaskDetailMeta.textContent = completedTaskMeta(task);
+      els.completedTaskDetailDescription.textContent = task.description || "";
+      els.completedTaskDetailDescription.hidden = !task.description;
+    } else completedDetailId = null;
+  }
+  els.completedTasksOverview.hidden = Boolean(completedDetailId);
+  els.completedTaskDetail.hidden = !completedDetailId;
+}
+
+function openCompletedTasks() {
+  completedWeekOffset = 0;
+  completedDetailId = null;
+  els.completedTasksScreen.hidden = false;
+  document.body.classList.add("completed-tasks-open");
+  renderCompletedTasks();
+  history.pushState({ completedTasks: true }, "");
+  els.completedTasksClose.focus({ preventScroll: true });
+}
+
+function closeCompletedTasks({ fromHistory = false } = {}) {
+  if (els.completedTasksScreen.hidden) return;
+  els.completedTasksScreen.hidden = true;
+  document.body.classList.remove("completed-tasks-open");
+  completedDetailId = null;
+  els.completedTasksOpen.focus({ preventScroll: true });
+  if (!fromHistory && history.state?.completedTasks) {
+    skipCompletedPopstate = true;
+    history.back();
+  }
+}
 
 function renderAppearanceSettings() {
   const theme = useSystemTheme ? (systemThemeQuery.matches ? "dark" : "light") : manualTheme;
@@ -51,8 +138,7 @@ function activeList() {
 function visibleTasks() {
   if (activeListId === TODAY_LIST_ID) {
     const today = localDateValue();
-    const time = localTimeValue();
-    return visibleProjectTasks(tasks).filter(task => task.dueDate === today && !isTaskOverdue(task, today, time)).sort(compareTodayTasks);
+    return visibleProjectTasks(tasks).filter(task => isTaskDueToday(task, today)).sort(compareTodayTasks);
   }
   return visibleListTasks(tasks, activeListId).sort(compareTasks);
 }
@@ -165,6 +251,7 @@ async function refresh({ animateTaskReflow: shouldAnimateTaskReflow = false } = 
   selectedTaskIds = new Set([...selectedTaskIds].filter(id => tasks.some(task => task.id === id)));
   renderCurrentTasks();
   renderProjects();
+  renderCompletedTasks();
   if (previousPositions) animateTaskReflow(previousPositions);
 }
 
@@ -948,6 +1035,30 @@ els.newListTitle.addEventListener("keydown", event => {
 });
 els.settingsOpen.addEventListener("click", openSettings);
 els.settingsClose.addEventListener("click", () => closeSettings());
+els.completedTasksOpen.addEventListener("click", openCompletedTasks);
+els.completedTasksClose.addEventListener("click", () => closeCompletedTasks());
+els.completedTasksOlder.addEventListener("click", () => { completedWeekOffset++; renderCompletedTasks(); });
+els.completedTasksNewer.addEventListener("click", () => { completedWeekOffset--; renderCompletedTasks(); });
+els.completedTasksList.addEventListener("click", event => {
+  const row = event.target.closest("[data-task-id]");
+  if (!row) return;
+  completedDetailId = row.dataset.taskId;
+  renderCompletedTasks();
+  els.completedTaskDetailBack.focus({ preventScroll: true });
+});
+els.completedTaskDetailBack.addEventListener("click", () => { completedDetailId = null; renderCompletedTasks(); });
+els.completedTaskRestore.addEventListener("click", async () => {
+  const task = tasks.find(item => item.id === completedDetailId && item.status === "completed");
+  if (!task) return;
+  els.completedTaskRestore.disabled = true;
+  try {
+    await taskDb.put({ ...task, status: "active", completedAt: null, updatedAt: new Date().toISOString() });
+    completedDetailId = null;
+    await refresh();
+    toast("Завдання повернуто в активні");
+  } catch (_error) { toast("Не вдалося повернути завдання"); }
+  finally { els.completedTaskRestore.disabled = false; }
+});
 els.backupExport.addEventListener("click", async () => {
   if (backupBusy) return;
   if (els.backupDownloadLink.href) {
@@ -997,6 +1108,11 @@ els.listDeleteCancel.addEventListener("click", () => {
 });
 els.listDeleteConfirmButton.addEventListener("click", deleteActiveList);
 window.addEventListener("popstate", () => {
+  if (skipCompletedPopstate) { skipCompletedPopstate = false; return; }
+  if (!els.completedTasksScreen.hidden) {
+    closeCompletedTasks({ fromHistory: true });
+    return;
+  }
   if (!els.listEditor.hidden) {
     saveActiveListName(null, { fromHistory: true });
     return;
@@ -1113,6 +1229,12 @@ document.addEventListener("keydown", event => {
     return;
   }
   if (event.key === "Escape" && !els.settingsScreen.hidden) {
+    if (!els.completedTasksScreen.hidden) {
+      event.preventDefault();
+      if (completedDetailId) { completedDetailId = null; renderCompletedTasks(); }
+      else closeCompletedTasks();
+      return;
+    }
     event.preventDefault();
     closeSettings();
     return;
@@ -1295,9 +1417,24 @@ els.detailToggle.addEventListener("click", async () => {
   hideTaskEditor();
 });
 
-els.taskProjectLink.addEventListener("click", () => {
+els.taskProjectLink.addEventListener("click", async () => {
   const projectId = els.taskProjectLink.dataset.projectId;
   if (!projectId) return;
+  if (!els.input.value.trim()) {
+    toast("Введіть назву завдання");
+    els.input.focus();
+    return;
+  }
+  try {
+    if (!await saveOpenTask()) {
+      toast("Не вдалося зберегти завдання");
+      return;
+    }
+  } catch (_error) {
+    toast("Не вдалося зберегти завдання");
+    return;
+  }
+  els.editor.dataset.taskId = "";
   hideTaskEditor();
   openProject(projectId);
 });
