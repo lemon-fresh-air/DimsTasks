@@ -548,7 +548,8 @@ function renderTasks(tasks, selectedIds = new Set(), taskLists = [], taskProject
     row.querySelector(".task-list-name").textContent = displayListTitle(taskList);
     const taskListIcon = taskListBadge.querySelector(".inbox-icon");
     taskListIcon.className = taskList?.kind === "regular" ? "list-menu-icon" : "inbox-icon";
-    row.querySelector(".task-meta").hidden = !taskProject && !showTaskList;
+    row.querySelector(".task-meta-primary").hidden = !task.dueDate && !showTaskList;
+    row.querySelector(".task-meta").hidden = !task.dueDate && !taskProject && !showTaskList;
     row.querySelector(".task-open").setAttribute("aria-label", `Відкрити деталі: ${task.title}`);
     return row;
   }));
