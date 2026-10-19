@@ -19,7 +19,6 @@ let dateChangeTimer;
 let listEditorCloseTimer;
 let listEditorOpenFrame;
 let pendingBackup = null;
-let pendingBackupMode = null;
 let backupBusy = false;
 let backupNextVersion = 1;
 let completedWeekOffset = 0;
@@ -308,12 +307,8 @@ function validTodayDefaultListId() {
 
 function clearBackupSelection() {
   pendingBackup = null;
-  pendingBackupMode = null;
   els.backupFile.value = "";
   els.backupPreview.hidden = true;
-  els.backupConfirm.hidden = true;
-  els.backupSafeCopy.checked = false;
-  els.backupApply.disabled = true;
 }
 
 function backupSummary(data) {
@@ -337,27 +332,15 @@ async function chooseBackup(file) {
   }
 }
 
-function confirmBackupMode(mode) {
+async function applyBackup(mode) {
   if (!pendingBackup || backupBusy) return;
-  pendingBackupMode = mode;
-  els.backupConfirmText.textContent = mode === "replace"
-    ? "Усі поточні дані буде замінено вмістом файлу. Спершу завантажте копію поточних даних, якщо вони потрібні."
-    : "Дані буде об’єднано за ID. У конфліктах переможе запис із новішим часом зміни; видалення не передаються.";
-  els.backupSafeCopy.checked = false;
-  els.backupApply.disabled = true;
-  els.backupConfirm.hidden = false;
-  els.backupSafeCopy.focus();
-}
-
-async function applyBackup() {
-  if (!pendingBackup || !pendingBackupMode || !els.backupSafeCopy.checked || backupBusy) return;
   backupBusy = true;
-  els.backupApply.disabled = true;
   els.backupStatus.textContent = "Відновлення даних…";
   try {
+    const previous = await appDb.exportAll();
     let result = pendingBackup.data;
     let report = "Дані замінено";
-    if (pendingBackupMode === "merge") {
+    if (mode === "merge") {
       const merged = await appDb.mergeAll(result, (local, incoming) => mergeBackupData(completeBackupFields(local), incoming));
       result = merged.data;
       report = `Дані злито: додано ${merged.changes.added}, оновлено ${merged.changes.updated}, збережено локальних ${merged.changes.kept}`;
@@ -373,9 +356,23 @@ async function applyBackup() {
     activeProjectId = null;
     await initializeApp();
     els.backupStatus.textContent = `${report}. ${backupSummary(result)}.`;
+    toast(report, { duration: 3000, action: async () => {
+      backupBusy = true;
+      try {
+        await appDb.replaceAll(previous);
+        clearPreparedBackupDownload();
+        await initializeApp();
+        els.backupStatus.textContent = "Імпорт відмінено. Попередні дані відновлено.";
+        toast("Імпорт відмінено");
+      } catch (error) {
+        els.backupStatus.textContent = error.message || "Не вдалося відмінити імпорт";
+        toast("Не вдалося відмінити імпорт");
+      } finally {
+        backupBusy = false;
+      }
+    } });
   } catch (error) {
     els.backupStatus.textContent = error.message || "Не вдалося відновити дані";
-    els.backupApply.disabled = !els.backupSafeCopy.checked;
   } finally {
     backupBusy = false;
   }
@@ -1086,12 +1083,9 @@ els.backupExport.addEventListener("click", async () => {
 els.backupImportOpen.addEventListener("click", () => { if (!backupBusy) els.backupFile.click(); });
 els.backupPrefix.addEventListener("input", clearPreparedBackupDownload);
 els.backupFile.addEventListener("change", () => chooseBackup(els.backupFile.files[0]));
-els.backupMerge.addEventListener("click", () => confirmBackupMode("merge"));
-els.backupReplace.addEventListener("click", () => confirmBackupMode("replace"));
+els.backupMerge.addEventListener("click", () => applyBackup("merge"));
+els.backupReplace.addEventListener("click", () => applyBackup("replace"));
 els.backupCancel.addEventListener("click", () => { clearBackupSelection(); els.backupStatus.textContent = "Імпорт скасовано"; });
-els.backupConfirmCancel.addEventListener("click", () => { pendingBackupMode = null; els.backupConfirm.hidden = true; });
-els.backupSafeCopy.addEventListener("change", () => { els.backupApply.disabled = !els.backupSafeCopy.checked; });
-els.backupApply.addEventListener("click", applyBackup);
 els.listEditorOpen.addEventListener("click", openListEditor);
 els.listEditorClose.addEventListener("click", saveActiveListName);
 els.listEditorForm.addEventListener("submit", saveActiveListName);

@@ -85,9 +85,13 @@ async function readStore(page, name) {
 
     await upload(page, backup(data));
     await page.click("#backup-replace");
-    assert.equal(await page.locator("#backup-apply").isDisabled(), true);
-    await page.check("#backup-safe-copy");
-    await page.click("#backup-apply");
+    await page.waitForFunction(() => document.querySelector("#backup-status").textContent.includes("Дані замінено"));
+    assert.equal(await page.locator("#toast").evaluate(node => node.style.getPropertyValue("--toast-duration")), "3000ms");
+    await page.click("#toast-action");
+    await page.waitForFunction(() => document.querySelector("#backup-status").textContent.includes("Попередні дані відновлено"));
+    assert.equal((await readStore(page, "tasks")).length, 0);
+    await upload(page, backup(data));
+    await page.click("#backup-replace");
     await page.waitForFunction(() => document.querySelector("#backup-status").textContent.includes("Дані замінено"));
     assert.equal((await readStore(page, "tasks")).length, 1000);
     assert.equal((await readStore(page, "projects")).length, 100);
@@ -118,8 +122,6 @@ async function readStore(page, name) {
     assert.equal(exported.data.settings.find(item => item.id === "backup-naming").nextVersion, 5);
     await upload(page, exported);
     await page.click("#backup-replace");
-    await page.check("#backup-safe-copy");
-    await page.click("#backup-apply");
     await page.waitForFunction(() => document.querySelector("#backup-status").textContent.includes("Дані замінено"));
     assert.equal((await readStore(page, "tasks")).length, 1000);
     const continuedDownloadPromise = page.waitForEvent("download");
@@ -133,8 +135,12 @@ async function readStore(page, name) {
     incoming.tasks.push({ ...incoming.tasks[0], id: "task-new", title: "Доданий крок", projectPosition: 10, position: 10 });
     await upload(page, backup(incoming));
     await page.click("#backup-merge");
-    await page.check("#backup-safe-copy");
-    await page.click("#backup-apply");
+    await page.waitForFunction(() => document.querySelector("#backup-status").textContent.includes("Дані злито"));
+    await page.click("#toast-action");
+    await page.waitForFunction(() => document.querySelector("#backup-status").textContent.includes("Попередні дані відновлено"));
+    assert.equal((await readStore(page, "tasks")).length, 1000);
+    await upload(page, backup(incoming));
+    await page.click("#backup-merge");
     await page.waitForFunction(() => document.querySelector("#backup-status").textContent.includes("Дані злито"));
     const tasks = await readStore(page, "tasks");
     assert.equal(tasks.length, 1001);
@@ -143,8 +149,6 @@ async function readStore(page, name) {
 
     await upload(page, backup(data), "Dimstasks-50---18-Oct-2026.json");
     await page.click("#backup-merge");
-    await page.check("#backup-safe-copy");
-    await page.click("#backup-apply");
     await page.waitForFunction(() => document.querySelector("#backup-status").textContent.includes("Дані злито"));
     const transferredDownloadPromise = page.waitForEvent("download");
     await page.click("#backup-export");

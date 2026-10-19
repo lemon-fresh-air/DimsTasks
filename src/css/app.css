@@ -231,9 +231,6 @@ h1 { font-size:clamp(2.25rem,9vw,3.4rem); line-height:1; letter-spacing:-.05em; 
 .backup-import-icon::after { top:5px; transform:rotate(225deg); }
 .backup-preview { margin-top:16px; padding-top:12px; border-top:1px solid var(--line); }
 .backup-preview #backup-summary { color:var(--text); font-weight:700; }
-.backup-confirm { margin-top:16px; padding:12px; border-radius:12px; background:var(--bg); }
-.backup-confirm label { display:flex; gap:8px; align-items:flex-start; line-height:1.4; font-size:.9rem; }
-.backup-confirm input { margin-top:3px; flex:0 0 auto; }
 .backup-status:not(:empty) { padding-top:8px; }
 .theme-icon { width:21px; height:21px; justify-self:center; border:2px solid currentColor; border-radius:50%; position:relative; }
 .theme-icon::after { content:""; position:absolute; width:17px; height:17px; left:5px; top:-4px; border-radius:50%; background:var(--surface); }
