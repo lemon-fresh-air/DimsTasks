@@ -396,7 +396,6 @@ body.task-editor-open { overflow:hidden; }
 #task-title::placeholder { color:var(--toggle-border); opacity:1; }
 .composer-actions { display:flex; align-items:center; gap:10px; margin-top:16px; overflow-x:auto; scrollbar-width:none; }
 .composer-actions::-webkit-scrollbar { display:none; }
-.detail-mode .inbox-chip { display:none; }
 .detail-fields { display:grid; grid-template-columns:30px minmax(0,1fr); align-items:start; gap:12px; margin:0; padding:16px 0; border-bottom:1px solid var(--line); }
 .modal-field-icon { width:22px; height:18px; margin:11px 0 0 4px; color:var(--muted); }
 .description-icon { background:repeating-linear-gradient(to bottom,currentColor 0 2px,transparent 2px 6px); border-radius:1px; opacity:.8; }

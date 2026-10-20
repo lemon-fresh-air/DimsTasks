@@ -130,7 +130,6 @@ const els = {
   listSwipeZone: document.querySelector("#list-swipe-zone"),
   currentListHeading: document.querySelector("#current-list-heading"),
   editorListLabel: document.querySelector("#editor-list-label"),
-  composerListLabel: document.querySelector("#composer-list-label"),
   add: document.querySelector("#add-task-btn"),
   list: document.querySelector("#task-list"),
   empty: document.querySelector("#empty-state"),
@@ -291,7 +290,6 @@ function setActiveListUI(list) {
   els.mainMenuOpen.dataset.currentPrimaryNav = primaryNav;
   if (els.mainMenu.hidden) setActivePrimaryNav(primaryNav);
   els.editorListLabel.textContent = title;
-  els.composerListLabel.textContent = title;
   els.listEditorOpen.hidden = list.kind !== "regular";
 }
 
@@ -409,7 +407,6 @@ function setTaskEditorListUI(listId) {
   const title = option.querySelector("span:nth-child(2)").textContent;
   els.taskListValue.textContent = title;
   els.editorListLabel.textContent = title;
-  els.composerListLabel.textContent = title;
   for (const item of els.taskListOptions.children) {
     const selected = item.dataset.listId === listId;
     item.classList.toggle("is-selected", selected);
