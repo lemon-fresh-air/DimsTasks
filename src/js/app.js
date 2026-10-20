@@ -366,6 +366,30 @@ async function pickBackupDirectory() {
   return handle;
 }
 
+async function writeBackupToDirectory(handle, fileName, blob) {
+  const baseName = fileName.slice(0, -5);
+  let selectedName = fileName;
+  let suffix = 2;
+  while (true) {
+    try { await handle.getFileHandle(selectedName); }
+    catch (error) {
+      if (error.name === "NotFoundError") break;
+      throw error;
+    }
+    selectedName = `${baseName} (${suffix++}).json`;
+  }
+  const file = await handle.getFileHandle(selectedName, { create: true });
+  const writable = await file.createWritable();
+  try {
+    await writable.write(blob);
+    await writable.close();
+  } catch (error) {
+    try { await writable.abort(); } catch (_ignored) { /* Keep the original write error. */ }
+    throw error;
+  }
+  return selectedName;
+}
+
 async function importFromBackupDirectory() {
   if (backupBusy) return;
   if (typeof window.showDirectoryPicker !== "function") {
@@ -1306,7 +1330,8 @@ els.completedTaskRestore.addEventListener("click", async () => {
 });
 els.backupExport.addEventListener("click", async () => {
   if (backupBusy) return;
-  if (els.backupDownloadLink.href) {
+  const useFolder = !!backupDirectoryHandle && typeof window.showDirectoryPicker === "function";
+  if (!useFolder && els.backupDownloadLink.href) {
     els.backupDownloadLink.click();
     clearPreparedBackupDownload();
     els.backupStatus.textContent = "Завантаження бекапу повторено.";
@@ -1315,17 +1340,34 @@ els.backupExport.addEventListener("click", async () => {
   backupBusy = true;
   els.backupStatus.textContent = "Підготовка копії…";
   try {
+    if (useFolder && (await backupDirectoryHandle.queryPermission({ mode: "readwrite" })) !== "granted" &&
+        (await backupDirectoryHandle.requestPermission({ mode: "readwrite" })) !== "granted") {
+      throw new Error("Доступ до запису в папку не надано. Виберіть папку бекапів ще раз.");
+    }
     const prefix = normalizeBackupPrefix(els.backupPrefix.value);
     els.backupPrefix.value = prefix;
     const version = backupNextVersion;
-    const counts = await downloadBackup(els.backupDownloadLink, { prefix, version });
+    let counts;
+    let savedName;
+    if (useFolder) {
+      clearPreparedBackupDownload();
+      const prepared = await prepareBackup({ prefix, version });
+      savedName = await writeBackupToDirectory(backupDirectoryHandle, prepared.fileName, prepared.blob);
+      counts = prepared.counts;
+    } else {
+      counts = await downloadBackup(els.backupDownloadLink, { prefix, version });
+    }
     backupNextVersion = version + 1;
     try { await settingsDb.setBackupNaming(prefix, backupNextVersion); } catch (_error) {
       // The file is ready; keep the next number for this session.
     }
-    els.backupStatus.textContent = `Бекап підготовлено: ${counts.tasks} завдань, ${counts.projects} проєктів, ${counts.lists} списків. Якщо завантаження не почалося, натисніть «Експорт бекапу» ще раз.`;
+    els.backupStatus.textContent = useFolder
+      ? `Бекап ${savedName} збережено в папці ${backupDirectoryHandle.name}: ${counts.tasks} завдань, ${counts.projects} проєктів, ${counts.lists} списків.`
+      : `Бекап підготовлено: ${counts.tasks} завдань, ${counts.projects} проєктів, ${counts.lists} списків. Якщо завантаження не почалося, натисніть «Експорт бекапу» ще раз.`;
   } catch (error) {
-    els.backupStatus.textContent = error.message || "Не вдалося створити копію";
+    els.backupStatus.textContent = error.name === "NotAllowedError"
+      ? "Не вдалося записати бекап у папку. Перевірте дозвіл Chrome або виберіть папку ще раз."
+      : error.message || "Не вдалося створити копію";
   } finally { backupBusy = false; }
 });
 els.backupImportOpen.addEventListener("click", importFromBackupDirectory);

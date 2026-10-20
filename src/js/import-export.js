@@ -141,17 +141,22 @@ function completeBackupFields(data) {
   };
 }
 
-async function downloadBackup(link, { prefix = "Dimstasks", version = 1 } = {}) {
+async function prepareBackup({ prefix = "Dimstasks", version = 1 } = {}) {
   const data = validateBackupData(withBackupNaming(completeBackupFields(await appDb.exportAll()), prefix, version + 1));
   const payload = { format: BACKUP_FORMAT, appId: APP_ID, formatVersion: BACKUP_FORMAT_VERSION, databaseVersion: DB_VERSION, exportedAt: new Date().toISOString(), data };
   const blob = new Blob([JSON.stringify(payload)], { type: "application/json" });
   if (blob.size > BACKUP_MAX_BYTES) throw new Error("Копія завелика для імпорту (понад 50 МБ)");
+  return { blob, fileName: backupFileName(prefix, version), counts: backupCounts(data) };
+}
+
+async function downloadBackup(link, options = {}) {
+  const { blob, fileName, counts } = await prepareBackup(options);
   const url = URL.createObjectURL(blob);
   if (link.href) URL.revokeObjectURL(link.href);
   link.href = url;
-  link.download = backupFileName(prefix, version);
+  link.download = fileName;
   link.click();
-  return backupCounts(data);
+  return counts;
 }
 
 async function readBackup(file) {
