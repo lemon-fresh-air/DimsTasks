@@ -511,6 +511,10 @@ body.time-dialog-open { overflow:hidden; }
 body.project-complete-dialog-open,body.project-delete-dialog-open { overflow:hidden; }
 @keyframes date-sheet-in { from { opacity:0; transform:translateY(28px); } }
 .toast { position:fixed; z-index:70; left:50%; bottom:calc(88px + env(safe-area-inset-bottom)); translate:-50% 16px; opacity:0; pointer-events:none; min-height:48px; display:flex; align-items:center; gap:14px; padding:8px 10px 8px 18px; border-radius:999px; background:var(--text); color:var(--surface); box-shadow:0 10px 30px rgba(0,0,0,.22); transition:opacity .18s,translate .18s; white-space:nowrap; }
+.app-update { position:fixed; z-index:69; left:50%; bottom:calc(88px + env(safe-area-inset-bottom)); transform:translateX(-50%); width:min(calc(100% - 32px),440px); min-height:52px; display:flex; align-items:center; justify-content:space-between; gap:12px; padding:8px 8px 8px 16px; border-radius:16px; background:var(--text); color:var(--surface); box-shadow:0 10px 30px rgba(0,0,0,.22); }
+.app-update[hidden] { display:none; }
+.app-update button { min-height:36px; padding:0 12px; border:0; border-radius:10px; background:var(--accent); color:var(--on-accent); font-weight:760; }
+body:has(.app-update:not([hidden])) .toast { bottom:calc(152px + env(safe-area-inset-bottom)); }
 .toast.show { opacity:1; translate:-50% 0; pointer-events:auto; }
 .toast-action { min-height:36px; padding:0 4px; border:0; background:transparent; color:var(--toast-action); font-weight:760; }
 .toast:not(.undoable) .toast-action,.toast:not(.undoable) .toast-timer { display:none; }

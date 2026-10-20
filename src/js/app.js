@@ -1753,8 +1753,32 @@ enableTaskGestures({
   getSelectedIds: () => new Set(selectedTaskIds),
   onReorder: reorderSelectedTasks
 });
-if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("./service-worker.js"));
-document.addEventListener("visibilitychange", () => { if (!document.hidden) checkForDateChange(); });
-window.addEventListener("focus", checkForDateChange);
+let appServiceWorkerRegistration = null;
+let lastAppUpdateCheck = 0;
+
+function checkForAppUpdate() {
+  if (!appServiceWorkerRegistration || typeof appServiceWorkerRegistration.update !== "function") return;
+  if (Date.now() - lastAppUpdateCheck < 30000) return;
+  lastAppUpdateCheck = Date.now();
+  appServiceWorkerRegistration.update().catch(() => {});
+}
+
+if ("serviceWorker" in navigator) {
+  let hadController = Boolean(navigator.serviceWorker.controller);
+  navigator.serviceWorker.addEventListener("controllerchange", () => {
+    if (hadController) document.getElementById("app-update").hidden = false;
+    hadController = true;
+  });
+  document.getElementById("app-update-reload").addEventListener("click", () => window.location.reload());
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("./service-worker.js", { updateViaCache: "none" })
+      .then(registration => { appServiceWorkerRegistration = registration; })
+      .catch(() => {});
+  });
+}
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden) { checkForDateChange(); checkForAppUpdate(); }
+});
+window.addEventListener("focus", () => { checkForDateChange(); checkForAppUpdate(); });
 systemThemeQuery.addEventListener("change", () => { if (useSystemTheme) renderAppearanceSettings(); });
 initializeApp({ openStartScreen: true }).then(scheduleDateChangeCheck).catch(() => toast("Не вдалося відкрити локальне сховище"));
