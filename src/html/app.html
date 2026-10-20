@@ -140,6 +140,10 @@
           <a id="backup-download-link" hidden aria-hidden="true" tabindex="-1"></a>
           <input id="backup-file" type="file" accept=".json,application/json" aria-label="Резервна копія JSON" hidden>
         </div>
+        <label class="backup-latest-option" for="backup-latest"><input id="backup-latest" type="checkbox" checked><span>Найновіший бекап</span></label>
+        <button id="backup-folder-choose" class="backup-folder-choose" type="button" hidden>Вибрати папку бекапів</button>
+        <p id="backup-folder-name" class="backup-folder-name" hidden></p>
+        <div id="backup-file-list" class="backup-file-list" hidden></div>
         <p id="backup-status" class="backup-status" role="status" aria-live="polite"></p>
         <div id="backup-preview" class="backup-preview" hidden>
           <p id="backup-summary"></p>

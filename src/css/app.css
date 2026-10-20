@@ -233,6 +233,13 @@ h1 { font-size:clamp(2.25rem,9vw,3.4rem); line-height:1; letter-spacing:-.05em; 
 .backup-preview { margin-top:16px; padding-top:12px; border-top:1px solid var(--line); }
 .backup-preview #backup-summary { color:var(--text); font-weight:700; }
 .backup-status:not(:empty) { padding-top:8px; }
+.backup-latest-option { display:flex; align-items:center; gap:10px; margin-top:12px; color:var(--text); font-size:.94rem; font-weight:650; }
+.backup-latest-option input { width:20px; height:20px; margin:0; accent-color:var(--accent); }
+.backup-folder-choose { margin-top:10px; padding:4px 0; border:0; background:transparent; color:var(--accent); font:inherit; font-size:.88rem; font-weight:700; text-align:left; }
+.backup-folder-name { overflow-wrap:anywhere; }
+.backup-file-list { display:grid; gap:6px; margin-top:12px; }
+.backup-file-list[hidden],.backup-latest-option[hidden] { display:none; }
+.backup-file-list button { width:100%; min-height:44px; padding:10px 12px; border:1px solid var(--line); border-radius:12px; background:var(--control); color:var(--text); font:inherit; text-align:left; overflow-wrap:anywhere; }
 .theme-icon { width:21px; height:21px; justify-self:center; border:2px solid currentColor; border-radius:50%; position:relative; }
 .theme-icon::after { content:""; position:absolute; width:17px; height:17px; left:5px; top:-4px; border-radius:50%; background:var(--surface); }
 .theme-switch { width:52px; height:32px; position:relative; display:block; }

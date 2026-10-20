@@ -21,6 +21,7 @@ let listEditorOpenFrame;
 let pendingBackup = null;
 let backupBusy = false;
 let backupNextVersion = 1;
+let backupDirectoryHandle = null;
 let completedWeekOffset = 0;
 let completedDetailId = null;
 let skipCompletedPopstate = false;
@@ -281,6 +282,7 @@ async function initializeApp({ openStartScreen = false } = {}) {
   const backupNaming = await settingsDb.backupNaming();
   els.backupPrefix.value = backupNaming.prefix;
   backupNextVersion = backupNaming.nextVersion;
+  await loadBackupDirectory();
   els.returnOverdueToggle.checked = returnOverdueToInbox;
   els.startScreenSelect.value = startScreen;
   await loadAndNormalizeTaskOrder();
@@ -309,6 +311,115 @@ function clearBackupSelection() {
   pendingBackup = null;
   els.backupFile.value = "";
   els.backupPreview.hidden = true;
+  els.backupFileList.hidden = true;
+  els.backupFileList.replaceChildren();
+}
+
+function openBackupDirectoryDb() {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open("dims-tasks-local-files", 1);
+    request.onupgradeneeded = () => request.result.createObjectStore("handles");
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+async function storedBackupDirectory(value) {
+  const db = await openBackupDirectoryDb();
+  try {
+    return await new Promise((resolve, reject) => {
+      const transaction = db.transaction("handles", value === undefined ? "readonly" : "readwrite");
+      const request = value === undefined
+        ? transaction.objectStore("handles").get("backup-directory")
+        : transaction.objectStore("handles").put(value, "backup-directory");
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+      transaction.onerror = () => reject(transaction.error);
+    });
+  } finally { db.close(); }
+}
+
+function showBackupDirectory() {
+  const supported = typeof window.showDirectoryPicker === "function";
+  els.backupFolderChoose.hidden = !supported;
+  els.backupLatest.closest("label").hidden = !supported;
+  els.backupFolderName.hidden = !supported || !backupDirectoryHandle;
+  if (backupDirectoryHandle) els.backupFolderName.textContent = `Папка: ${backupDirectoryHandle.name}`;
+}
+
+async function loadBackupDirectory() {
+  if (typeof window.showDirectoryPicker !== "function") {
+    showBackupDirectory();
+    return;
+  }
+  try { backupDirectoryHandle = await storedBackupDirectory(); }
+  catch (_error) { backupDirectoryHandle = null; }
+  showBackupDirectory();
+}
+
+async function pickBackupDirectory() {
+  const handle = await window.showDirectoryPicker({ mode: "read" });
+  backupDirectoryHandle = handle;
+  showBackupDirectory();
+  try { await storedBackupDirectory(handle); }
+  catch (_error) { els.backupStatus.textContent = "Папку відкрито, але її не вдалося запам’ятати для наступного запуску."; }
+  return handle;
+}
+
+async function importFromBackupDirectory() {
+  if (backupBusy) return;
+  if (typeof window.showDirectoryPicker !== "function") {
+    els.backupFile.click();
+    return;
+  }
+  backupBusy = true;
+  clearBackupSelection();
+  try {
+    const handle = backupDirectoryHandle || await pickBackupDirectory();
+    if ((await handle.queryPermission({ mode: "read" })) !== "granted" &&
+        (await handle.requestPermission({ mode: "read" })) !== "granted") {
+      throw new Error("Доступ до папки не надано. Виберіть папку бекапів ще раз.");
+    }
+    els.backupStatus.textContent = "Пошук бекапів у папці…";
+    const files = [];
+    for await (const entry of handle.values()) {
+      if (entry.kind !== "file" || !entry.name.toLowerCase().endsWith(".json")) continue;
+      try { files.push({ file: await entry.getFile(), entry }); }
+      catch (_error) { /* A file may disappear while Syncthing updates the folder. */ }
+    }
+    if (!files.length) {
+      els.backupStatus.textContent = "У вибраній папці немає JSON-файлів.";
+      return;
+    }
+    if (els.backupLatest.checked) {
+      let newest = null;
+      for (const item of files) {
+        try {
+          const parsed = await readBackup(item.file);
+          const time = parsed.exportedAt ? Date.parse(parsed.exportedAt) : item.file.lastModified;
+          if (!newest || time > newest.time) newest = { ...item, time };
+        } catch (_error) { /* Ignore unrelated or damaged JSON files. */ }
+      }
+      if (!newest) {
+        els.backupStatus.textContent = "У папці немає придатних бекапів DimsTasks.";
+        return;
+      }
+      await chooseBackup(newest.file);
+    } else {
+      files.sort((a, b) => b.file.lastModified - a.file.lastModified || a.file.name.localeCompare(b.file.name));
+      for (const item of files) {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.textContent = item.file.name;
+        button.addEventListener("click", () => chooseBackup(item.file));
+        els.backupFileList.append(button);
+      }
+      els.backupFileList.hidden = false;
+      els.backupStatus.textContent = "Оберіть файл із папки бекапів.";
+    }
+  } catch (error) {
+    els.backupStatus.textContent = error.name === "AbortError" ? "Вибір папки скасовано." : error.message || "Не вдалося відкрити папку бекапів.";
+  } finally { backupBusy = false; }
 }
 
 function backupSummary(data) {
@@ -324,7 +435,7 @@ async function chooseBackup(file) {
     const parsed = await readBackup(file);
     pendingBackup = parsed;
     const date = parsed.exportedAt ? new Date(parsed.exportedAt).toLocaleString("uk-UA") : "дата невідома";
-    els.backupSummary.textContent = `Копія від ${date}. ${backupSummary(parsed.data)}. Формат ${parsed.formatVersion}.`;
+    els.backupSummary.textContent = `${file.name}. Копія від ${date}. ${backupSummary(parsed.data)}. Формат ${parsed.formatVersion}.`;
     els.backupPreview.hidden = false;
     els.backupStatus.textContent = "Файл перевірено. Оберіть спосіб відновлення.";
   } catch (error) {
@@ -1217,7 +1328,17 @@ els.backupExport.addEventListener("click", async () => {
     els.backupStatus.textContent = error.message || "Не вдалося створити копію";
   } finally { backupBusy = false; }
 });
-els.backupImportOpen.addEventListener("click", () => { if (!backupBusy) els.backupFile.click(); });
+els.backupImportOpen.addEventListener("click", importFromBackupDirectory);
+els.backupFolderChoose.addEventListener("click", async () => {
+  if (backupBusy) return;
+  try {
+    await pickBackupDirectory();
+    clearBackupSelection();
+    els.backupStatus.textContent = "Папку бекапів вибрано.";
+  } catch (error) {
+    els.backupStatus.textContent = error.name === "AbortError" ? "Вибір папки скасовано." : error.message || "Не вдалося вибрати папку.";
+  }
+});
 els.backupPrefix.addEventListener("input", clearPreparedBackupDownload);
 els.backupFile.addEventListener("change", () => chooseBackup(els.backupFile.files[0]));
 els.backupMerge.addEventListener("click", () => applyBackup("merge"));
