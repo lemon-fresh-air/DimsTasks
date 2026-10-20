@@ -329,7 +329,7 @@ function enableTaskGestures({ container = els.list, onDelete, isSelectionMode, i
       event.preventDefault();
       gesture.scrolling = true;
       gesture.row.dataset.swiped = "true";
-      const scrollContainer = container.closest(".project-steps.is-expanded") || container.closest(".project-screen");
+      const scrollContainer = container.closest(".project-screen");
       const delta = gesture.lastY - event.clientY;
       if (scrollContainer) scrollContainer.scrollBy(0, delta);
       else window.scrollBy(0, delta);
@@ -370,7 +370,7 @@ function enableTaskGestures({ container = els.list, onDelete, isSelectionMode, i
     clearTimeout(longPressTimer);
     row?.classList.remove("lifted");
     if (scrolling && Math.abs(scrollVelocity || 0) > .08) {
-      const scrollContainer = container.closest(".project-steps.is-expanded") || container.closest(".project-screen");
+      const scrollContainer = container.closest(".project-screen");
       let velocity = scrollVelocity;
       let lastTime = performance.now();
       const coast = now => {

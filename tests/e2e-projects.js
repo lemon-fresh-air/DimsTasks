@@ -66,11 +66,11 @@ async function waitForServer() {
   assert.equal(await page.locator("#project-save-status").textContent(), "Є незбережені зміни");
   await page.click("#project-save");
   await page.waitForFunction(() => document.querySelector("#project-editor").hidden);
-  assert.match(await page.locator("#project-goal-summary").textContent(), /Перевірити послідовний потік/);
+  assert.equal(await page.locator(".project-summary").count(), 0);
   await page.click("#project-back");
   assert.equal(await page.locator("#projects-overview").isVisible(), true);
   await page.click(".project-card");
-  await page.uncheck("#project-add-new-first");
+  assert.equal(await page.isChecked("#project-add-new-first"), false);
 
   await page.fill("#project-step-title", "Перший крок");
   await page.click("#project-step-form button");

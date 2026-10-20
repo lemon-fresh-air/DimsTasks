@@ -58,10 +58,6 @@ const projectEls = {
   editClose: document.querySelector("#project-edit-close"),
   editor: document.querySelector("#project-editor"),
   heading: document.querySelector("#project-screen-title"),
-  goalSummary: document.querySelector("#project-goal-summary"),
-  descriptionSummary: document.querySelector("#project-description-summary"),
-  descriptionToggle: document.querySelector("#project-description-toggle"),
-  deadlineSummary: document.querySelector("#project-deadline-summary"),
   title: document.querySelector("#project-title"),
   goal: document.querySelector("#project-goal"),
   description: document.querySelector("#project-description"),
@@ -231,14 +227,6 @@ function renderOpenProject() {
     projectEls.tasksExpand.setAttribute("aria-label", "Згорнути завдання");
   }
   projectEls.heading.textContent = project.title;
-  projectEls.goalSummary.textContent = project.goal ? `Мета: ${project.goal}` : "";
-  projectEls.descriptionSummary.textContent = project.description || "";
-  projectEls.descriptionToggle.hidden = !project.description;
-  projectEls.descriptionToggle.setAttribute("aria-expanded", "false");
-  const countdown = project.showCountdown ? projectCountdown(project.dueDate, localDateValue()) : null;
-  projectEls.deadlineSummary.hidden = !project.dueDate;
-  projectEls.deadlineSummary.textContent = project.dueDate ? `Термін: ${readableDueDate(project.dueDate, project.dueTime)}${countdown ? ` · ${countdown.text}` : ""}` : "";
-  projectEls.deadlineSummary.dataset.overdue = String(countdown?.overdue === true);
   if (document.activeElement !== projectEls.title) projectEls.title.value = project.title;
   if (document.activeElement !== projectEls.goal) projectEls.goal.value = project.goal || "";
   if (document.activeElement !== projectEls.description) projectEls.description.value = project.description || "";
@@ -257,13 +245,14 @@ function renderOpenProject() {
   projectEls.tasksEmpty.hidden = steps.length > 0;
   projectEls.tasksExpand.hidden = steps.length <= 3 || selectedHere.size > 0;
   projectEls.selectAll.setAttribute("aria-pressed", String(steps.length > 0 && steps.every(task => selectedHere.has(task.id))));
-  projectEls.addNewFirst.checked = project.addNewTasksFirst !== false;
+  projectEls.addNewFirst.checked = project.addNewTasksFirst === true;
   projectEls.attachOpen.hidden = project.status === "completed";
   projectEls.complete.textContent = project.status === "completed" ? "Повернути в активні" : "Завершити проєкт";
   projectEls.convertTask.hidden = project.status === "completed";
   projectEls.mainComplete.textContent = projectEls.complete.textContent;
   projectEls.taskList.replaceChildren();
   steps.forEach(renderProjectTask);
+  syncProjectTaskPreview();
   projectEls.taskList.classList.toggle("selection-mode", selectedHere.size > 0);
   projectEls.selectionToolbar.hidden = selectedHere.size === 0;
   projectEls.screen.querySelector(".project-screen-header").hidden = selectedHere.size > 0;
@@ -349,9 +338,15 @@ function closeProjectEditor() {
   projectEls.editOpen.focus();
 }
 
+function syncProjectTaskPreview() {
+  const collapsed = !projectEls.steps.classList.contains("is-expanded");
+  [...projectEls.taskList.children].forEach((row, index) => { row.inert = collapsed && index >= 3; });
+}
+
 function toggleProjectTasks() {
   const expanded = !projectEls.steps.classList.contains("is-expanded");
   projectEls.steps.classList.toggle("is-expanded", expanded);
+  syncProjectTaskPreview();
   projectEls.tasksExpand.setAttribute("aria-expanded", String(expanded));
   projectEls.tasksExpand.setAttribute("aria-label", expanded ? "Згорнути завдання" : "Розгорнути всі завдання");
   if (expanded) projectEls.tasksExpand.focus();
@@ -420,7 +415,7 @@ async function addProjectStep(title) {
   const listId = lists.some(list => list.id === preferredListId) ? preferredListId : INBOX_LIST_ID;
   const listTasks = tasks.filter(task => (task.listId || INBOX_LIST_ID) === listId && !task.sectionId);
   const steps = tasks.filter(task => task.projectId === project.id);
-  const addFirst = project.addNewTasksFirst !== false;
+  const addFirst = project.addNewTasksFirst === true;
   const task = createTask({
     title: value,
     listId,
@@ -691,10 +686,6 @@ document.addEventListener("keydown", event => {
 projectEls.back.addEventListener("click", closeProject);
 projectEls.editOpen.addEventListener("click", openProjectEditor);
 projectEls.editClose.addEventListener("click", () => saveProjectFields({ closeAfter: true }));
-projectEls.descriptionToggle.addEventListener("click", () => {
-  const expanded = projectEls.descriptionToggle.getAttribute("aria-expanded") !== "true";
-  projectEls.descriptionToggle.setAttribute("aria-expanded", String(expanded));
-});
 projectEls.tasksExpand.addEventListener("click", toggleProjectTasks);
 projectEls.mainComplete.addEventListener("click", toggleProjectStatus);
 [projectEls.title, projectEls.goal, projectEls.description, projectEls.dueDate, projectEls.dueTime, projectEls.defaultList].forEach(field => field.addEventListener("input", markProjectDirty));
@@ -734,7 +725,7 @@ projectEls.addNewFirst.addEventListener("change", async () => {
   try { await projectDb.put(updated); }
   catch (_error) {
     projects = projects.map(item => item.id === project.id ? project : item);
-    projectEls.addNewFirst.checked = project.addNewTasksFirst !== false;
+    projectEls.addNewFirst.checked = project.addNewTasksFirst === true;
     toast("Не вдалося зберегти порядок нових завдань");
   }
 });

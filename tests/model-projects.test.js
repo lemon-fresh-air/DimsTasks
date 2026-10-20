@@ -239,7 +239,8 @@ test("project countdown uses inclusive calendar-day labels and marks past dates 
 test("project remembers a valid last list and legacy projects default safely", () => {
   const legacy = createProject({ title: "legacy" });
   assert.equal(legacy.lastListId, null);
-  assert.equal(legacy.addNewTasksFirst, true);
+  assert.equal(legacy.addNewTasksFirst, false);
   assert.equal(createProject({ title: "remembered", lastListId: "work" }).lastListId, "work");
   assert.equal(createProject({ title: "append", addNewTasksFirst: false }).addNewTasksFirst, false);
+  assert.equal(createProject({ title: "prepend", addNewTasksFirst: true }).addNewTasksFirst, true);
 });
