@@ -218,7 +218,8 @@
     <section id="project-steps" class="project-steps" aria-label="Завдання проєкту"><div class="project-steps-heading"><button id="project-tasks-expand" class="project-tasks-expand" type="button" aria-label="Розгорнути всі завдання" aria-expanded="false"><span aria-hidden="true"></span></button></div>
       <ul id="project-task-list"></ul>
       <p id="project-tasks-empty" class="project-tasks-empty" hidden>Додайте перше завдання, щоб почати рух проєктом.</p>
-      <form id="project-step-form" class="project-step-form"><label class="sr-only" for="project-step-title">Нове завдання</label><input id="project-step-title" maxlength="160" autocomplete="off" placeholder="Додати завдання"><button type="submit" aria-label="Додати завдання">＋</button></form>
+      <form id="project-step-form" class="project-step-form"><label class="sr-only" for="project-step-title">Нове завдання</label><input id="project-step-title" maxlength="160" autocomplete="off" placeholder="Додати нове завдання"><button type="submit" aria-label="Додати нове завдання">＋</button></form>
+      <button id="project-attach-open" class="project-attach-trigger" type="button">Прикріпити існуюче завдання</button>
       <label class="project-step-placement"><input id="project-add-new-first" type="checkbox" checked><span>Нові завдання — на початок</span></label>
     </section>
     <div class="project-main-actions"><button id="project-main-complete" class="secondary-action" type="button">Завершити проєкт</button></div>
@@ -231,12 +232,23 @@
       <label>Мета<textarea id="project-goal" rows="2" placeholder="Якого результату прагнете?"></textarea></label>
       <label>Опис<textarea id="project-description" rows="4" placeholder="Додаткові нотатки (необов’язково)"></textarea></label>
       <div class="project-deadline"><span class="project-deadline-label">Термін</span><div class="project-deadline-controls"><button id="project-date-picker-open" class="meta-chip date-chip" type="button" aria-haspopup="dialog"><span class="calendar-icon" aria-hidden="true"></span><span id="project-date-label">Без дати</span></button><label class="project-countdown-toggle"><input id="project-show-countdown" type="checkbox"><span>Показувати зворотний відлік</span></label></div><small id="project-countdown" class="project-countdown" hidden></small><input id="project-due-date" type="hidden"><input id="project-due-time" type="hidden"></div>
+       <label>Список для нових завдань<select id="project-default-list"><option value="">За замовчуванням (останній вибраний)</option></select></label>
       <p id="project-save-status" class="project-save-status" aria-live="polite"></p>
       </div>
       <div class="project-actions"><button id="project-save" class="primary-action" type="button">Зберегти</button><button id="project-complete" class="secondary-action" type="button">Завершити проєкт</button><button id="project-convert-task" class="secondary-action" type="button">Зробити завданням</button><button id="project-delete" class="danger-action" type="button"><span class="trash-icon" aria-hidden="true"></span>Видалити проєкт</button></div>
     </div>
   </section>
 </section>
+<div id="project-attach-backdrop" class="project-attach-backdrop" hidden>
+  <section id="project-attach-dialog" class="project-attach-dialog" role="dialog" aria-modal="true" aria-labelledby="project-attach-title" tabindex="-1">
+    <div class="project-attach-heading"><h2 id="project-attach-title">Прикріпити існуюче завдання</h2><button id="project-attach-close" type="button" aria-label="Закрити">×</button></div>
+    <label class="sr-only" for="project-attach-search">Пошук завдань за назвою</label>
+    <input id="project-attach-search" type="search" autocomplete="off" placeholder="Пошук за назвою">
+    <p id="project-attach-empty" class="project-attach-empty" hidden></p>
+    <div id="project-attach-results" class="project-attach-results"></div>
+    <button id="project-attach-save" class="primary-action" type="button" disabled>Додати</button>
+  </section>
+</div>
 <section id="task-editor" class="task-editor" aria-label="Редактор завдання" hidden>
   <header class="task-editor-header">
     <button id="task-editor-back" class="editor-back" type="button" aria-label="Зберегти й повернутися до списку"><span aria-hidden="true"></span></button>

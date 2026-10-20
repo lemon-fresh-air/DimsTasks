@@ -70,6 +70,7 @@ const projectEls = {
   datePickerOpen: document.querySelector("#project-date-picker-open"),
   dateLabel: document.querySelector("#project-date-label"),
   showCountdown: document.querySelector("#project-show-countdown"),
+  defaultList: document.querySelector("#project-default-list"),
   countdown: document.querySelector("#project-countdown"),
   saveStatus: document.querySelector("#project-save-status"),
   progress: document.querySelector("#project-progress"),
@@ -79,12 +80,21 @@ const projectEls = {
   taskList: document.querySelector("#project-task-list"),
   stepForm: document.querySelector("#project-step-form"),
   stepTitle: document.querySelector("#project-step-title"),
+  attachOpen: document.querySelector("#project-attach-open"),
+  attachBackdrop: document.querySelector("#project-attach-backdrop"),
+  attachDialog: document.querySelector("#project-attach-dialog"),
+  attachClose: document.querySelector("#project-attach-close"),
+  attachSearch: document.querySelector("#project-attach-search"),
+  attachResults: document.querySelector("#project-attach-results"),
+  attachEmpty: document.querySelector("#project-attach-empty"),
+  attachSave: document.querySelector("#project-attach-save"),
   addNewFirst: document.querySelector("#project-add-new-first"),
   mainComplete: document.querySelector("#project-main-complete"),
   save: document.querySelector("#project-save"),
   complete: document.querySelector("#project-complete"),
   delete: document.querySelector("#project-delete")
 };
+let attachSelectedIds = new Set();
 
 function projectSteps(projectId) {
   return tasks.filter(task => task.projectId === projectId).sort(compareProjectTasks);
@@ -237,12 +247,18 @@ function renderOpenProject() {
   projectEls.dateLabel.textContent = readableDueDate(project.dueDate, project.dueTime);
   applyDateTone(projectEls.datePickerOpen, project.dueDate, project.dueTime);
   projectEls.showCountdown.checked = project.showCountdown === true;
+  if (document.activeElement !== projectEls.defaultList) {
+    projectEls.defaultList.replaceChildren(new Option("За замовчуванням (останній вибраний)", ""),
+      ...lists.map(list => new Option(displayListTitle(list), list.id)));
+    projectEls.defaultList.value = lists.some(list => list.id === project.defaultListId) ? project.defaultListId : "";
+  }
   renderProjectCountdown();
   projectEls.progress.textContent = `${steps.length} завд. · ${completedCount} виконано`;
   projectEls.tasksEmpty.hidden = steps.length > 0;
   projectEls.tasksExpand.hidden = steps.length <= 3 || selectedHere.size > 0;
   projectEls.selectAll.setAttribute("aria-pressed", String(steps.length > 0 && steps.every(task => selectedHere.has(task.id))));
   projectEls.addNewFirst.checked = project.addNewTasksFirst !== false;
+  projectEls.attachOpen.hidden = project.status === "completed";
   projectEls.complete.textContent = project.status === "completed" ? "Повернути в активні" : "Завершити проєкт";
   projectEls.convertTask.hidden = project.status === "completed";
   projectEls.mainComplete.textContent = projectEls.complete.textContent;
@@ -263,6 +279,60 @@ function openProject(projectId) {
   projectEls.screen.hidden = false;
   document.body.classList.add("project-screen-open");
   renderOpenProject();
+}
+
+function renderAttachResults() {
+  const available = tasks.filter(task => task.status === "active" && !task.projectId);
+  const query = projectEls.attachSearch.value.trim().toLocaleLowerCase("uk");
+  const matches = available.filter(task => task.title.toLocaleLowerCase("uk").includes(query))
+    .sort((a, b) => a.title.localeCompare(b.title, "uk"));
+  projectEls.attachResults.replaceChildren();
+  for (const task of matches) {
+    const label = document.createElement("label");
+    label.className = "project-attach-row";
+    const checkbox = document.createElement("input");
+    checkbox.type = "checkbox";
+    checkbox.value = task.id;
+    checkbox.checked = attachSelectedIds.has(task.id);
+    const title = document.createElement("span");
+    title.textContent = task.title;
+    label.append(checkbox, title);
+    projectEls.attachResults.append(label);
+  }
+  projectEls.attachEmpty.hidden = matches.length > 0;
+  projectEls.attachEmpty.textContent = available.length ? "За таким запитом завдань немає" : "Немає вільних активних завдань";
+  projectEls.attachSave.disabled = attachSelectedIds.size === 0;
+  projectEls.attachSave.textContent = attachSelectedIds.size ? `Додати (${attachSelectedIds.size})` : "Додати";
+}
+
+function closeAttachDialog() {
+  projectEls.attachBackdrop.hidden = true;
+  document.body.classList.remove("project-attach-open");
+  attachSelectedIds.clear();
+  projectEls.attachOpen.focus();
+}
+
+async function saveAttachedTasks() {
+  const project = projects.find(item => item.id === activeProjectId);
+  if (!project || !attachSelectedIds.size) return;
+  const selected = tasks.filter(task => attachSelectedIds.has(task.id) && task.status === "active" && !task.projectId);
+  if (!selected.length) return;
+  const steps = projectSteps(project.id);
+  const start = steps.length ? Math.max(...steps.map(task => task.projectPosition ?? -1)) + 1 : 0;
+  const now = new Date().toISOString();
+  const changed = selected.map((task, index) => ({ ...task, projectId: project.id, projectPosition: start + index, updatedAt: now }));
+  projectEls.attachSave.disabled = true;
+  try {
+    await taskDb.putMany(changed);
+    const replacements = new Map(changed.map(task => [task.id, task]));
+    tasks = tasks.map(task => replacements.get(task.id) || task);
+    closeAttachDialog();
+    renderProjects();
+    renderCurrentTasks();
+  } catch (_error) {
+    projectEls.attachSave.disabled = false;
+    toast("Не вдалося додати завдання до проєкту");
+  }
 }
 
 function openProjectEditor() {
@@ -288,6 +358,7 @@ function toggleProjectTasks() {
 }
 
 async function closeProject({ animated = false } = {}) {
+  if (!projectEls.attachBackdrop.hidden) closeAttachDialog();
   if (!projectEls.editor.hidden) closeProjectEditor();
   if (projectEls.steps.classList.contains("is-expanded")) toggleProjectTasks();
   if (animated) {
@@ -310,7 +381,7 @@ async function saveProjectFields({ closeAfter = false } = {}) {
     projectEls.saveStatus.textContent = "Назва не може бути порожньою";
     return;
   }
-  const updated = createProject({ ...project, title, goal: projectEls.goal.value.trim(), description: projectEls.description.value.trim(), dueDate: projectEls.dueDate.value || null, dueTime: projectEls.dueDate.value && projectEls.dueTime.value ? projectEls.dueTime.value : null, showCountdown: projectEls.showCountdown.checked, updatedAt: new Date().toISOString() });
+  const updated = createProject({ ...project, title, goal: projectEls.goal.value.trim(), description: projectEls.description.value.trim(), dueDate: projectEls.dueDate.value || null, dueTime: projectEls.dueDate.value && projectEls.dueTime.value ? projectEls.dueTime.value : null, showCountdown: projectEls.showCountdown.checked, defaultListId: projectEls.defaultList.value || null, updatedAt: new Date().toISOString() });
   projectEls.saveStatus.textContent = "Збереження…";
   try {
     await projectDb.put(updated);
@@ -345,7 +416,8 @@ async function addProjectStep(title) {
   const project = projects.find(item => item.id === activeProjectId);
   const value = title.trim();
   if (!project || !value) return;
-  const listId = lists.some(list => list.id === project.lastListId) ? project.lastListId : INBOX_LIST_ID;
+  const preferredListId = project.defaultListId || project.lastListId;
+  const listId = lists.some(list => list.id === preferredListId) ? preferredListId : INBOX_LIST_ID;
   const listTasks = tasks.filter(task => (task.listId || INBOX_LIST_ID) === listId && !task.sectionId);
   const steps = tasks.filter(task => task.projectId === project.id);
   const addFirst = project.addNewTasksFirst !== false;
@@ -625,7 +697,7 @@ projectEls.descriptionToggle.addEventListener("click", () => {
 });
 projectEls.tasksExpand.addEventListener("click", toggleProjectTasks);
 projectEls.mainComplete.addEventListener("click", toggleProjectStatus);
-[projectEls.title, projectEls.goal, projectEls.description, projectEls.dueDate, projectEls.dueTime].forEach(field => field.addEventListener("input", markProjectDirty));
+[projectEls.title, projectEls.goal, projectEls.description, projectEls.dueDate, projectEls.dueTime, projectEls.defaultList].forEach(field => field.addEventListener("input", markProjectDirty));
 projectEls.datePickerOpen.addEventListener("click", () => {
   editingSelectedTaskDates = false;
   editingProjectDate = true;
@@ -634,6 +706,26 @@ projectEls.datePickerOpen.addEventListener("click", () => {
 projectEls.showCountdown.addEventListener("change", () => { markProjectDirty(); renderProjectCountdown(); });
 projectEls.save.addEventListener("click", () => saveProjectFields({ closeAfter: true }));
 projectEls.stepForm.addEventListener("submit", event => { event.preventDefault(); addProjectStep(projectEls.stepTitle.value); });
+projectEls.attachOpen.addEventListener("click", () => {
+  attachSelectedIds.clear();
+  projectEls.attachSearch.value = "";
+  renderAttachResults();
+  projectEls.attachBackdrop.hidden = false;
+  document.body.classList.add("project-attach-open");
+  projectEls.attachSearch.focus();
+});
+projectEls.attachClose.addEventListener("click", closeAttachDialog);
+projectEls.attachBackdrop.addEventListener("click", event => { if (event.target === projectEls.attachBackdrop) closeAttachDialog(); });
+projectEls.attachDialog.addEventListener("keydown", event => { if (event.key === "Escape") closeAttachDialog(); });
+projectEls.attachSearch.addEventListener("input", renderAttachResults);
+projectEls.attachResults.addEventListener("change", event => {
+  if (event.target.type !== "checkbox") return;
+  if (event.target.checked) attachSelectedIds.add(event.target.value);
+  else attachSelectedIds.delete(event.target.value);
+  projectEls.attachSave.disabled = attachSelectedIds.size === 0;
+  projectEls.attachSave.textContent = attachSelectedIds.size ? `Додати (${attachSelectedIds.size})` : "Додати";
+});
+projectEls.attachSave.addEventListener("click", saveAttachedTasks);
 projectEls.addNewFirst.addEventListener("change", async () => {
   const project = projects.find(item => item.id === activeProjectId);
   if (!project) return;

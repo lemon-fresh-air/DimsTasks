@@ -37,7 +37,7 @@ function createSection(values = {}) {
   return { ...baseRecord(values), ...values, listId: values.listId, title: String(values.title || "").trim(), description: values.description || "", position: Number.isFinite(values.position) ? values.position : 0 };
 }
 function createProject(values = {}) {
-  return { ...baseRecord(values), ...values, title: String(values.title || "").trim(), goal: values.goal || "", description: values.description || "", status: values.status === "completed" ? "completed" : "active", dueDate: values.dueDate || null, dueTime: values.dueDate && values.dueTime ? values.dueTime : null, showCountdown: values.showCountdown === true, lastListId: typeof values.lastListId === "string" ? values.lastListId : null, addNewTasksFirst: values.addNewTasksFirst !== false, completedAt: values.completedAt || null, position: Number.isFinite(values.position) ? values.position : 0 };
+  return { ...baseRecord(values), ...values, title: String(values.title || "").trim(), goal: values.goal || "", description: values.description || "", status: values.status === "completed" ? "completed" : "active", dueDate: values.dueDate || null, dueTime: values.dueDate && values.dueTime ? values.dueTime : null, showCountdown: values.showCountdown === true, lastListId: typeof values.lastListId === "string" ? values.lastListId : null, defaultListId: typeof values.defaultListId === "string" ? values.defaultListId : null, addNewTasksFirst: values.addNewTasksFirst !== false, completedAt: values.completedAt || null, position: Number.isFinite(values.position) ? values.position : 0 };
 }
 function projectFromTask(task, projectRecords) {
   if (task.status !== "active") throw new Error("Лише активне завдання можна перетворити на проєкт");

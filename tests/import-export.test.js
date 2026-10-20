@@ -37,6 +37,17 @@ test("current backup round-trip parser preserves appearance, workflow, and retur
   assert.equal(restored.tasks[0].todayPosition, 2);
 });
 
+test("project fixed list survives format 14 and format 13 defaults to automatic", async () => {
+  const current = structuredClone(data);
+  current.lists.push({ ...base("work"), title: "Робота", description: "", kind: "regular", position: 1 });
+  current.projects.push({ ...base("project"), title: "Проєкт", goal: "", description: "", status: "active", dueDate: null, dueTime: null, showCountdown: false, lastListId: "inbox", defaultListId: "work", addNewTasksFirst: true, completedAt: null, position: 0 });
+  const restored = await parseBackup(file({ format: "local-first-pwa-backup", appId: "dims-tasks", formatVersion: BACKUP_FORMAT_VERSION, data: current }));
+  assert.equal(restored.projects[0].defaultListId, "work");
+  delete current.projects[0].defaultListId;
+  const older = await parseBackup(file({ format: "local-first-pwa-backup", appId: "dims-tasks", formatVersion: 13, data: current }));
+  assert.equal(older.projects[0].defaultListId, null);
+});
+
 test("format 9 remains importable without today positions", async () => {
   const old = structuredClone(data);
   delete old.tasks[0].todayPosition;
@@ -172,6 +183,6 @@ test("merge keeps local on equal time, uses newer records, and retains unique re
 });
 
 test("future and malformed files are rejected before restoration", async () => {
-  await assert.rejects(readBackup(file({ format: "local-first-pwa-backup", appId: "dims-tasks", formatVersion: 14, data })), /ще не підтримано/);
+  await assert.rejects(readBackup(file({ format: "local-first-pwa-backup", appId: "dims-tasks", formatVersion: 15, data })), /ще не підтримано/);
   await assert.rejects(readBackup({ text: async () => "{" }), /JSON-файл/);
 });

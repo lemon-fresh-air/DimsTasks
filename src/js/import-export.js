@@ -1,6 +1,6 @@
 const BACKUP_FORMAT = "local-first-pwa-backup";
 const APP_ID = "dims-tasks";
-const BACKUP_FORMAT_VERSION = 13;
+const BACKUP_FORMAT_VERSION = 14;
 const BACKUP_MAX_BYTES = 50 * 1024 * 1024;
 
 function backupCounts(data) { return Object.fromEntries(STORE_NAMES.map(name => [name, data[name].length])); }
@@ -64,7 +64,7 @@ function validateBackupData(data, { strict = true } = {}) {
       if (!validIso(record.createdAt) || !validIso(record.updatedAt) || !Number.isSafeInteger(record.entityVersion) || record.entityVersion < 1 || name !== "settings" && (!record.customFields || typeof record.customFields !== "object" || Array.isArray(record.customFields))) throw new Error(`Некоректні спільні поля в «${name}»: ${record.id}`);
       if (name === "lists" && (typeof record.title !== "string" || typeof record.description !== "string" || !["inbox", "regular"].includes(record.kind) || !validPosition(record.position))) throw new Error(`Некоректний список: ${record.id}`);
       if (name === "sections" && (typeof record.listId !== "string" || typeof record.title !== "string" || typeof record.description !== "string" || !validPosition(record.position))) throw new Error(`Некоректна секція: ${record.id}`);
-      if (name === "projects" && (typeof record.title !== "string" || typeof record.goal !== "string" || typeof record.description !== "string" || !["active", "completed"].includes(record.status) || !validDate(record.dueDate) || !validTime(record.dueTime) || record.dueTime && !record.dueDate || typeof record.showCountdown !== "boolean" || !validOptionalId(record.lastListId) || typeof record.addNewTasksFirst !== "boolean" || record.completedAt !== null && !validIso(record.completedAt) || !validPosition(record.position))) throw new Error(`Некоректний проєкт: ${record.id}`);
+      if (name === "projects" && (typeof record.title !== "string" || typeof record.goal !== "string" || typeof record.description !== "string" || !["active", "completed"].includes(record.status) || !validDate(record.dueDate) || !validTime(record.dueTime) || record.dueTime && !record.dueDate || typeof record.showCountdown !== "boolean" || !validOptionalId(record.lastListId) || !validOptionalId(record.defaultListId) || typeof record.addNewTasksFirst !== "boolean" || record.completedAt !== null && !validIso(record.completedAt) || !validPosition(record.position))) throw new Error(`Некоректний проєкт: ${record.id}`);
       if (name === "tasks" && (typeof record.listId !== "string" || !validOptionalId(record.sectionId) || !validOptionalId(record.projectId) || typeof record.title !== "string" || typeof record.description !== "string" || !["active", "completed", "archived"].includes(record.status) || record.completedAt !== null && !validIso(record.completedAt) || !validDate(record.dueDate) || !validTime(record.dueTime) || record.dueTime && !record.dueDate || !validPosition(record.position) || record.todayPosition !== null && !validPosition(record.todayPosition) || record.projectPosition !== null && !validPosition(record.projectPosition) || record.returnedToInboxAt !== null && !validIso(record.returnedToInboxAt))) throw new Error(`Некоректне завдання: ${record.id}`);
       if (name === "settings" && (record.id === "appearance" && (!["light", "dark"].includes(record.theme) || typeof record.useSystemTheme !== "boolean") || record.id === "task-defaults" && typeof record.todayListId !== "string" || record.id === "workflow" && typeof record.returnOverdueToInbox !== "boolean" || record.id === "backup-naming" && (typeof record.prefix !== "string" || !record.prefix.trim() || !Number.isSafeInteger(record.nextVersion) || record.nextVersion < 1) || record.id === "navigation" && !["today", "upcoming", "projects", "inbox", "overview"].includes(record.startScreen))) throw new Error(`Некоректне налаштування: ${record.id}`);
     }
@@ -107,7 +107,8 @@ function normalizeOlderBackup(data) {
   const sections = data.sections.filter(item => listIds.has(item.listId) && item.listId !== INBOX_LIST_ID).map(record => createSection(record));
   const sectionById = new Map(sections.map(item => [item.id, item]));
   const projects = data.projects.map(record => createProject({ ...record,
-    lastListId: listIds.has(record.lastListId) ? record.lastListId : null }));
+    lastListId: listIds.has(record.lastListId) ? record.lastListId : null,
+    defaultListId: listIds.has(record.defaultListId) ? record.defaultListId : null }));
   const projectIds = new Set(projects.map(item => item.id));
   const tasks = data.tasks.map(record => {
     const listId = listIds.has(record.listId) ? record.listId : INBOX_LIST_ID;
