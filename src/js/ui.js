@@ -259,7 +259,7 @@ function renderMainMenuLists(lists, activeListId, selectedIds = new Set(), tasks
     if (active) button.setAttribute("aria-current", "page");
     button.setAttribute("aria-selected", String(selected));
     const icon = document.createElement("span");
-    icon.className = list.kind === "inbox" ? "inbox-icon" : list.kind === "today" ? "calendar-icon" : "list-menu-icon";
+    icon.className = list.kind === "inbox" ? "inbox-icon" : list.kind === "today" ? "sun-icon" : "list-menu-icon";
     icon.setAttribute("aria-hidden", "true");
     const count = document.createElement("span");
     count.className = "main-menu-count";
