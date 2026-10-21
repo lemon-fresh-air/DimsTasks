@@ -190,6 +190,7 @@ function enableTaskGestures({ container = els.list, onDelete, isSelectionMode, i
     cancelAnimationFrame(momentumFrame);
     const row = card.closest(".swipe-row");
     gesture = { row, card, id: row.dataset.id, pointerId: event.pointerId, pointerType: event.pointerType, canDrag: isSelectionMode(), startX: event.clientX, startY: event.clientY, lastY: event.clientY, dx: 0, horizontal: false, scrolling: false, longPress: false, dragging: false };
+    if (!gesture.canDrag) row.classList.add("pressing");
     card.setPointerCapture(event.pointerId);
     row.classList.remove("settling");
     if (event.pointerType === "mouse" && gesture.canDrag) {
@@ -209,6 +210,12 @@ function enableTaskGestures({ container = els.list, onDelete, isSelectionMode, i
       gesture.card = gesture.row?.querySelector(".task-card");
     }, 450);
   });
+
+  for (const type of ["selectstart", "contextmenu"]) {
+    container.addEventListener(type, event => {
+      if (event.target instanceof Element && event.target.closest(".task-card")) event.preventDefault();
+    });
+  }
 
   function captureRows() {
     return new Map([...container.children].filter(row => row.dataset.id).map(row => [row.dataset.id, row.getBoundingClientRect().top]));
@@ -324,7 +331,10 @@ function enableTaskGestures({ container = els.list, onDelete, isSelectionMode, i
       startDrag(event);
       return;
     }
-    if (Math.abs(dx) > 8 || Math.abs(dy) > 8) clearTimeout(gesture.longPressTimer);
+    if (Math.abs(dx) > 8 || Math.abs(dy) > 8) {
+      clearTimeout(gesture.longPressTimer);
+      gesture.row?.classList.remove("pressing");
+    }
     if (gesture.scrolling || (!gesture.horizontal && Math.abs(dy) > Math.abs(dx) && Math.abs(dy) > 8)) {
       event.preventDefault();
       gesture.scrolling = true;
@@ -368,7 +378,7 @@ function enableTaskGestures({ container = els.list, onDelete, isSelectionMode, i
     const { row, card, dx, horizontal, scrolling, longPress, longPressTimer, scrollVelocity } = gesture;
     gesture = null;
     clearTimeout(longPressTimer);
-    row?.classList.remove("lifted");
+    row?.classList.remove("lifted", "pressing");
     if (scrolling && Math.abs(scrollVelocity || 0) > .08) {
       const scrollContainer = container.closest(".project-screen");
       let velocity = scrollVelocity;
@@ -400,6 +410,7 @@ function enableTaskGestures({ container = els.list, onDelete, isSelectionMode, i
   const cancelGesture = event => {
     if (!gesture || gesture.pointerId !== event.pointerId) return;
     const { row, card, longPressTimer, dragging, preview, placeholder, rows = [], scrollFrame, followFrame } = gesture;
+    row?.classList.remove("pressing");
     gesture = null;
     clearTimeout(longPressTimer);
     if (dragging) {
