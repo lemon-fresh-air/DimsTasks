@@ -1,4 +1,10 @@
 <div class="app-shell">
+  <svg class="selection-icon-defs" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false">
+    <symbol id="selection-icon-all" viewBox="0 0 24 24"><rect x="2" y="2" width="20" height="20" rx="3"/></symbol>
+    <symbol id="selection-icon-calendar" viewBox="0 0 24 24"><rect x="2" y="4" width="20" height="18" rx="3"/><path d="M2 9.5h20M7.5 2.5v4m9-4v4"/><circle cx="12" cy="15.5" r="1.6" fill="currentColor" stroke="none"/></symbol>
+    <symbol id="selection-icon-move" viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="18" rx="3"/><path d="M6 12h12m-5-5 5 5-5 5"/></symbol>
+    <symbol id="selection-icon-delete" viewBox="0 0 24 24"><path d="M3 6h18m-15 0 1 15h10l1-15M9 3h6"/></symbol>
+  </svg>
   <header class="page-header">
     <div id="normal-header">
       <div class="page-title-row"><h1 id="current-list-heading">Нові</h1><button id="list-editor-open" class="list-editor-open" type="button" aria-label="Редагувати список" aria-controls="list-editor" aria-expanded="false" hidden><span class="edit-list-icon" aria-hidden="true"></span></button></div>
@@ -8,14 +14,14 @@
       <button id="selection-close" class="toolbar-action" type="button" aria-label="Завершити виділення"><span class="back-icon" aria-hidden="true"></span></button>
       <p id="selection-count">Вибрано: 0</p>
       <div class="selection-controls">
-        <button id="select-all-tasks" class="toolbar-action" type="button" aria-label="Вибрати всі завдання" aria-pressed="false"><span class="select-all-icon" aria-hidden="true"></span></button>
+        <button id="select-all-tasks" class="toolbar-action" type="button" aria-label="Вибрати всі завдання" aria-pressed="false"><svg class="selection-glyph" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="#selection-icon-all"/></svg></button>
         <div class="selection-actions" aria-label="Дії з вибраними завданнями">
-          <button id="date-selected" class="toolbar-action" type="button" aria-label="Змінити дату вибраних завдань" aria-haspopup="dialog"><span class="calendar-icon" aria-hidden="true"></span></button>
+          <button id="date-selected" class="toolbar-action" type="button" aria-label="Змінити дату вибраних завдань" aria-haspopup="dialog"><svg class="selection-glyph" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="#selection-icon-calendar"/></svg></button>
           <span class="bulk-list-dropdown">
-            <button id="list-selected" class="toolbar-action" type="button" aria-label="Редагувати список вибраних завдань" aria-haspopup="listbox" aria-expanded="false" aria-controls="selected-list-options"><span class="list-action-icon" aria-hidden="true"></span></button>
+            <button id="list-selected" class="toolbar-action" type="button" aria-label="Редагувати список вибраних завдань" aria-haspopup="listbox" aria-expanded="false" aria-controls="selected-list-options"><svg class="selection-glyph" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="#selection-icon-move"/></svg></button>
             <span id="selected-list-options" class="list-dropdown-options bulk-list-options" role="listbox" aria-label="Призначити список" hidden></span>
           </span>
-          <button id="delete-selected" class="toolbar-action destructive" type="button" aria-label="Видалити вибрані завдання"><span class="trash-icon" aria-hidden="true"></span></button>
+          <button id="delete-selected" class="toolbar-action destructive" type="button" aria-label="Видалити вибрані завдання"><svg class="selection-glyph" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="#selection-icon-delete"/></svg></button>
         </div>
       </div>
     </div>
@@ -162,12 +168,12 @@
   <div class="completed-tasks-panel">
     <header class="settings-header"><button id="completed-tasks-close" class="settings-close" type="button" aria-label="Повернутися до налаштувань"><span aria-hidden="true"></span></button><h2 id="completed-tasks-title">Завершені завдання</h2></header>
     <div id="completed-tasks-overview">
-      <div class="completed-tasks-week"><button id="completed-tasks-newer" type="button">← Новіший тиждень</button><strong id="completed-tasks-range"></strong><button id="completed-tasks-older" type="button">Попередній тиждень →</button></div>
+      <div class="completed-tasks-week"><button id="completed-tasks-newer" type="button"><span class="text-arrow left" aria-hidden="true"></span>Новіший тиждень</button><strong id="completed-tasks-range"></strong><button id="completed-tasks-older" type="button">Попередній тиждень<span class="text-arrow right" aria-hidden="true"></span></button></div>
       <p id="completed-tasks-empty" class="completed-tasks-empty" hidden>За цей тиждень завершених завдань немає.</p>
       <div id="completed-tasks-list"></div>
     </div>
     <div id="completed-task-detail" class="completed-task-detail" hidden>
-      <button id="completed-task-detail-back" type="button">← До завершених завдань</button>
+      <button id="completed-task-detail-back" type="button"><span class="text-arrow left" aria-hidden="true"></span>До завершених завдань</button>
       <h3 id="completed-task-detail-title"></h3>
       <p id="completed-task-detail-meta"></p>
       <p id="completed-task-detail-description" hidden></p>
@@ -203,10 +209,10 @@
       <button id="project-selection-close" class="toolbar-action" type="button" aria-label="Завершити виділення"><span class="back-icon" aria-hidden="true"></span></button>
       <strong id="project-selection-count">Вибрано: 0</strong>
       <div class="project-selection-actions">
-        <button id="project-select-all-tasks" class="toolbar-action" type="button" aria-label="Вибрати всі завдання проєкту" aria-pressed="false"><span class="select-all-icon" aria-hidden="true"></span></button>
-        <button id="project-date-selected" class="toolbar-action" type="button" aria-label="Змінити дату вибраних кроків"><span class="calendar-icon" aria-hidden="true"></span></button>
-        <span class="project-list-dropdown"><button id="project-list-selected" class="toolbar-action" type="button" aria-label="Перемістити вибрані кроки" aria-expanded="false"><span class="list-action-icon" aria-hidden="true"></span></button></span>
-        <button id="project-delete-selected" class="toolbar-action destructive" type="button" aria-label="Видалити вибрані кроки"><span class="trash-icon" aria-hidden="true"></span></button>
+        <button id="project-select-all-tasks" class="toolbar-action" type="button" aria-label="Вибрати всі завдання проєкту" aria-pressed="false"><svg class="selection-glyph" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="#selection-icon-all"/></svg></button>
+        <button id="project-date-selected" class="toolbar-action" type="button" aria-label="Змінити дату вибраних кроків"><svg class="selection-glyph" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="#selection-icon-calendar"/></svg></button>
+        <span class="project-list-dropdown"><button id="project-list-selected" class="toolbar-action" type="button" aria-label="Перемістити вибрані кроки" aria-expanded="false"><svg class="selection-glyph" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="#selection-icon-move"/></svg></button></span>
+        <button id="project-delete-selected" class="toolbar-action destructive" type="button" aria-label="Видалити вибрані кроки"><svg class="selection-glyph" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="#selection-icon-delete"/></svg></button>
       </div>
     </div>
     <span id="project-list-options" class="list-dropdown-options project-list-options" hidden></span>
