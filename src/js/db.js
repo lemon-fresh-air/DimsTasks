@@ -8,6 +8,7 @@ const TASK_DEFAULTS_SETTINGS_ID = "task-defaults";
 const WORKFLOW_SETTINGS_ID = "workflow";
 const BACKUP_NAMING_SETTINGS_ID = "backup-naming";
 const NAVIGATION_SETTINGS_ID = "navigation";
+const TODAY_LAYOUT_SETTINGS_ID = "today-layout";
 const START_SCREEN_IDS = ["today", "upcoming", "projects", "inbox", "overview"];
 
 function ensureIndex(store, name, keyPath, options = {}) {
@@ -360,6 +361,30 @@ const projectDb = {
 };
 
 const settingsDb = {
+  todayLayout: () => appDb.get("settings", TODAY_LAYOUT_SETTINGS_ID),
+  saveTodayLayout: (layout, date) => transact("settings", "readwrite", (tx, stores) => {
+    if (localDateValue() !== date || layout && (layout.date !== date || !isValidTodayLayoutShape(layout))) {
+      throw new Error("Денне компонування більше не актуальне");
+    }
+    const request = stores.settings.get(TODAY_LAYOUT_SETTINGS_ID);
+    request.onsuccess = () => {
+      if (localDateValue() !== date) { tx.abort(); return; }
+      if (!layout) {
+        if (request.result?.date === date) stores.settings.delete(TODAY_LAYOUT_SETTINGS_ID);
+        return;
+      }
+      const now = new Date().toISOString();
+      stores.settings.put({ id: TODAY_LAYOUT_SETTINGS_ID, entityVersion: 1,
+        date, groups: layout.groups, items: layout.items,
+        createdAt: request.result?.createdAt || now, updatedAt: now });
+    };
+  }),
+  clearStaleTodayLayout: date => transact("settings", "readwrite", (_tx, stores) => {
+    const request = stores.settings.get(TODAY_LAYOUT_SETTINGS_ID);
+    request.onsuccess = () => {
+      if (request.result && request.result.date !== date) stores.settings.delete(TODAY_LAYOUT_SETTINGS_ID);
+    };
+  }),
   appearance: async () => {
     const settings = await appDb.get("settings", APPEARANCE_SETTINGS_ID);
     return {

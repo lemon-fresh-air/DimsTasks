@@ -1,6 +1,6 @@
 const BACKUP_FORMAT = "local-first-pwa-backup";
 const APP_ID = "dims-tasks";
-const BACKUP_FORMAT_VERSION = 14;
+const BACKUP_FORMAT_VERSION = 15;
 const BACKUP_MAX_BYTES = 50 * 1024 * 1024;
 
 function backupCounts(data) { return Object.fromEntries(STORE_NAMES.map(name => [name, data[name].length])); }
@@ -14,6 +14,18 @@ function validDate(value) {
 function validTime(value) { return value === null || typeof value === "string" && /^([01]\d|2[0-3]):[0-5]\d$/.test(value); }
 function validOptionalId(value) { return value === null || typeof value === "string" && value.length > 0; }
 function validPosition(value) { return Number.isSafeInteger(value) && value >= 0; }
+function backupLocalDate(now = new Date()) {
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+}
+function normalizeBackupTodayLayout(data, date = backupLocalDate()) {
+  const record = data.settings.find(item => item.id === "today-layout");
+  if (!record) return data;
+  const settings = data.settings.filter(item => item.id !== "today-layout");
+  if (record.date !== date) return { ...data, settings };
+  const visible = visibleProjectTasks(data.tasks).filter(task => isTaskDueToday(task, date));
+  const layout = normalizeTodayGroups(record, visible, date);
+  return { ...data, settings: layout ? [...settings, { ...record, ...layout }] : settings };
+}
 function normalizeBackupPrefix(value) {
   const cleaned = String(value || "").trim().replace(/[<>:"/\\|?*\u0000-\u001f]/g, "-").replace(/[. ]+$/g, "");
   return cleaned || "Dimstasks";
@@ -67,6 +79,7 @@ function validateBackupData(data, { strict = true } = {}) {
       if (name === "projects" && (typeof record.title !== "string" || typeof record.goal !== "string" || typeof record.description !== "string" || !["active", "completed"].includes(record.status) || !validDate(record.dueDate) || !validTime(record.dueTime) || record.dueTime && !record.dueDate || typeof record.showCountdown !== "boolean" || !validOptionalId(record.lastListId) || !validOptionalId(record.defaultListId) || typeof record.addNewTasksFirst !== "boolean" || record.completedAt !== null && !validIso(record.completedAt) || !validPosition(record.position))) throw new Error(`Некоректний проєкт: ${record.id}`);
       if (name === "tasks" && (typeof record.listId !== "string" || !validOptionalId(record.sectionId) || !validOptionalId(record.projectId) || typeof record.title !== "string" || typeof record.description !== "string" || !["active", "completed", "archived"].includes(record.status) || record.completedAt !== null && !validIso(record.completedAt) || !validDate(record.dueDate) || !validTime(record.dueTime) || record.dueTime && !record.dueDate || !validPosition(record.position) || record.todayPosition !== null && !validPosition(record.todayPosition) || record.projectPosition !== null && !validPosition(record.projectPosition) || record.returnedToInboxAt !== null && !validIso(record.returnedToInboxAt))) throw new Error(`Некоректне завдання: ${record.id}`);
       if (name === "settings" && (record.id === "appearance" && (!["light", "dark"].includes(record.theme) || typeof record.useSystemTheme !== "boolean") || record.id === "task-defaults" && typeof record.todayListId !== "string" || record.id === "workflow" && typeof record.returnOverdueToInbox !== "boolean" || record.id === "backup-naming" && (typeof record.prefix !== "string" || !record.prefix.trim() || !Number.isSafeInteger(record.nextVersion) || record.nextVersion < 1) || record.id === "navigation" && !["today", "upcoming", "projects", "inbox", "overview"].includes(record.startScreen))) throw new Error(`Некоректне налаштування: ${record.id}`);
+      if (name === "settings" && record.id === "today-layout" && (!validDate(record.date) || !isValidTodayLayoutShape(record))) throw new Error("Некоректне денне компонування");
     }
   }
   if (!strict) return data;
@@ -93,7 +106,7 @@ function mergeBackupData(local, incoming) {
     }
     merged[name] = [...records.values()];
   }
-  const reconciled = preserveBackupNaming(merged, backupNamingRecord(local));
+  const reconciled = normalizeBackupTodayLayout(preserveBackupNaming(merged, backupNamingRecord(local)));
   validateBackupData(reconciled);
   return { data: reconciled, changes };
 }
@@ -117,7 +130,7 @@ function normalizeOlderBackup(data) {
     return createTask({ ...record, listId, sectionId, projectId,
       projectPosition: projectId ? record.projectPosition : null });
   });
-  const settings = data.settings.map(record => ({ ...record,
+  const settings = data.settings.filter(record => record.id !== "today-layout").map(record => ({ ...record,
     entityVersion: record.entityVersion || 1,
     updatedAt: record.updatedAt || record.createdAt,
     customFields: record.customFields || {},
@@ -143,7 +156,7 @@ function completeBackupFields(data) {
 }
 
 async function prepareBackup({ prefix = "Dimstasks", version = 1 } = {}) {
-  const data = validateBackupData(withBackupNaming(completeBackupFields(await appDb.exportAll()), prefix, version + 1));
+  const data = validateBackupData(normalizeBackupTodayLayout(withBackupNaming(completeBackupFields(await appDb.exportAll()), prefix, version + 1)));
   const payload = { format: BACKUP_FORMAT, appId: APP_ID, formatVersion: BACKUP_FORMAT_VERSION, databaseVersion: DB_VERSION, exportedAt: new Date().toISOString(), data };
   const blob = new Blob([JSON.stringify(payload)], { type: "application/json" });
   if (blob.size > BACKUP_MAX_BYTES) throw new Error("Копія завелика для імпорту (понад 50 МБ)");
@@ -177,6 +190,7 @@ async function readBackup(file) {
   validateBackupData(data, { strict: version === BACKUP_FORMAT_VERSION });
   if (version < BACKUP_FORMAT_VERSION) data = normalizeOlderBackup(data);
   validateBackupData(data);
+  data = normalizeBackupTodayLayout(data);
   const fileNumber = backupNumberFromFileName(file.name);
   if (fileNumber) {
     const naming = backupNamingRecord(data);

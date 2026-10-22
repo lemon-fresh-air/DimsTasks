@@ -184,12 +184,13 @@ function enableTaskGestures({ container = els.list, onDelete, isSelectionMode, i
   let momentumFrame = null;
 
   container.addEventListener("pointerdown", event => {
-    if (event.target.closest(".toggle")) return;
+    if (event.target.closest(".toggle, button:not(.task-open)")) return;
     const card = event.target.closest(".task-card");
-    if (!card || event.button > 0) return;
+    if (!card || !container.contains(card) || event.button > 0) return;
     cancelAnimationFrame(momentumFrame);
     const row = card.closest(".swipe-row");
-    gesture = { row, card, id: row.dataset.id, pointerId: event.pointerId, pointerType: event.pointerType, canDrag: isSelectionMode() && canDragRow(row), startX: event.clientX, startY: event.clientY, lastY: event.clientY, dx: 0, horizontal: false, scrolling: false, longPress: false, dragging: false };
+    if (!row || !row.dataset.id) return;
+    gesture = { row, card, dragContainer: row.parentElement, id: row.dataset.id, pointerId: event.pointerId, pointerType: event.pointerType, canDrag: isSelectionMode() && canDragRow(row), startX: event.clientX, startY: event.clientY, lastY: event.clientY, dx: 0, horizontal: false, scrolling: false, longPress: false, dragging: false };
     if (!gesture.canDrag) row.classList.add("pressing");
     card.setPointerCapture(event.pointerId);
     row.classList.remove("settling");
@@ -208,6 +209,7 @@ function enableTaskGestures({ container = els.list, onDelete, isSelectionMode, i
       onLongPress(row.dataset.id);
       gesture.row = container.querySelector(`[data-id="${CSS.escape(gesture.id)}"]`);
       gesture.card = gesture.row?.querySelector(".task-card");
+      gesture.dragContainer = gesture.row?.parentElement;
     }, 450);
   });
 
@@ -218,13 +220,13 @@ function enableTaskGestures({ container = els.list, onDelete, isSelectionMode, i
     });
   }
 
-  function captureRows() {
-    return new Map([...container.children].filter(row => row.dataset.id).map(row => [row.dataset.id, row.getBoundingClientRect().top]));
+  function captureRows(dragContainer) {
+    return new Map([...dragContainer.children].filter(row => row.dataset.id).map(row => [row.dataset.id, row.getBoundingClientRect().top]));
   }
 
-  function animateRows(previous) {
+  function animateRows(previous, dragContainer) {
     if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-    for (const row of container.children) {
+    for (const row of dragContainer.children) {
       const top = previous.get(row.dataset.id);
       if (top === undefined) continue;
       const delta = top - row.getBoundingClientRect().top;
@@ -238,10 +240,12 @@ function enableTaskGestures({ container = els.list, onDelete, isSelectionMode, i
       onSelectOnly(gesture.id);
       gesture.row = container.querySelector(`[data-id="${CSS.escape(gesture.id)}"]`);
       gesture.card = gesture.row?.querySelector(".task-card");
+      gesture.dragContainer = gesture.row?.parentElement;
       gesture.card?.setPointerCapture(event.pointerId);
     }
+    if (!gesture.row || !gesture.dragContainer || !canDragRow(gesture.row)) return;
     const selectedIds = getSelectedIds();
-    const rows = [...container.children].filter(row => selectedIds.has(row.dataset.id) && canDragRow(row));
+    const rows = [...gesture.dragContainer.children].filter(row => selectedIds.has(row.dataset.id) && canDragRow(row));
     if (!rows.length) return;
     const sourceRect = gesture.row.getBoundingClientRect();
     const totalHeight = rows.reduce((sum, row) => sum + row.getBoundingClientRect().height, 0);
@@ -252,7 +256,7 @@ function enableTaskGestures({ container = els.list, onDelete, isSelectionMode, i
     rows.forEach(row => row.classList.add("drag-source"));
     const preview = document.createElement("div");
     preview.className = "drag-preview";
-    preview.style.width = `${container.getBoundingClientRect().width}px`;
+    preview.style.width = `${gesture.dragContainer.getBoundingClientRect().width}px`;
     preview.append(gesture.card.cloneNode(true));
     if (rows.length > 1) {
       const badge = document.createElement("span");
@@ -266,7 +270,7 @@ function enableTaskGestures({ container = els.list, onDelete, isSelectionMode, i
       offsetX: event.clientX - sourceRect.left, offsetY: event.clientY - sourceRect.top,
       currentX: sourceRect.left, currentY: sourceRect.top, targetX: sourceRect.left, targetY: sourceRect.top
     };
-    container.classList.add("dragging");
+    gesture.dragContainer.classList.add("dragging");
     positionPreview(event.clientX, event.clientY);
     gesture.followFrame = requestAnimationFrame(renderPreview);
     gesture.scrollFrame = requestAnimationFrame(autoScroll);
@@ -290,15 +294,15 @@ function enableTaskGestures({ container = els.list, onDelete, isSelectionMode, i
   }
 
   function updateInsertion(clientY) {
-    const candidates = [...container.children].filter(row => row.dataset.id && canDragRow(row) && !gesture.selectedIds.has(row.dataset.id));
+    const candidates = [...gesture.dragContainer.children].filter(row => row.dataset.id && canDragRow(row) && !gesture.selectedIds.has(row.dataset.id));
     const before = candidates.find(row => clientY < row.getBoundingClientRect().top + row.getBoundingClientRect().height / 2) || null;
     const beforeId = before?.dataset.id || null;
     if (beforeId === gesture.lastBeforeId) return;
-    const previous = captureRows();
-    if (before) before.before(gesture.placeholder); else container.append(gesture.placeholder);
+    const previous = captureRows(gesture.dragContainer);
+    if (before) before.before(gesture.placeholder); else gesture.dragContainer.append(gesture.placeholder);
     gesture.lastBeforeId = beforeId;
     gesture.moved = true;
-    animateRows(previous);
+    animateRows(previous, gesture.dragContainer);
   }
 
   function autoScroll() {
@@ -372,8 +376,9 @@ function enableTaskGestures({ container = els.list, onDelete, isSelectionMode, i
       finished.preview.remove();
       finished.placeholder.remove();
       finished.rows.forEach(row => row.classList.remove("drag-source", "lifted"));
-      container.classList.remove("dragging");
-      if (finished.moved) onReorder({ beforeId: finished.lastBeforeId });
+      finished.dragContainer.classList.remove("dragging");
+      finished.row.dataset.swiped = "true";
+      if (finished.moved) onReorder({ beforeId: finished.lastBeforeId, groupId: finished.dragContainer.closest(".today-group")?.dataset.groupId || null });
       return;
     }
     const { row, card, dx, horizontal, scrolling, longPress, longPressTimer, scrollVelocity } = gesture;
@@ -410,7 +415,7 @@ function enableTaskGestures({ container = els.list, onDelete, isSelectionMode, i
 
   const cancelGesture = event => {
     if (!gesture || gesture.pointerId !== event.pointerId) return;
-    const { row, card, longPressTimer, dragging, preview, placeholder, rows = [], scrollFrame, followFrame } = gesture;
+    const { row, card, dragContainer, longPressTimer, dragging, preview, placeholder, rows = [], scrollFrame, followFrame } = gesture;
     row?.classList.remove("pressing");
     gesture = null;
     clearTimeout(longPressTimer);
@@ -420,7 +425,7 @@ function enableTaskGestures({ container = els.list, onDelete, isSelectionMode, i
       preview.remove();
       placeholder.remove();
       rows.forEach(item => item.classList.remove("drag-source", "lifted"));
-      container.classList.remove("dragging");
+      dragContainer.classList.remove("dragging");
       return;
     }
     row.classList.remove("swiping");

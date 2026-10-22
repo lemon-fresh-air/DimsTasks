@@ -16,8 +16,8 @@ const context = vm.createContext({
   URL: { createObjectURL: () => "blob:test", revokeObjectURL: () => {} },
   document: { createElement: () => ({ click() {} }) }
 });
-vm.runInContext(`${model}\n${importExport}\nthis.backup = { parseBackup, readBackup, validateBackupData, mergeBackupData, completeBackupFields, backupFileName, withBackupNaming, preserveBackupNaming, BACKUP_FORMAT_VERSION };`, context);
-const { parseBackup, readBackup, validateBackupData, mergeBackupData, completeBackupFields, backupFileName, withBackupNaming, preserveBackupNaming, BACKUP_FORMAT_VERSION } = context.backup;
+vm.runInContext(`${model}\n${importExport}\nthis.backup = { parseBackup, readBackup, validateBackupData, mergeBackupData, completeBackupFields, backupFileName, withBackupNaming, preserveBackupNaming, normalizeBackupTodayLayout, BACKUP_FORMAT_VERSION };`, context);
+const { parseBackup, readBackup, validateBackupData, mergeBackupData, completeBackupFields, backupFileName, withBackupNaming, preserveBackupNaming, normalizeBackupTodayLayout, BACKUP_FORMAT_VERSION } = context.backup;
 const file = (value, name) => ({ name, text: async () => JSON.stringify(value) });
 const stamp = "2026-01-01T00:00:00.000Z";
 const base = id => ({ id, entityVersion: 1, createdAt: stamp, updatedAt: stamp, customFields: {} });
@@ -46,6 +46,54 @@ test("project fixed list survives format 14 and format 13 defaults to automatic"
   delete current.projects[0].defaultListId;
   const older = await parseBackup(file({ format: "local-first-pwa-backup", appId: "dims-tasks", formatVersion: 13, data: current }));
   assert.equal(older.projects[0].defaultListId, null);
+});
+
+test("format 14 remains importable without a daily layout", async () => {
+  const restored = await parseBackup(file({ format: "local-first-pwa-backup", appId: "dims-tasks", formatVersion: 14, data }));
+  assert.equal(restored.settings.some(record => record.id === "today-layout"), false);
+});
+
+test("current layout survives only its local date and loses missing or invisible references", async () => {
+  const today = new Date();
+  const date = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+  const current = structuredClone(data);
+  current.tasks[0].dueDate = date;
+  current.tasks.push({ ...current.tasks[0], id: "hidden", status: "completed" });
+  current.settings.push({ ...base("today-layout"), date,
+    groups: [{ id: "green", color: "#2D9E6B", collapsed: false, taskIds: ["late", "hidden", "missing"] }],
+    items: [{ type: "group", id: "green" }, { type: "task", id: "lost-outside" }] });
+  const payload = { format: "local-first-pwa-backup", appId: "dims-tasks", formatVersion: BACKUP_FORMAT_VERSION, data: current };
+  const restored = await parseBackup(file(payload));
+  const layout = restored.settings.find(record => record.id === "today-layout");
+  assert.deepEqual(Array.from(layout.groups[0].taskIds), ["late"]);
+  assert.deepEqual(Array.from(layout.items, item => item.type), ["group"]);
+  assert.equal(normalizeBackupTodayLayout(restored, "2000-01-01").settings.some(record => record.id === "today-layout"), false);
+});
+
+test("malformed current layout is rejected before import and merge keeps one whole record", async () => {
+  const current = structuredClone(data);
+  current.settings.push({ ...base("today-layout"), date: "2026-01-01", groups: [], items: [] });
+  const payload = { format: "local-first-pwa-backup", appId: "dims-tasks", formatVersion: BACKUP_FORMAT_VERSION, data: current };
+  await assert.rejects(parseBackup(file(payload)), /денне компонування/);
+  const local = structuredClone(data);
+  local.settings.push({ ...base("today-layout"), date: "2026-01-01", groups: [{ id: "g", color: "#2D9E6B", collapsed: false, taskIds: [] }], items: [{ type: "group", id: "g" }] });
+  const incoming = structuredClone(local);
+  incoming.settings.find(record => record.id === "today-layout").groups = [{ id: "b", color: "#3A7BD5", collapsed: true, taskIds: [] }];
+  incoming.settings.find(record => record.id === "today-layout").items = [{ type: "group", id: "b" }];
+  incoming.settings.find(record => record.id === "today-layout").updatedAt = "2099-01-01T00:00:00.000Z";
+  const merged = mergeBackupData(local, incoming);
+  assert.equal(merged.data.settings.some(record => record.id === "today-layout"), false);
+  const sameDay = new Date();
+  const date = `${sameDay.getFullYear()}-${String(sameDay.getMonth() + 1).padStart(2, "0")}-${String(sameDay.getDate()).padStart(2, "0")}`;
+  local.settings.find(record => record.id === "today-layout").date = date;
+  incoming.settings.find(record => record.id === "today-layout").date = date;
+  local.tasks[0].dueDate = date;
+  incoming.tasks[0].dueDate = date;
+  local.settings.find(record => record.id === "today-layout").groups[0].taskIds = ["late"];
+  incoming.settings.find(record => record.id === "today-layout").groups[0].taskIds = ["late"];
+  const selected = mergeBackupData(local, incoming).data.settings.find(record => record.id === "today-layout");
+  assert.deepEqual(Array.from(selected.groups, group => group.id), ["b"]);
+  assert.deepEqual(Array.from(selected.items, item => item.id), ["b"]);
 });
 
 test("format 9 remains importable without today positions", async () => {
@@ -183,6 +231,6 @@ test("merge keeps local on equal time, uses newer records, and retains unique re
 });
 
 test("future and malformed files are rejected before restoration", async () => {
-  await assert.rejects(readBackup(file({ format: "local-first-pwa-backup", appId: "dims-tasks", formatVersion: 15, data })), /ще не підтримано/);
+  await assert.rejects(readBackup(file({ format: "local-first-pwa-backup", appId: "dims-tasks", formatVersion: 16, data })), /ще не підтримано/);
   await assert.rejects(readBackup({ text: async () => "{" }), /JSON-файл/);
 });

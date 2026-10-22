@@ -4,6 +4,7 @@
     <symbol id="selection-icon-calendar" viewBox="0 0 24 24"><rect x="2" y="4" width="20" height="18" rx="3"/><path d="M2 9.5h20M7.5 2.5v4m9-4v4"/><circle cx="12" cy="15.5" r="1.6" fill="currentColor" stroke="none"/></symbol>
     <symbol id="selection-icon-move" viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="18" rx="3"/><path d="M6 12h12m-5-5 5 5-5 5"/></symbol>
     <symbol id="selection-icon-delete" viewBox="0 0 24 24"><path d="M3 6h18m-15 0 1 15h10l1-15M9 3h6"/></symbol>
+    <symbol id="selection-icon-group" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="2.5"/><rect x="14" y="3" width="7" height="7" rx="2.5"/><rect x="3" y="14" width="7" height="7" rx="2.5"/><rect x="14" y="14" width="7" height="7" rx="2.5"/></symbol>
   </svg>
   <header class="page-header">
     <div id="normal-header">
@@ -21,6 +22,7 @@
             <button id="list-selected" class="toolbar-action" type="button" aria-label="Редагувати список вибраних завдань" aria-haspopup="listbox" aria-expanded="false" aria-controls="selected-list-options"><svg class="selection-glyph" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="#selection-icon-move"/></svg></button>
             <span id="selected-list-options" class="list-dropdown-options bulk-list-options" role="listbox" aria-label="Призначити список" hidden></span>
           </span>
+          <button id="group-selected" class="toolbar-action group-action" type="button" aria-label="Група" aria-haspopup="dialog" hidden><svg class="selection-glyph" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="#selection-icon-group"/></svg></button>
           <button id="delete-selected" class="toolbar-action destructive" type="button" aria-label="Видалити вибрані завдання"><svg class="selection-glyph" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="#selection-icon-delete"/></svg></button>
         </div>
       </div>
@@ -28,6 +30,7 @@
   </header>
   <main><section class="task-section" aria-labelledby="current-list-heading">
     <ul id="task-list" aria-live="polite"></ul>
+    <p id="today-order-hint" class="today-order-hint" hidden>Перетягуйте вибрані задачі в межах їхньої групи.</p>
     <div id="empty-state" class="empty"><span class="empty-icon" aria-hidden="true">✓</span><p>У цьому списку поки немає задач</p><small>Натисніть кнопку внизу, щоб додати першу.</small></div>
   </section><div id="list-swipe-zone" class="list-swipe-zone" aria-hidden="true"></div></main>
   <section id="projects-overview" class="projects-overview" aria-labelledby="projects-title" hidden>
@@ -56,6 +59,13 @@
     <button id="nav-inbox" class="nav-item active" type="button" data-nav="inbox" aria-current="page"><span class="nav-icon-field" aria-hidden="true"><span class="inbox-icon"></span></span><span>Нові</span></button>
     <button id="main-menu-open" class="nav-item" type="button" data-nav="overview" aria-label="Відкрити огляд" aria-controls="main-menu" aria-expanded="false"><span class="nav-icon-field" aria-hidden="true"><span class="overview-icon"></span></span><span>Огляд</span></button>
   </div></nav>
+</div>
+<div id="today-group-backdrop" class="project-delete-dialog-backdrop" hidden>
+  <section id="today-group-dialog" class="today-group-dialog" role="dialog" aria-modal="true" aria-labelledby="today-group-title" tabindex="-1">
+    <h2 id="today-group-title">Група для вибраних задач</h2>
+    <div id="today-group-options" class="today-group-options"></div>
+    <button id="today-group-cancel" class="today-group-cancel" type="button">Скасувати</button>
+  </section>
 </div>
 <section id="main-menu" class="main-menu" aria-label="Головне меню" hidden>
   <div class="main-menu-panel">

@@ -190,6 +190,195 @@ function reorderTodayTaskBlock(records, visible, selectedIds, beforeId) {
   ]));
   return records.map(task => replacements.get(task.id) || task);
 }
+const TODAY_GROUP_COLORS = ["#E05A3A", "#3A7BD5", "#2D9E6B", "#9B59B6", "#D4A017", "#E05E87", "#607D8B"];
+
+function isValidTodayLayoutShape(layout) {
+  if (!layout || typeof layout !== "object" || Array.isArray(layout)
+    || typeof layout.date !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(layout.date)
+    || !Array.isArray(layout.groups) || !layout.groups.length || !Array.isArray(layout.items)) return false;
+  const groupIds = new Set();
+  const colors = new Set();
+  const memberIds = new Set();
+  for (const group of layout.groups) {
+    if (!group || typeof group !== "object" || Array.isArray(group)
+      || typeof group.id !== "string" || !group.id || groupIds.has(group.id)
+      || !TODAY_GROUP_COLORS.includes(group.color) || colors.has(group.color)
+      || typeof group.collapsed !== "boolean" || !Array.isArray(group.taskIds)) return false;
+    groupIds.add(group.id);
+    colors.add(group.color);
+    for (const id of group.taskIds) {
+      if (typeof id !== "string" || !id || memberIds.has(id)) return false;
+      memberIds.add(id);
+    }
+  }
+  const outer = new Set();
+  const referencedGroups = new Set();
+  for (const item of layout.items) {
+    if (!item || typeof item !== "object" || Array.isArray(item)
+      || !["group", "task"].includes(item.type) || typeof item.id !== "string" || !item.id) return false;
+    const key = `${item.type}\u0000${item.id}`;
+    if (outer.has(key) || item.type === "task" && memberIds.has(item.id)
+      || item.type === "group" && !groupIds.has(item.id)) return false;
+    outer.add(key);
+    if (item.type === "group") referencedGroups.add(item.id);
+  }
+  return groupIds.size === referencedGroups.size;
+}
+
+// null means that the ordinary todayPosition order is in effect.
+function normalizeTodayGroups(layout, visible, date) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new Error("Некоректна локальна дата");
+  if (!layout || layout.date !== date || !Array.isArray(layout.groups) || !layout.groups.length) return null;
+  const orderedTasks = visible.slice().sort(compareTodayTasks);
+  const visibleIds = new Set(orderedTasks.map(task => task.id));
+  const groupIds = new Set();
+  const colors = new Set();
+  const assigned = new Set();
+  const groups = [];
+  for (const group of layout.groups) {
+    if (!group || typeof group.id !== "string" || !group.id || groupIds.has(group.id)
+      || !TODAY_GROUP_COLORS.includes(group.color) || colors.has(group.color)) continue;
+    const taskIds = [];
+    for (const id of Array.isArray(group.taskIds) ? group.taskIds : []) {
+      if (!visibleIds.has(id) || assigned.has(id)) continue;
+      assigned.add(id);
+      taskIds.push(id);
+    }
+    if (!taskIds.length) continue;
+    groupIds.add(group.id);
+    colors.add(group.color);
+    groups.push({ id: group.id, color: group.color, collapsed: group.collapsed === true, taskIds });
+  }
+  if (!groups.length) return null;
+  const items = [];
+  const seenGroups = new Set();
+  const seenTasks = new Set();
+  for (const item of Array.isArray(layout.items) ? layout.items : []) {
+    if (item?.type === "group" && groupIds.has(item.id) && !seenGroups.has(item.id)) {
+      items.push({ type: "group", id: item.id });
+      seenGroups.add(item.id);
+    } else if (item?.type === "task" && visibleIds.has(item.id) && !assigned.has(item.id) && !seenTasks.has(item.id)) {
+      items.push({ type: "task", id: item.id });
+      seenTasks.add(item.id);
+    }
+  }
+  for (const group of groups) if (!seenGroups.has(group.id)) items.push({ type: "group", id: group.id });
+  const missing = orderedTasks.filter(task => !assigned.has(task.id) && !seenTasks.has(task.id))
+    .map(task => ({ type: "task", id: task.id }));
+  return { date, groups, items: [...missing, ...items] };
+}
+
+function todayGroupBase(visible, date) {
+  return { date, groups: [], items: visible.slice().sort(compareTodayTasks).map(task => ({ type: "task", id: task.id })) };
+}
+
+function createTodayGroup(layout, visible, date, color, selectedIds, groupId) {
+  if (!TODAY_GROUP_COLORS.includes(color)) throw new Error("Невідомий колір групи");
+  if (typeof groupId !== "string" || !groupId) throw new Error("Потрібен ID групи");
+  const current = normalizeTodayGroups(layout, visible, date) || todayGroupBase(visible, date);
+  if (current.groups.some(group => group.id === groupId || group.color === color)) throw new Error("Група або колір уже існує");
+  const selected = new Set(selectedIds);
+  const positions = current.items.map((item, index) => selected.has(item.id) && item.type === "task" ? index : -1).filter(index => index >= 0);
+  if (!positions.length || positions.length !== selected.size) throw new Error("Виберіть видимі незгруповані задачі");
+  const taskIds = positions.map(index => current.items[index].id);
+  const firstId = taskIds[0];
+  const items = current.items.filter(item => item.type !== "task" || !selected.has(item.id));
+  const firstIndex = current.items.findIndex(item => item.type === "task" && item.id === firstId);
+  const insertion = current.items.slice(0, firstIndex).filter(item => item.type !== "task" || !selected.has(item.id)).length;
+  items.splice(insertion, 0, { type: "group", id: groupId });
+  return { date, groups: [...current.groups, { id: groupId, color, collapsed: false, taskIds }], items };
+}
+
+function assignTodayGroupTasks(layout, visible, date, groupId, selectedIds) {
+  const current = normalizeTodayGroups(layout, visible, date);
+  if (!current) throw new Error("Немає денних груп");
+  const target = current.groups.find(group => group.id === groupId);
+  if (!target) throw new Error("Групу не знайдено");
+  const selected = new Set(selectedIds);
+  const visibleIds = new Set(visible.map(task => task.id));
+  if ([...selected].some(id => !visibleIds.has(id))) throw new Error("Задачу не видно на Сьогодні");
+  const ordered = current.items.flatMap(item => item.type === "task" ? [item.id]
+    : current.groups.find(group => group.id === item.id).taskIds).filter(id => selected.has(id) && !target.taskIds.includes(id));
+  return normalizeTodayGroups({ date, groups: current.groups.map(group => ({ ...group, taskIds: group.id === groupId
+    ? [...group.taskIds, ...ordered] : group.taskIds.filter(id => !selected.has(id)) })),
+    items: current.items.filter(item => item.type !== "task" || !selected.has(item.id)) }, visible, date);
+}
+
+function removeTodayGroupTasks(layout, visible, date, groupId, selectedIds) {
+  const current = normalizeTodayGroups(layout, visible, date);
+  const group = current?.groups.find(item => item.id === groupId);
+  if (!group) throw new Error("Групу не знайдено");
+  const selected = new Set(selectedIds);
+  if ([...selected].some(id => !group.taskIds.includes(id))) throw new Error("Задачі немає в групі");
+  const removed = group.taskIds.filter(id => selected.has(id));
+  const groups = current.groups.map(item => item.id === groupId
+    ? { ...item, taskIds: item.taskIds.filter(id => !selected.has(id)) } : item).filter(item => item.taskIds.length);
+  if (!groups.length) return null;
+  const ranks = new Map(visible.slice().sort(compareTodayTasks).map((task, index) => [task.id, index]));
+  const byGroup = new Map(groups.map(item => [item.id, item]));
+  const anchor = item => item.type === "task" ? ranks.get(item.id)
+    : Math.min(...byGroup.get(item.id).taskIds.map(id => ranks.get(id)));
+  const items = current.items.filter(item => item.type !== "group" || byGroup.has(item.id));
+  for (const id of removed.sort((a, b) => ranks.get(a) - ranks.get(b))) {
+    const index = items.findIndex(item => anchor(item) > ranks.get(id));
+    items.splice(index < 0 ? items.length : index, 0, { type: "task", id });
+  }
+  return { date, groups, items };
+}
+
+function ungroupTodayGroup(layout, visible, date, groupId) {
+  const current = normalizeTodayGroups(layout, visible, date);
+  const group = current?.groups.find(item => item.id === groupId);
+  if (!group) throw new Error("Групу не знайдено");
+  if (current.groups.length === 1) return null;
+  return { date, groups: current.groups.filter(item => item.id !== groupId),
+    items: current.items.flatMap(item => item.type === "group" && item.id === groupId
+      ? group.taskIds.map(id => ({ type: "task", id })) : [item]) };
+}
+
+function setTodayGroupCollapsed(layout, visible, date, groupId, collapsed) {
+  const current = normalizeTodayGroups(layout, visible, date);
+  if (!current?.groups.some(group => group.id === groupId)) throw new Error("Групу не знайдено");
+  return { ...current, groups: current.groups.map(group => group.id === groupId ? { ...group, collapsed: Boolean(collapsed) } : group) };
+}
+
+function moveTodayOuterItem(layout, visible, date, type, id, beforeType = null, beforeId = null) {
+  const current = normalizeTodayGroups(layout, visible, date);
+  if (!current) throw new Error("Немає денних груп");
+  const source = current.items.findIndex(item => item.type === type && item.id === id);
+  if (source < 0 || (beforeId !== null && !current.items.some(item => item.type === beforeType && item.id === beforeId))) throw new Error("Елемент не знайдено");
+  const items = current.items.slice();
+  const [moved] = items.splice(source, 1);
+  const target = beforeId === null ? items.length : items.findIndex(item => item.type === beforeType && item.id === beforeId);
+  items.splice(target < 0 ? items.length : target, 0, moved);
+  return { ...current, items };
+}
+
+function shiftTodayGroupTask(layout, visible, date, groupId, taskId, direction) {
+  const current = normalizeTodayGroups(layout, visible, date);
+  const group = current?.groups.find(item => item.id === groupId);
+  if (!group || ![-1, 1].includes(direction)) throw new Error("Некоректний зсув задачі");
+  const index = group.taskIds.indexOf(taskId);
+  if (index < 0) throw new Error("Задачі немає в групі");
+  const taskIds = group.taskIds.slice();
+  const next = index + direction;
+  if (next >= 0 && next < taskIds.length) [taskIds[index], taskIds[next]] = [taskIds[next], taskIds[index]];
+  return { ...current, groups: current.groups.map(item => item.id === groupId ? { ...item, taskIds } : item) };
+}
+
+function reorderTodayGroupTaskBlock(layout, visible, date, groupId, selectedIds, beforeId = null) {
+  const current = normalizeTodayGroups(layout, visible, date);
+  const group = current?.groups.find(item => item.id === groupId);
+  if (!group) throw new Error("Групу не знайдено");
+  const selected = new Set(selectedIds);
+  const moved = group.taskIds.filter(id => selected.has(id));
+  if (!moved.length) return current;
+  const remaining = group.taskIds.filter(id => !selected.has(id));
+  const index = beforeId === null ? remaining.length : remaining.indexOf(beforeId);
+  if (index < 0) throw new Error("Місце перестановки не знайдено");
+  remaining.splice(index, 0, ...moved);
+  return { ...current, groups: current.groups.map(item => item.id === groupId ? { ...item, taskIds: remaining } : item) };
+}
 function normalizeTaskOrder(records) {
   const groups = new Map();
   for (const task of records) {
