@@ -245,7 +245,7 @@ function reorderProjectSteps(records, projectId, movedId, beforeId) {
   return reorderProjectStepBlock(records, projectId, new Set([movedId]), beforeId);
 }
 function reorderProjectStepBlock(records, projectId, selectedIds, beforeId) {
-  const steps = records.filter(task => task.projectId === projectId).sort(compareProjectTasks);
+  const steps = records.filter(task => task.projectId === projectId && !isTaskCompleted(task)).sort(compareProjectTasks);
   const selected = steps.filter(task => selectedIds.has(task.id));
   if (!selected.length) return records;
   const ordered = steps.filter(task => !selectedIds.has(task.id));

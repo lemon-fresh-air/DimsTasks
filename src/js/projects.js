@@ -196,7 +196,7 @@ function renderProjectTask(task) {
   const date = row.querySelector(".task-date");
   renderTaskDueDate(date, task);
   const projectBadge = row.querySelector(".task-project");
-  projectBadge.hidden = !project;
+  projectBadge.hidden = !project || task.projectId === activeProjectId;
   row.querySelector(".task-project-name").textContent = project?.title || "";
   row.querySelector(".task-list-name").textContent = displayListTitle(list);
   const taskListIcon = row.querySelector(".task-list .inbox-icon");
@@ -207,11 +207,33 @@ function renderProjectTask(task) {
   projectEls.taskList.append(row);
 }
 
+function renderCompletedProjectTaskHeading(count) {
+  const heading = document.createElement("li");
+  heading.className = "project-completed-heading";
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "project-completed-toggle";
+  button.setAttribute("aria-expanded", String(projectEls.steps.classList.contains("is-completed-expanded")));
+  const label = document.createElement("span");
+  label.textContent = `Завершені ${count}`;
+  const chevron = document.createElement("span");
+  chevron.className = "project-completed-chevron";
+  chevron.setAttribute("aria-hidden", "true");
+  button.append(label, chevron);
+  heading.append(button);
+  projectEls.taskList.append(heading);
+}
+
 async function reopenProjectTask(task) {
   const updatedAt = new Date().toISOString();
   const updated = { ...task, status: "active", completedAt: null, updatedAt };
   await taskDb.put(updated);
   tasks = tasks.map(item => item.id === updated.id ? updated : item);
+  if (projectSteps(activeProjectId).filter(item => !isTaskCompleted(item)).length > 3) {
+    projectEls.steps.classList.add("is-expanded");
+    projectEls.tasksExpand.setAttribute("aria-expanded", "true");
+    projectEls.tasksExpand.setAttribute("aria-label", "Згорнути завдання");
+  }
   renderCurrentTasks();
 }
 
@@ -219,13 +241,16 @@ function renderOpenProject() {
   const project = projects.find(item => item.id === activeProjectId);
   if (!project || projectEls.screen.hidden) return;
   const steps = projectSteps(project.id);
-  const completedCount = steps.filter(isTaskCompleted).length;
+  const activeSteps = steps.filter(task => !isTaskCompleted(task));
+  const completedSteps = steps.filter(isTaskCompleted);
+  const completedCount = completedSteps.length;
   const selectedHere = new Set(steps.filter(task => selectedTaskIds.has(task.id)).map(task => task.id));
-  if (selectedHere.size && steps.length > 3) {
+  if (selectedHere.size && activeSteps.length > 3) {
     projectEls.steps.classList.add("is-expanded");
     projectEls.tasksExpand.setAttribute("aria-expanded", "true");
     projectEls.tasksExpand.setAttribute("aria-label", "Згорнути завдання");
   }
+  if (completedSteps.some(task => selectedHere.has(task.id))) projectEls.steps.classList.add("is-completed-expanded");
   projectEls.heading.textContent = project.title;
   if (document.activeElement !== projectEls.title) projectEls.title.value = project.title;
   if (document.activeElement !== projectEls.goal) projectEls.goal.value = project.goal || "";
@@ -243,7 +268,7 @@ function renderOpenProject() {
   renderProjectCountdown();
   projectEls.progress.textContent = `${steps.length} завд. · ${completedCount} виконано`;
   projectEls.tasksEmpty.hidden = steps.length > 0;
-  projectEls.tasksExpand.hidden = steps.length <= 3 || selectedHere.size > 0;
+  projectEls.tasksExpand.hidden = activeSteps.length <= 3 || selectedHere.size > 0;
   projectEls.selectAll.setAttribute("aria-pressed", String(steps.length > 0 && steps.every(task => selectedHere.has(task.id))));
   projectEls.addNewFirst.checked = project.addNewTasksFirst === true;
   projectEls.attachOpen.hidden = project.status === "completed";
@@ -251,7 +276,9 @@ function renderOpenProject() {
   projectEls.convertTask.hidden = project.status === "completed";
   projectEls.mainComplete.textContent = projectEls.complete.textContent;
   projectEls.taskList.replaceChildren();
-  steps.forEach(renderProjectTask);
+  activeSteps.forEach(renderProjectTask);
+  if (completedCount) renderCompletedProjectTaskHeading(completedCount);
+  completedSteps.forEach(renderProjectTask);
   syncProjectTaskPreview();
   projectEls.taskList.classList.toggle("selection-mode", selectedHere.size > 0);
   projectEls.selectionToolbar.hidden = selectedHere.size === 0;
@@ -265,6 +292,7 @@ function openProject(projectId) {
   if (!project) return;
   activeProjectId = projectId;
   selectedTaskIds = new Set();
+  projectEls.steps.classList.remove("is-completed-expanded");
   projectEls.screen.hidden = false;
   document.body.classList.add("project-screen-open");
   renderOpenProject();
@@ -340,7 +368,9 @@ function closeProjectEditor() {
 
 function syncProjectTaskPreview() {
   const collapsed = !projectEls.steps.classList.contains("is-expanded");
-  [...projectEls.taskList.children].forEach((row, index) => { row.inert = collapsed && index >= 3; });
+  const completedCollapsed = !projectEls.steps.classList.contains("is-completed-expanded");
+  projectEls.taskList.querySelectorAll(".swipe-row:not(.completed)").forEach((row, index) => { row.inert = collapsed && index >= 3; });
+  projectEls.taskList.querySelectorAll(".swipe-row.completed").forEach(row => { row.inert = completedCollapsed; });
 }
 
 function toggleProjectTasks() {
@@ -352,10 +382,18 @@ function toggleProjectTasks() {
   if (expanded) projectEls.tasksExpand.focus();
 }
 
+function toggleCompletedProjectTasks() {
+  const expanded = projectEls.steps.classList.toggle("is-completed-expanded");
+  const button = projectEls.taskList.querySelector(".project-completed-toggle");
+  if (button) button.setAttribute("aria-expanded", String(expanded));
+  syncProjectTaskPreview();
+}
+
 async function closeProject({ animated = false } = {}) {
   if (!projectEls.attachBackdrop.hidden) closeAttachDialog();
   if (!projectEls.editor.hidden) closeProjectEditor();
   if (projectEls.steps.classList.contains("is-expanded")) toggleProjectTasks();
+  projectEls.steps.classList.remove("is-completed-expanded");
   if (animated) {
     projectEls.screen.classList.add("is-closing");
     await new Promise(resolve => setTimeout(resolve, 230));
@@ -527,8 +565,12 @@ async function convertOpenProjectToTask() {
   }
 }
 
+function selectedActiveProjectStepIds() {
+  return new Set(projectSteps(activeProjectId).filter(task => selectedTaskIds.has(task.id) && !isTaskCompleted(task)).map(task => task.id));
+}
+
 async function reorderSelectedProjectSteps({ beforeId }) {
-  const projectSelectedIds = new Set(projectSteps(activeProjectId).filter(task => selectedTaskIds.has(task.id)).map(task => task.id));
+  const projectSelectedIds = selectedActiveProjectStepIds();
   const reordered = reorderProjectStepBlock(tasks, activeProjectId, projectSelectedIds, beforeId);
   const changed = reordered.filter((task, index) => task !== tasks[index]);
   if (!changed.length) return;
@@ -741,6 +783,7 @@ projectEls.convertDialog.addEventListener("keydown", event => {
   if (event.key === "Escape") { event.preventDefault(); closeProjectConvertDialog(); }
 });
 projectEls.taskList.addEventListener("click", async event => {
+  if (event.target.closest(".project-completed-toggle")) { toggleCompletedProjectTasks(); return; }
   const row = event.target.closest(".swipe-row");
   if (!row || row.dataset.swiped) { if (row) delete row.dataset.swiped; return; }
   if (row.dataset.longPressed) { delete row.dataset.longPressed; return; }
@@ -784,8 +827,9 @@ enableTaskGestures({
   isSelected: id => selectedTaskIds.has(id),
   onLongPress: selectTask,
   onSelectOnly: selectTask,
-  getSelectedIds: () => new Set(selectedTaskIds),
+  getSelectedIds: selectedActiveProjectStepIds,
   onReorder: reorderSelectedProjectSteps,
+  canDragRow: row => !row.classList.contains("completed"),
   requireSelectionForDrag: true
 });
 

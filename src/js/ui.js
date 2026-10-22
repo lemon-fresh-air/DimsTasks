@@ -130,6 +130,7 @@ const els = {
   listSwipeZone: document.querySelector("#list-swipe-zone"),
   currentListHeading: document.querySelector("#current-list-heading"),
   editorListLabel: document.querySelector("#editor-list-label"),
+  editorListIcon: document.querySelector("#editor-list-icon"),
   add: document.querySelector("#add-task-btn"),
   list: document.querySelector("#task-list"),
   empty: document.querySelector("#empty-state"),
@@ -177,6 +178,8 @@ function dateTone(value, time = "") {
 
 function applyDateTone(element, value, time = "") {
   element.dataset.dateTone = dateTone(value, time);
+  const icon = element.querySelector(".calendar-icon, .sun-icon");
+  if (icon) icon.className = value === localDateValue() ? "sun-icon" : "calendar-icon";
 }
 
 function readableDueDate(date, time = "") {
@@ -289,6 +292,7 @@ function setActiveListUI(list) {
   const primaryNav = list.kind === "today" ? "today" : list.kind === "inbox" ? "inbox" : "overview";
   els.mainMenuOpen.dataset.currentPrimaryNav = primaryNav;
   if (els.mainMenu.hidden) setActivePrimaryNav(primaryNav);
+  els.editorListIcon.className = list.kind === "inbox" ? "inbox-icon" : list.kind === "today" ? "sun-icon" : "list-menu-icon";
   els.editorListLabel.textContent = title;
   els.listEditorOpen.hidden = list.kind !== "regular";
 }
@@ -405,7 +409,9 @@ function setTaskEditorListUI(listId) {
   if (!option) return;
   els.taskListSelect.value = listId;
   const title = option.querySelector("span:nth-child(2)").textContent;
+  const list = lists.find(item => item.id === listId);
   els.taskListValue.textContent = title;
+  els.editorListIcon.className = list?.kind === "inbox" ? "inbox-icon" : list?.kind === "today" ? "sun-icon" : "list-menu-icon";
   els.editorListLabel.textContent = title;
   for (const item of els.taskListOptions.children) {
     const selected = item.dataset.listId === listId;
@@ -581,6 +587,7 @@ function showTaskEditor() {
   els.editor.hidden = false;
   els.editor.classList.remove("is-closing");
   document.body.classList.add("task-editor-open");
+  els.editor.scrollTop = 0;
 }
 
 function hideTaskEditor() {
@@ -601,6 +608,12 @@ function resizeDescription() {
   els.description.style.height = `${Math.min(els.description.scrollHeight, maxHeight)}px`;
 }
 
+function resizeTaskTitle() {
+  els.input.style.height = "auto";
+  els.input.style.height = `${els.input.scrollHeight}px`;
+  els.input.scrollTop = 0;
+}
+
 function openNewTaskEditor(listId, originListId = listId) {
   els.editor.classList.remove("detail-mode");
   els.editor.dataset.taskId = "";
@@ -619,7 +632,7 @@ function openNewTaskEditor(listId, originListId = listId) {
   applyDateTone(els.datePickerOpen, els.date.value, els.time.value);
   rememberEditorState();
   showTaskEditor();
-  requestAnimationFrame(() => { resizeDescription(); els.input.focus(); });
+  requestAnimationFrame(() => { resizeTaskTitle(); resizeDescription(); els.input.focus(); });
 }
 
 function openTaskDetails(task) {
@@ -645,8 +658,7 @@ function openTaskDetails(task) {
   rememberEditorState();
   showTaskEditor();
   requestAnimationFrame(() => {
-    els.input.style.height = "auto";
-    els.input.style.height = `${Math.min(els.input.scrollHeight, 150)}px`;
+    resizeTaskTitle();
     resizeDescription();
   });
 }

@@ -175,7 +175,7 @@ function enableListReordering({ onReorder, isSelectionMode, isSelected, onLongPr
   container.addEventListener("pointercancel", event => finish(event, true));
 }
 
-function enableTaskGestures({ container = els.list, onDelete, isSelectionMode, isSelected, onLongPress, onSelectOnly, getSelectedIds, onReorder, requireSelectionForDrag = false }) {
+function enableTaskGestures({ container = els.list, onDelete, isSelectionMode, isSelected, onLongPress, onSelectOnly, getSelectedIds, onReorder, requireSelectionForDrag = false, canDragRow = () => true }) {
   let gesture = null;
   const maxReveal = 112;
   const deleteThreshold = 72;
@@ -189,7 +189,7 @@ function enableTaskGestures({ container = els.list, onDelete, isSelectionMode, i
     if (!card || event.button > 0) return;
     cancelAnimationFrame(momentumFrame);
     const row = card.closest(".swipe-row");
-    gesture = { row, card, id: row.dataset.id, pointerId: event.pointerId, pointerType: event.pointerType, canDrag: isSelectionMode(), startX: event.clientX, startY: event.clientY, lastY: event.clientY, dx: 0, horizontal: false, scrolling: false, longPress: false, dragging: false };
+    gesture = { row, card, id: row.dataset.id, pointerId: event.pointerId, pointerType: event.pointerType, canDrag: isSelectionMode() && canDragRow(row), startX: event.clientX, startY: event.clientY, lastY: event.clientY, dx: 0, horizontal: false, scrolling: false, longPress: false, dragging: false };
     if (!gesture.canDrag) row.classList.add("pressing");
     card.setPointerCapture(event.pointerId);
     row.classList.remove("settling");
@@ -240,7 +240,7 @@ function enableTaskGestures({ container = els.list, onDelete, isSelectionMode, i
       gesture.card?.setPointerCapture(event.pointerId);
     }
     const selectedIds = getSelectedIds();
-    const rows = [...container.children].filter(row => selectedIds.has(row.dataset.id));
+    const rows = [...container.children].filter(row => selectedIds.has(row.dataset.id) && canDragRow(row));
     if (!rows.length) return;
     const sourceRect = gesture.row.getBoundingClientRect();
     const totalHeight = rows.reduce((sum, row) => sum + row.getBoundingClientRect().height, 0);
@@ -289,7 +289,7 @@ function enableTaskGestures({ container = els.list, onDelete, isSelectionMode, i
   }
 
   function updateInsertion(clientY) {
-    const candidates = [...container.children].filter(row => row.dataset.id && !gesture.selectedIds.has(row.dataset.id));
+    const candidates = [...container.children].filter(row => row.dataset.id && canDragRow(row) && !gesture.selectedIds.has(row.dataset.id));
     const before = candidates.find(row => clientY < row.getBoundingClientRect().top + row.getBoundingClientRect().height / 2) || null;
     const beforeId = before?.dataset.id || null;
     if (beforeId === gesture.lastBeforeId) return;

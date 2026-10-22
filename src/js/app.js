@@ -1652,7 +1652,7 @@ els.timeDialOptions.addEventListener("click", event => {
   }
   renderTimeDial();
 });
-els.input.addEventListener("input", () => { els.input.style.height = "auto"; els.input.style.height = `${Math.min(els.input.scrollHeight, 150)}px`; updateDesktopSaveState(); });
+els.input.addEventListener("input", () => { resizeTaskTitle(); updateDesktopSaveState(); });
 els.description.addEventListener("input", () => { resizeDescription(); updateDesktopSaveState(); });
 els.taskListTrigger.addEventListener("click", () => els.taskListOptions.hidden ? openTaskListDropdown() : closeTaskListDropdown());
 els.taskListOptions.addEventListener("click", async event => {

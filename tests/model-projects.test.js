@@ -183,6 +183,14 @@ test("several selected project steps move as one ordered block", () => {
   assert.deepEqual(Array.from(reordered.slice().sort((a, b) => a.projectPosition - b.projectPosition), task => task.id), ["first", "fourth", "second", "third"]);
 });
 
+test("reordering active project steps leaves completed steps unchanged", () => {
+  const completed = step("completed", 1, { status: "completed", completedAt: "2026-10-15T01:00:00.000Z" });
+  const records = [step("first", 0), completed, step("second", 2)];
+  const reordered = reorderProjectStepBlock(records, "project", new Set(["second", "completed"]), "first");
+  assert.deepEqual(Array.from(reordered.filter(task => task.status === "active").sort((a, b) => a.projectPosition - b.projectPosition), task => task.id), ["second", "first"]);
+  assert.equal(reordered.find(task => task.id === "completed"), completed);
+});
+
 test("active projects can be reordered without changing completed projects", () => {
   const records = [
     createProject({ id: "first", title: "first", position: 0 }),
