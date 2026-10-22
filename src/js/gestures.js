@@ -212,8 +212,9 @@ function enableTaskGestures({ container = els.list, onDelete, isSelectionMode, i
   });
 
   for (const type of ["selectstart", "contextmenu"]) {
-    container.addEventListener(type, event => {
-      if (event.target instanceof Element && event.target.closest(".task-card")) event.preventDefault();
+    document.addEventListener(type, event => {
+      if (gesture?.pointerType === "touch" ||
+          container.contains(event.target) && event.target instanceof Element && event.target.closest(".task-card")) event.preventDefault();
     });
   }
 
@@ -251,7 +252,7 @@ function enableTaskGestures({ container = els.list, onDelete, isSelectionMode, i
     rows.forEach(row => row.classList.add("drag-source"));
     const preview = document.createElement("div");
     preview.className = "drag-preview";
-    preview.style.width = `${sourceRect.width}px`;
+    preview.style.width = `${container.getBoundingClientRect().width}px`;
     preview.append(gesture.card.cloneNode(true));
     if (rows.length > 1) {
       const badge = document.createElement("span");

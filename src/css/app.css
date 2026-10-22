@@ -79,7 +79,7 @@ h1 { font-size:clamp(2.25rem,9vw,3.4rem); line-height:1; letter-spacing:-.05em; 
 .swipe-row.drag-source { display:none; }
 .drag-placeholder { list-style:none; background:color-mix(in srgb,var(--accent) 9%,var(--surface)); box-shadow:inset 0 0 0 2px color-mix(in srgb,var(--accent) 30%,transparent); opacity:.8; }
 .drag-preview { position:fixed; z-index:80; left:0; top:0; pointer-events:none; opacity:.96; filter:drop-shadow(0 16px 28px rgba(32,46,60,.3)); will-change:transform; }
-.drag-preview .task-card { border-radius:var(--radius); transform:translateY(-3px); box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--accent) 18%,transparent); }
+.drag-preview .task-card { width:100%; border-radius:var(--radius); transform:translateY(-3px); box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--accent) 18%,transparent); }
 .drag-count { position:absolute; z-index:2; top:-9px; right:-9px; min-width:28px; height:28px; padding:0 7px; display:grid; place-items:center; border-radius:999px; background:var(--accent); color:var(--on-accent); font-size:.8rem; font-weight:800; box-shadow:0 4px 12px rgba(32,46,60,.24); }
 .swipe-row.settling .task-card { transition:transform .26s var(--ease-swipe),background-color .16s ease; }
 @media (prefers-reduced-motion:reduce) { .task-card,.swipe-row.settling .task-card { transition:none; } }
