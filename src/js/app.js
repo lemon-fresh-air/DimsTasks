@@ -94,7 +94,7 @@ function openCompletedTasks() {
   els.completedTasksScreen.hidden = false;
   document.body.classList.add("completed-tasks-open");
   renderCompletedTasks();
-  history.pushState({ completedTasks: true }, "");
+  if (!mobileNavigationEnabled()) history.pushState({ completedTasks: true }, "");
   els.completedTasksClose.focus({ preventScroll: true });
 }
 
@@ -104,7 +104,7 @@ function closeCompletedTasks({ fromHistory = false } = {}) {
   document.body.classList.remove("completed-tasks-open");
   completedDetailId = null;
   els.completedTasksOpen.focus({ preventScroll: true });
-  if (!fromHistory && history.state?.completedTasks) {
+  if (!mobileNavigationEnabled() && !fromHistory && history.state?.completedTasks) {
     skipCompletedPopstate = true;
     history.back();
   }
@@ -632,7 +632,7 @@ function openListEditor() {
       els.listEditorName.select();
     });
   });
-  history.pushState({ listEditor: true }, "");
+  if (!mobileNavigationEnabled()) history.pushState({ listEditor: true }, "");
 }
 
 function closeListEditor({ fromHistory = false } = {}) {
@@ -645,7 +645,7 @@ function closeListEditor({ fromHistory = false } = {}) {
     els.listEditor.hidden = true;
     if (!els.listEditorOpen.hidden) els.listEditorOpen.focus({ preventScroll: true });
   }, matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 240);
-  if (!fromHistory && history.state?.listEditor) history.back();
+  if (!mobileNavigationEnabled() && !fromHistory && history.state?.listEditor) history.back();
 }
 
 async function saveActiveListName(event, { fromHistory = false } = {}) {
@@ -1402,6 +1402,7 @@ els.listDeleteCancel.addEventListener("click", () => {
 });
 els.listDeleteConfirmButton.addEventListener("click", deleteActiveList);
 window.addEventListener("popstate", () => {
+  if (mobileNavigationEnabled()) return;
   if (skipCompletedPopstate) { skipCompletedPopstate = false; return; }
   if (!els.completedTasksScreen.hidden) {
     closeCompletedTasks({ fromHistory: true });
@@ -1781,4 +1782,197 @@ document.addEventListener("visibilitychange", () => {
 });
 window.addEventListener("focus", () => { checkForDateChange(); checkForAppUpdate(); });
 systemThemeQuery.addEventListener("change", () => { if (useSystemTheme) renderAppearanceSettings(); });
-initializeApp({ openStartScreen: true }).then(scheduleDateChangeCheck).catch(() => toast("Не вдалося відкрити локальне сховище"));
+// Android Back traverses real views. Keep browser history limited to this session's UI states.
+let mobileNavSession = null;
+let mobileNavEntries = [];
+let mobileNavIndex = 0;
+let mobileNavApplying = false;
+let mobileNavTimer = null;
+
+function mobileNavigationEnabled() {
+  return matchMedia("(max-width: 759px)").matches;
+}
+
+function mobileNavigationState() {
+  const menuOpen = els.mainMenuOpen.getAttribute("aria-expanded") === "true";
+  const settingsOpen = els.settingsOpen.getAttribute("aria-expanded") === "true";
+  const listEditorOpen = els.listEditorOpen.getAttribute("aria-expanded") === "true";
+  return {
+    screen: projectEls.shell.classList.contains("projects-mode") ? "projects" : "list",
+    listId: activeListId,
+    projectId: !projectEls.screen.hidden ? activeProjectId : null,
+    menu: menuOpen,
+    settings: settingsOpen,
+    completed: !els.completedTasksScreen.hidden,
+    completedWeek: !els.completedTasksScreen.hidden ? completedWeekOffset : 0,
+    completedDetail: !els.completedTasksScreen.hidden ? completedDetailId : null,
+    listEditor: listEditorOpen,
+    projectEditor: !projectEls.editor.hidden,
+    taskEditor: !els.editor.hidden && !els.editor.classList.contains("is-closing")
+      ? (els.editor.dataset.taskId || "new") : null,
+    taskListId: !els.editor.hidden && !els.editor.classList.contains("is-closing")
+      ? els.taskListSelect.value : null,
+    datePicker: !els.datePickerBackdrop.hidden,
+    timeDialog: !els.timeDialogBackdrop.hidden,
+    attachDialog: !projectEls.attachBackdrop.hidden,
+    convertDialog: !projectEls.convertDialogBackdrop.hidden,
+    completeDialog: !projectEls.completeDialogBackdrop.hidden,
+    deleteDialog: !projectEls.deleteDialogBackdrop.hidden,
+    detachDialog: !els.taskDetachDialogBackdrop.hidden,
+    listDeleteDialog: !els.listSelectionDeleteBackdrop.hidden
+  };
+}
+
+function sameMobileNavigation(a, b) {
+  return JSON.stringify(a) === JSON.stringify(b);
+}
+
+function mobileNavigationEntry(index, view) {
+  return { dimsTasksNavigation: mobileNavSession, index, view };
+}
+
+function recordMobileNavigation() {
+  if (!mobileNavSession || mobileNavApplying || !mobileNavigationEnabled()) return;
+  const view = mobileNavigationState();
+  if (sameMobileNavigation(view, mobileNavEntries[mobileNavIndex])) return;
+  if (mobileNavIndex > 0 && sameMobileNavigation(view, mobileNavEntries[mobileNavIndex - 1])) {
+    history.back();
+    return;
+  }
+  mobileNavEntries = mobileNavEntries.slice(0, mobileNavIndex + 1);
+  mobileNavEntries.push(view);
+  mobileNavIndex++;
+  history.pushState(mobileNavigationEntry(mobileNavIndex, view), "");
+}
+
+function scheduleMobileNavigationRecord() {
+  if (!mobileNavSession || mobileNavApplying || !mobileNavigationEnabled()) return;
+  clearTimeout(mobileNavTimer);
+  mobileNavTimer = setTimeout(recordMobileNavigation, 0);
+}
+
+async function restoreMobileNavigation(view) {
+  mobileNavApplying = true;
+  clearTimeout(mobileNavTimer);
+  try {
+    const current = mobileNavigationState();
+    const sameParent = ["screen", "listId", "projectId", "menu", "settings", "completed",
+      "listEditor", "projectEditor", "taskEditor"].every(key => current[key] === view[key]);
+    if (sameParent) {
+      if (current.timeDialog && !view.timeDialog) closeTimeDialog();
+      if (current.datePicker && !view.datePicker) closeDatePicker();
+      if (current.attachDialog && !view.attachDialog) closeAttachDialog();
+      if (current.convertDialog && !view.convertDialog) closeProjectConvertDialog();
+      if (current.detachDialog && !view.detachDialog) closeTaskDetachDialog();
+      if (current.listDeleteDialog && !view.listDeleteDialog) closeSelectedListsDeleteDialog();
+      if (current.completeDialog && !view.completeDialog) closeProjectCompleteDialog(null);
+      if (current.deleteDialog && !view.deleteDialog) closeProjectDeleteDialog(null);
+      if (view.completed) {
+        completedWeekOffset = view.completedWeek;
+        completedDetailId = tasks.some(task => task.id === view.completedDetail && task.status === "completed")
+          ? view.completedDetail : null;
+        renderCompletedTasks();
+      }
+      if (view.datePicker && !current.datePicker) {
+        editingProjectDate = view.projectEditor;
+        openDatePicker(view.projectEditor ? projectEls.dueDate.value : els.date.value,
+          view.projectEditor ? projectEls.dueTime.value : els.time.value);
+      }
+      if (view.timeDialog && !current.timeDialog) openTimeDialog();
+      if (view.attachDialog && !current.attachDialog) projectEls.attachOpen.click();
+      if (view.convertDialog && !current.convertDialog) openProjectConvertDialog();
+      if (view.detachDialog && !current.detachDialog) openTaskDetachDialog();
+      if (view.completeDialog && !current.completeDialog) requestProjectCompletion(Math.max(1, selectedProjectIds.size));
+      if (view.deleteDialog && !current.deleteDialog) requestProjectDeletion(Math.max(1, selectedProjectIds.size));
+      if (view.listDeleteDialog && !current.listDeleteDialog) els.mainMenuDeleteSelected.click();
+      return;
+    }
+    if (!els.timeDialogBackdrop.hidden) closeTimeDialog();
+    if (!els.datePickerBackdrop.hidden) closeDatePicker();
+    if (!projectEls.attachBackdrop.hidden) closeAttachDialog();
+    if (!projectEls.convertDialogBackdrop.hidden) closeProjectConvertDialog();
+    if (!els.taskDetachDialogBackdrop.hidden) closeTaskDetachDialog();
+    if (!els.listSelectionDeleteBackdrop.hidden) closeSelectedListsDeleteDialog();
+    if (!projectEls.completeDialogBackdrop.hidden) closeProjectCompleteDialog(null);
+    if (!projectEls.deleteDialogBackdrop.hidden) closeProjectDeleteDialog(null);
+    if (!els.editor.hidden && !els.editor.classList.contains("is-closing")) {
+      await saveAndLeaveTaskEditor({ allowEmptyNew: true });
+      if (!els.editor.classList.contains("is-closing")) {
+        history.pushState(mobileNavigationEntry(mobileNavIndex, mobileNavigationState()), "");
+        return;
+      }
+    }
+    if (!projectEls.editor.hidden) {
+      await saveProjectFields({ closeAfter: true });
+      if (!projectEls.editor.hidden) return;
+    }
+    if (!els.listEditor.hidden && els.listEditor.classList.contains("is-open")) {
+      await saveActiveListName(null, { fromHistory: true });
+      if (els.listEditor.classList.contains("is-open")) return;
+    }
+    if (!els.completedTasksScreen.hidden) closeCompletedTasks({ fromHistory: true });
+    if (!els.settingsScreen.hidden) closeSettings({ fromHistory: true });
+    if (!els.mainMenu.hidden) closeMainMenu({ fromHistory: true });
+    if (!projectEls.screen.hidden) await closeProject();
+
+    if (view.screen === "projects") {
+      openProjects();
+      if (view.projectId && projects.some(project => project.id === view.projectId)) openProject(view.projectId);
+    } else {
+      openList(lists.some(list => list.id === view.listId) || view.listId === TODAY_LIST_ID
+        ? view.listId : INBOX_LIST_ID);
+    }
+    if (view.menu) openMainMenu();
+    if (view.settings) openSettings();
+    if (view.completed) {
+      openCompletedTasks();
+      completedWeekOffset = view.completedWeek;
+      completedDetailId = tasks.some(task => task.id === view.completedDetail && task.status === "completed")
+        ? view.completedDetail : null;
+      renderCompletedTasks();
+    }
+    if (view.listEditor && activeList()?.kind === "regular") openListEditor();
+    if (view.projectEditor && view.projectId && !projectEls.screen.hidden) openProjectEditor();
+    if (view.taskEditor) {
+      const task = tasks.find(item => item.id === view.taskEditor);
+      if (task) openTaskDetails(task);
+      else if (view.taskEditor === "new") openNewTaskEditor(view.taskListId || activeListId);
+    }
+    if (view.datePicker) openDatePicker();
+    if (view.timeDialog && view.datePicker) openTimeDialog();
+    if (view.attachDialog && view.projectId) projectEls.attachOpen.click();
+    if (view.convertDialog && view.projectId) openProjectConvertDialog();
+    if (view.detachDialog && view.taskEditor) openTaskDetachDialog();
+    if (view.completeDialog) requestProjectCompletion(Math.max(1, selectedProjectIds.size));
+    if (view.deleteDialog) requestProjectDeletion(Math.max(1, selectedProjectIds.size));
+    if (view.listDeleteDialog) els.mainMenuDeleteSelected.click();
+  } finally {
+    // The snapshot ignores closing animation frames, so the next user action can be recorded immediately.
+    setTimeout(() => { mobileNavApplying = false; scheduleMobileNavigationRecord(); }, 0);
+  }
+}
+
+function initializeMobileNavigation() {
+  if (!mobileNavigationEnabled()) return;
+  mobileNavSession = crypto.randomUUID();
+  const initial = mobileNavigationState();
+  mobileNavEntries = [initial];
+  mobileNavIndex = 0;
+  history.replaceState(mobileNavigationEntry(0, initial), "");
+  new MutationObserver(scheduleMobileNavigationRecord).observe(document.body, {
+    subtree: true, childList: true, attributes: true, attributeFilter: ["hidden", "class"]
+  });
+}
+
+window.addEventListener("popstate", event => {
+  if (!mobileNavigationEnabled() || !mobileNavSession) return;
+  const entry = event.state;
+  if (entry?.dimsTasksNavigation !== mobileNavSession) return;
+  mobileNavIndex = entry.index;
+  restoreMobileNavigation(entry.view);
+});
+
+initializeApp({ openStartScreen: true }).then(() => {
+  initializeMobileNavigation();
+  scheduleDateChangeCheck();
+}).catch(() => toast("Не вдалося відкрити локальне сховище"));

@@ -454,7 +454,7 @@ function openMainMenu() {
       els.mainMenuClose.focus({ preventScroll: true });
     });
   });
-  history.pushState({ mainMenu: true }, "");
+  if (!mobileNavigationEnabled()) history.pushState({ mainMenu: true }, "");
 }
 
 function closeMainMenu({ fromHistory = false } = {}) {
@@ -469,7 +469,7 @@ function closeMainMenu({ fromHistory = false } = {}) {
     hideNewListForm({ returnFocus: false });
     els.mainMenuOpen.focus();
   }, matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 240);
-  if (!fromHistory && history.state?.mainMenu) history.back();
+  if (!mobileNavigationEnabled() && !fromHistory && history.state?.mainMenu) history.back();
 }
 
 function openSettings() {
@@ -485,7 +485,7 @@ function openSettings() {
       els.settingsClose.focus({ preventScroll: true });
     });
   });
-  history.pushState({ settings: true }, "");
+  if (!mobileNavigationEnabled()) history.pushState({ settings: true }, "");
 }
 
 function closeSettings({ fromHistory = false } = {}) {
@@ -498,7 +498,7 @@ function closeSettings({ fromHistory = false } = {}) {
     els.settingsScreen.hidden = true;
     els.settingsOpen.focus({ preventScroll: true });
   }, matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 240);
-  if (!fromHistory && history.state?.settings) history.back();
+  if (!mobileNavigationEnabled() && !fromHistory && history.state?.settings) history.back();
 }
 
 function hideToast() {
