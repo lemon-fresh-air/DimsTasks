@@ -14,7 +14,7 @@
     <div id="selection-toolbar" class="selection-toolbar" hidden>
       <button id="selection-close" class="toolbar-action" type="button" aria-label="Завершити виділення"><span class="back-icon" aria-hidden="true"></span></button>
       <p id="selection-count">Вибрано: 0</p>
-      <div class="selection-controls">
+      <div id="selection-controls" class="selection-controls">
         <button id="select-all-tasks" class="toolbar-action" type="button" aria-label="Вибрати всі завдання" aria-pressed="false"><svg class="selection-glyph" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="#selection-icon-all"/></svg></button>
         <div class="selection-actions" aria-label="Дії з вибраними завданнями">
           <button id="date-selected" class="toolbar-action" type="button" aria-label="Змінити дату вибраних завдань" aria-haspopup="dialog"><svg class="selection-glyph" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="#selection-icon-calendar"/></svg></button>
@@ -26,11 +26,17 @@
           <button id="delete-selected" class="toolbar-action destructive" type="button" aria-label="Видалити вибрані завдання"><svg class="selection-glyph" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="#selection-icon-delete"/></svg></button>
         </div>
       </div>
+        <div id="selected-group-actions" class="selection-actions" aria-label="Дії з вибраною групою" hidden>
+          <button id="rename-selected-group" class="toolbar-action" type="button" aria-label="Перейменувати групу" aria-haspopup="dialog"><span class="rename-group-icon" aria-hidden="true">T</span></button>
+          <button id="complete-selected-group" class="toolbar-action" type="button" aria-label="Виконати всі завдання групи"><span class="project-complete-icon" aria-hidden="true">✓</span></button>
+          <button id="delete-selected-group" class="toolbar-action destructive" type="button" aria-label="Видалити групу — незабаром" disabled><span class="trash-icon" aria-hidden="true"></span></button>
+          <button id="recolor-selected-group" class="toolbar-action" type="button" aria-label="Змінити колір групи — незабаром" disabled><svg class="selection-glyph" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="#selection-icon-group"/></svg></button>
+        </div>
     </div>
   </header>
   <main><section class="task-section" aria-labelledby="current-list-heading">
     <ul id="task-list" aria-live="polite"></ul>
-    <p id="today-order-hint" class="today-order-hint" hidden>Перетягуйте вибрані задачі в межах їхньої групи.</p>
+    <p id="today-order-hint" class="today-order-hint" hidden>Перетягуйте вибрані задачі в межах їхньої групи або згорнуту групу серед інших груп і задач.</p>
     <div id="empty-state" class="empty"><span class="empty-icon" aria-hidden="true">✓</span><p>У цьому списку поки немає задач</p><small>Натисніть кнопку внизу, щоб додати першу.</small></div>
   </section><div id="list-swipe-zone" class="list-swipe-zone" aria-hidden="true"></div></main>
   <section id="projects-overview" class="projects-overview" aria-labelledby="projects-title" hidden>
@@ -59,6 +65,20 @@
     <button id="nav-inbox" class="nav-item active" type="button" data-nav="inbox" aria-current="page"><span class="nav-icon-field" aria-hidden="true"><span class="inbox-icon"></span></span><span>Нові</span></button>
     <button id="main-menu-open" class="nav-item" type="button" data-nav="overview" aria-label="Відкрити огляд" aria-controls="main-menu" aria-expanded="false"><span class="nav-icon-field" aria-hidden="true"><span class="overview-icon"></span></span><span>Огляд</span></button>
   </div></nav>
+</div>
+<div id="today-group-rename-backdrop" class="project-delete-dialog-backdrop" hidden>
+  <section id="today-group-rename-dialog" class="today-group-dialog" role="dialog" aria-modal="true" aria-labelledby="today-group-rename-title" tabindex="-1">
+    <h2 id="today-group-rename-title">Перейменувати групу</h2>
+    <form id="today-group-rename-form" class="today-group-rename-form">
+      <label for="today-group-rename-input">Назва групи</label>
+      <input id="today-group-rename-input" type="text" maxlength="80" autocomplete="off" required>
+      <p id="today-group-rename-error" class="form-error" role="alert" hidden></p>
+      <div class="today-group-rename-actions">
+        <button id="today-group-rename-cancel" class="secondary-action" type="button">Скасувати</button>
+        <button class="primary-action" type="submit">Зберегти</button>
+      </div>
+    </form>
+  </section>
 </div>
 <div id="today-group-backdrop" class="project-delete-dialog-backdrop" hidden>
   <section id="today-group-dialog" class="today-group-dialog" role="dialog" aria-modal="true" aria-labelledby="today-group-title" tabindex="-1">

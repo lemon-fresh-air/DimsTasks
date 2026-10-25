@@ -6,7 +6,7 @@ const vm = require("node:vm");
 
 const source = fs.readFileSync(path.join(__dirname, "..", "src", "js", "model.js"), "utf8");
 const context = vm.createContext({ crypto: { randomUUID: () => "generated" }, INBOX_LIST_ID: "inbox" });
-vm.runInContext(`${source}\nthis.model = { isValidTodayLayoutShape, normalizeTodayGroups, createTodayGroup, assignTodayGroupTasks, removeTodayGroupTasks, ungroupTodayGroup, setTodayGroupCollapsed, moveTodayOuterItem, shiftTodayGroupTask, reorderTodayGroupTaskBlock };`, context);
+vm.runInContext(`${source}\nthis.model = { isValidTodayLayoutShape, normalizeTodayGroups, createTodayGroup, assignTodayGroupTasks, removeTodayGroupTasks, ungroupTodayGroup, setTodayGroupCollapsed, setTodayGroupTitle, moveTodayOuterItem, reorderTodayOuterTaskBlock, shiftTodayGroupTask, reorderTodayGroupTaskBlock };`, context);
 const m = context.model;
 const date = "2026-10-23";
 const tasks = ["a", "b", "c", "d", "e"].map((id, i) => ({ id, todayPosition: i, createdAt: `2026-10-23T0${i}:00:00Z` }));
@@ -17,7 +17,7 @@ test("creation takes the first selected slot and preserves visible member order 
   const before = plain(tasks);
   const group = m.createTodayGroup(null, tasks, date, "#2D9E6B", ["d", "b"], "green");
   assert.deepEqual(ids(group), ["task:a", "group:green", "task:c", "task:e"]);
-  assert.deepEqual(plain(group.groups[0]), { id: "green", color: "#2D9E6B", collapsed: false, taskIds: ["b", "d"] });
+  assert.deepEqual(plain(group.groups[0]), { id: "green", color: "#2D9E6B", title: null, collapsed: false, taskIds: ["b", "d"] });
   assert.deepEqual(tasks, before);
   assert.equal(m.normalizeTodayGroups(group, tasks, "2026-10-24"), null);
   assert.throws(() => m.createTodayGroup(group, tasks, date, "#2D9E6B", ["a"], "another"));
@@ -65,6 +65,26 @@ test("outer movement, collapse, and one-step member shift stay in the daily layo
   assert.equal(collapsed.groups[0].collapsed, true);
   assert.deepEqual(plain(m.shiftTodayGroupTask(collapsed, tasks, date, "green", "c", -1).groups[0].taskIds), ["c", "b"]);
   assert.deepEqual(plain(m.shiftTodayGroupTask(collapsed, tasks, date, "green", "b", -1).groups[0].taskIds), ["b", "c"]);
+});
+
+test("renaming a group persists its title while keeping its color and member order", () => {
+  const group = m.createTodayGroup(null, tasks, date, "#3A7BD5", ["b", "c"], "blue");
+  const renamed = m.setTodayGroupTitle(group, tasks, date, "blue", "  Мої справи  ");
+  assert.equal(renamed.groups[0].title, "Мої справи");
+  assert.equal(renamed.groups[0].color, "#3A7BD5");
+  assert.deepEqual(plain(renamed.groups[0].taskIds), ["b", "c"]);
+  assert.equal(m.normalizeTodayGroups(renamed, tasks, date).groups[0].title, "Мої справи");
+  assert.throws(() => m.setTodayGroupTitle(group, tasks, date, "blue", "   "));
+  assert.equal(m.isValidTodayLayoutShape({ ...group, groups: [{ ...group.groups[0], title: " " }] }), false);
+});
+
+test("ungrouped tasks move across groups as a block without changing group members", () => {
+  const blue = m.createTodayGroup(null, tasks, date, "#3A7BD5", ["b"], "blue");
+  const orange = m.createTodayGroup(blue, tasks, date, "#E05A3A", ["d"], "orange");
+  const moved = m.reorderTodayOuterTaskBlock(orange, tasks, date, new Set(["a", "e"]), "group", "orange");
+  assert.deepEqual(ids(moved), ["group:blue", "task:c", "task:a", "task:e", "group:orange"]);
+  assert.deepEqual(plain(moved.groups.map(group => group.taskIds)), [["b"], ["d"]]);
+  assert.deepEqual(ids(orange), ["task:a", "group:blue", "task:c", "group:orange", "task:e"]);
 });
 
 test("normalization removes stale and duplicate references and prepends newly visible tasks", () => {

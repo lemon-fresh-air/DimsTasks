@@ -69,7 +69,7 @@ const { openTestApp } = require("./e2e-helper");
       const parsed = await parseBackup({ size: 0, text: async () => JSON.stringify(envelope) });
       return { envelope, parsed };
     });
-    assert.equal(backup.envelope.formatVersion, 15);
+    assert.equal(backup.envelope.formatVersion, 16);
     assert.equal(backup.parsed.settings.find(item => item.id === "today-layout").groups[0].id, "green");
     await page.evaluate(async restored => { await appDb.replaceAll(restored); await initializeApp(); }, backup.parsed);
     assert.equal((await page.evaluate(() => appDb.get("settings", "today-layout"))).groups[0].id, "green");

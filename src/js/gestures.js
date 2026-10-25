@@ -221,13 +221,14 @@ function enableTaskGestures({ container = els.list, onDelete, isSelectionMode, i
   }
 
   function captureRows(dragContainer) {
-    return new Map([...dragContainer.children].filter(row => row.dataset.id).map(row => [row.dataset.id, row.getBoundingClientRect().top]));
+    return new Map([...dragContainer.children].filter(row => row.dataset.id || row.dataset.groupId)
+      .map(row => [row.dataset.groupId ? `group:${row.dataset.groupId}` : `task:${row.dataset.id}`, row.getBoundingClientRect().top]));
   }
 
   function animateRows(previous, dragContainer) {
     if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
     for (const row of dragContainer.children) {
-      const top = previous.get(row.dataset.id);
+      const top = previous.get(row.dataset.groupId ? `group:${row.dataset.groupId}` : `task:${row.dataset.id}`);
       if (top === undefined) continue;
       const delta = top - row.getBoundingClientRect().top;
       if (Math.abs(delta) > 1) row.animate([{ transform: `translateY(${delta}px)` }, { transform: "translateY(0)" }], { duration: 240, easing: "cubic-bezier(.2,.8,.2,1)" });
@@ -266,7 +267,7 @@ function enableTaskGestures({ container = els.list, onDelete, isSelectionMode, i
     }
     document.body.append(preview);
     gesture = {
-      ...gesture, dragging: true, selectedIds, rows, placeholder, preview, moved: false, lastBeforeId: null,
+      ...gesture, dragging: true, selectedIds, rows, placeholder, preview, moved: false, lastBeforeType: null, lastBeforeId: null,
       offsetX: event.clientX - sourceRect.left, offsetY: event.clientY - sourceRect.top,
       currentX: sourceRect.left, currentY: sourceRect.top, targetX: sourceRect.left, targetY: sourceRect.top
     };
@@ -294,12 +295,15 @@ function enableTaskGestures({ container = els.list, onDelete, isSelectionMode, i
   }
 
   function updateInsertion(clientY) {
-    const candidates = [...gesture.dragContainer.children].filter(row => row.dataset.id && canDragRow(row) && !gesture.selectedIds.has(row.dataset.id));
+    const candidates = [...gesture.dragContainer.children].filter(row => row.dataset.groupId && gesture.dragContainer === container
+      || row.dataset.id && canDragRow(row) && !gesture.selectedIds.has(row.dataset.id));
     const before = candidates.find(row => clientY < row.getBoundingClientRect().top + row.getBoundingClientRect().height / 2) || null;
-    const beforeId = before?.dataset.id || null;
-    if (beforeId === gesture.lastBeforeId) return;
+    const beforeType = before?.dataset.groupId ? "group" : before ? "task" : null;
+    const beforeId = before?.dataset.groupId || before?.dataset.id || null;
+    if (beforeType === gesture.lastBeforeType && beforeId === gesture.lastBeforeId) return;
     const previous = captureRows(gesture.dragContainer);
     if (before) before.before(gesture.placeholder); else gesture.dragContainer.append(gesture.placeholder);
+    gesture.lastBeforeType = beforeType;
     gesture.lastBeforeId = beforeId;
     gesture.moved = true;
     animateRows(previous, gesture.dragContainer);
@@ -378,7 +382,7 @@ function enableTaskGestures({ container = els.list, onDelete, isSelectionMode, i
       finished.rows.forEach(row => row.classList.remove("drag-source", "lifted"));
       finished.dragContainer.classList.remove("dragging");
       finished.row.dataset.swiped = "true";
-      if (finished.moved) onReorder({ beforeId: finished.lastBeforeId, groupId: finished.dragContainer.closest(".today-group")?.dataset.groupId || null });
+      if (finished.moved) onReorder({ beforeType: finished.lastBeforeType, beforeId: finished.lastBeforeId, groupId: finished.dragContainer.closest(".today-group")?.dataset.groupId || null });
       return;
     }
     const { row, card, dx, horizontal, scrolling, longPress, longPressTimer, scrollVelocity } = gesture;
@@ -436,6 +440,116 @@ function enableTaskGestures({ container = els.list, onDelete, isSelectionMode, i
 
   container.addEventListener("pointerup", finishGesture);
   container.addEventListener("pointercancel", cancelGesture);
+}
+
+function enableTodayGroupReordering({ isSelected, onSelect, onReorder }) {
+  const container = els.list;
+  let gesture = null;
+
+  function capturePositions() {
+    return new Map([...container.children].filter(item => item.dataset.groupId || item.dataset.id)
+      .map(item => [item, item.getBoundingClientRect().top]));
+  }
+
+  function animatePositions(previous) {
+    if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    for (const [item, top] of previous) {
+      const delta = top - item.getBoundingClientRect().top;
+      if (Math.abs(delta) > 1) item.animate(
+        [{ transform: `translateY(${delta}px)` }, { transform: "translateY(0)" }],
+        { duration: 280, easing: "cubic-bezier(.2,.8,.2,1)" }
+      );
+    }
+  }
+
+  function renderPreview() {
+    if (!gesture?.dragging) return;
+    const follow = matchMedia("(prefers-reduced-motion: reduce)").matches ? 1 : .34;
+    gesture.currentX += (gesture.targetX - gesture.currentX) * follow;
+    gesture.currentY += (gesture.targetY - gesture.currentY) * follow;
+    gesture.preview.style.transform = `translate3d(${gesture.currentX}px,${gesture.currentY}px,0)`;
+    gesture.followFrame = requestAnimationFrame(renderPreview);
+  }
+  container.addEventListener("pointerdown", event => {
+    const toggle = event.target.closest(".today-group-toggle[aria-expanded='false']");
+    if (!toggle || !event.isPrimary || event.button > 0) return;
+    const group = toggle.closest(".today-group");
+    gesture = { id: group.dataset.groupId, pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, ready: isSelected(group.dataset.groupId), dragging: false };
+    if (gesture.ready) return;
+    gesture.timer = setTimeout(() => {
+      if (!gesture || gesture.pointerId !== event.pointerId) return;
+      gesture.ready = true;
+      container.dataset.suppressGroupClick = gesture.id;
+      onSelect(gesture.id);
+    }, 450);
+  });
+
+  function startDrag(event) {
+    const source = [...container.children].find(item => item.dataset.groupId === gesture.id);
+    if (!source) return;
+    const rect = source.getBoundingClientRect();
+    const placeholder = document.createElement("li");
+    placeholder.className = "drag-placeholder";
+    placeholder.style.height = `${rect.height}px`;
+    source.before(placeholder);
+    source.classList.add("drag-source");
+    const preview = document.createElement("div");
+    preview.className = "drag-preview";
+    preview.style.width = `${rect.width}px`;
+    preview.append(source.cloneNode(true));
+    document.body.append(preview);
+    container.classList.add("dragging");
+    gesture = { ...gesture, source, placeholder, preview, dragging: true, moved: false, beforeType: null, beforeId: null,
+      offsetX: event.clientX - rect.left, offsetY: event.clientY - rect.top,
+      currentX: rect.left, currentY: rect.top, targetX: rect.left, targetY: rect.top };
+    gesture.followFrame = requestAnimationFrame(renderPreview);
+  }
+
+  function updateDrag(event) {
+    const g = gesture;
+    g.targetX = event.clientX - g.offsetX;
+    g.targetY = event.clientY - g.offsetY;
+    const candidates = [...container.children].filter(item => item !== g.source && item !== g.placeholder && (item.dataset.groupId || item.dataset.id));
+    const before = candidates.find(item => event.clientY < item.getBoundingClientRect().top + item.getBoundingClientRect().height / 2);
+    const beforeType = before?.dataset.groupId ? "group" : before ? "task" : null;
+    const beforeId = before?.dataset.groupId || before?.dataset.id || null;
+    if (beforeType !== g.beforeType || beforeId !== g.beforeId) {
+      const previous = capturePositions();
+      if (before) before.before(g.placeholder); else container.append(g.placeholder);
+      g.beforeType = beforeType;
+      g.beforeId = beforeId;
+      g.moved = true;
+      animatePositions(previous);
+    }
+    const edge = 72;
+    if (event.clientY < edge) window.scrollBy(0, -12);
+    else if (event.clientY > innerHeight - edge) window.scrollBy(0, 12);
+  }
+
+  window.addEventListener("pointermove", event => {
+    if (!gesture || event.pointerId !== gesture.pointerId) return;
+    const distance = Math.hypot(event.clientX - gesture.startX, event.clientY - gesture.startY);
+    if (!gesture.ready) { if (distance > 8) clearTimeout(gesture.timer); return; }
+    if (!gesture.dragging && distance > 6) startDrag(event);
+    if (gesture.dragging) { event.preventDefault(); updateDrag(event); }
+  }, { passive: false });
+
+  function finish(event, cancelled = false) {
+    if (!gesture || event.pointerId !== gesture.pointerId) return;
+    const g = gesture;
+    gesture = null;
+    clearTimeout(g.timer);
+    setTimeout(() => { if (container.dataset.suppressGroupClick === g.id) delete container.dataset.suppressGroupClick; }, 0);
+    if (!g.dragging) return;
+    cancelAnimationFrame(g.followFrame);
+    g.preview.remove();
+    g.placeholder.remove();
+    g.source.classList.remove("drag-source");
+    container.classList.remove("dragging");
+    if (!cancelled && g.moved) onReorder(g.beforeType, g.beforeId);
+  }
+  window.addEventListener("pointerup", event => finish(event));
+  window.addEventListener("pointercancel", event => finish(event, true));
 }
 
 function enableProjectCardReorder({ container, isSelectionMode, isSelected, onLongPress, onSelectOnly, getSelectedIds, onReorder }) {

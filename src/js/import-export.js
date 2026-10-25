@@ -1,6 +1,6 @@
 const BACKUP_FORMAT = "local-first-pwa-backup";
 const APP_ID = "dims-tasks";
-const BACKUP_FORMAT_VERSION = 15;
+const BACKUP_FORMAT_VERSION = 16;
 const BACKUP_MAX_BYTES = 50 * 1024 * 1024;
 
 function backupCounts(data) { return Object.fromEntries(STORE_NAMES.map(name => [name, data[name].length])); }
@@ -130,7 +130,7 @@ function normalizeOlderBackup(data) {
     return createTask({ ...record, listId, sectionId, projectId,
       projectPosition: projectId ? record.projectPosition : null });
   });
-  const settings = data.settings.filter(record => record.id !== "today-layout").map(record => ({ ...record,
+  const settings = data.settings.map(record => ({ ...record,
     entityVersion: record.entityVersion || 1,
     updatedAt: record.updatedAt || record.createdAt,
     customFields: record.customFields || {},

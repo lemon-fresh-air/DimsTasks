@@ -203,6 +203,7 @@ function isValidTodayLayoutShape(layout) {
     if (!group || typeof group !== "object" || Array.isArray(group)
       || typeof group.id !== "string" || !group.id || groupIds.has(group.id)
       || !TODAY_GROUP_COLORS.includes(group.color) || colors.has(group.color)
+      || group.title !== undefined && group.title !== null && (typeof group.title !== "string" || !group.title.trim() || group.title.length > 80)
       || typeof group.collapsed !== "boolean" || !Array.isArray(group.taskIds)) return false;
     groupIds.add(group.id);
     colors.add(group.color);
@@ -247,7 +248,8 @@ function normalizeTodayGroups(layout, visible, date) {
     if (!taskIds.length) continue;
     groupIds.add(group.id);
     colors.add(group.color);
-    groups.push({ id: group.id, color: group.color, collapsed: group.collapsed === true, taskIds });
+    groups.push({ id: group.id, color: group.color, title: typeof group.title === "string" && group.title.trim() ? group.title.trim().slice(0, 80) : null,
+      collapsed: group.collapsed === true, taskIds });
   }
   if (!groups.length) return null;
   const items = [];
@@ -286,7 +288,7 @@ function createTodayGroup(layout, visible, date, color, selectedIds, groupId) {
   const firstIndex = current.items.findIndex(item => item.type === "task" && item.id === firstId);
   const insertion = current.items.slice(0, firstIndex).filter(item => item.type !== "task" || !selected.has(item.id)).length;
   items.splice(insertion, 0, { type: "group", id: groupId });
-  return { date, groups: [...current.groups, { id: groupId, color, collapsed: false, taskIds }], items };
+  return { date, groups: [...current.groups, { id: groupId, color, title: null, collapsed: false, taskIds }], items };
 }
 
 function assignTodayGroupTasks(layout, visible, date, groupId, selectedIds) {
@@ -342,6 +344,14 @@ function setTodayGroupCollapsed(layout, visible, date, groupId, collapsed) {
   return { ...current, groups: current.groups.map(group => group.id === groupId ? { ...group, collapsed: Boolean(collapsed) } : group) };
 }
 
+function setTodayGroupTitle(layout, visible, date, groupId, title) {
+  const current = normalizeTodayGroups(layout, visible, date);
+  if (!current?.groups.some(group => group.id === groupId)) throw new Error("Групу не знайдено");
+  const normalized = String(title).trim();
+  if (!normalized || normalized.length > 80) throw new Error("Назва групи має містити від 1 до 80 символів");
+  return { ...current, groups: current.groups.map(group => group.id === groupId ? { ...group, title: normalized } : group) };
+}
+
 function moveTodayOuterItem(layout, visible, date, type, id, beforeType = null, beforeId = null) {
   const current = normalizeTodayGroups(layout, visible, date);
   if (!current) throw new Error("Немає денних груп");
@@ -352,6 +362,19 @@ function moveTodayOuterItem(layout, visible, date, type, id, beforeType = null, 
   const target = beforeId === null ? items.length : items.findIndex(item => item.type === beforeType && item.id === beforeId);
   items.splice(target < 0 ? items.length : target, 0, moved);
   return { ...current, items };
+}
+
+function reorderTodayOuterTaskBlock(layout, visible, date, selectedIds, beforeType = null, beforeId = null) {
+  const current = normalizeTodayGroups(layout, visible, date);
+  if (!current) throw new Error("Немає денних груп");
+  const selected = new Set(selectedIds);
+  const moved = current.items.filter(item => item.type === "task" && selected.has(item.id));
+  if (!moved.length) return current;
+  const remaining = current.items.filter(item => item.type !== "task" || !selected.has(item.id));
+  const target = beforeId === null ? remaining.length : remaining.findIndex(item => item.type === beforeType && item.id === beforeId);
+  if (target < 0) throw new Error("Місце перестановки не знайдено");
+  remaining.splice(target, 0, ...moved);
+  return { ...current, items: remaining };
 }
 
 function shiftTodayGroupTask(layout, visible, date, groupId, taskId, direction) {

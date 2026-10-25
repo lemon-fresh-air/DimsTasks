@@ -8,6 +8,7 @@ let manualTheme = "light";
 let useSystemTheme = true;
 const systemThemeQuery = matchMedia("(prefers-color-scheme: dark)");
 let selectedTaskIds = new Set();
+let selectedTodayGroupId = null;
 let selectedListIds = new Set();
 let completionAudioContext;
 let editingSelectedTaskDates = false;
@@ -145,8 +146,10 @@ function visibleTasks() {
 }
 
 function renderCurrentTasks() {
+  if (activeListId !== TODAY_LIST_ID || todayLayout?.date !== localDateValue()
+    || !todayLayout.groups.some(group => group.id === selectedTodayGroupId && group.collapsed)) selectedTodayGroupId = null;
   renderTasks(visibleTasks(), selectedTaskIds, lists, projects, activeList(),
-    activeListId === TODAY_LIST_ID && todayLayout?.date === localDateValue() ? todayLayout : null);
+    activeListId === TODAY_LIST_ID && todayLayout?.date === localDateValue() ? todayLayout : null, selectedTodayGroupId);
   updateMainMenuTaskCounts(tasks);
   renderSelectedListOptions(lists, activeListId);
   renderProjects();
@@ -625,6 +628,7 @@ function openList(listId) {
   if (listId !== TODAY_LIST_ID && !lists.some(list => list.id === listId)) return;
   activeListId = listId;
   selectedTaskIds = new Set();
+  selectedTodayGroupId = null;
   selectedListIds = new Set();
   renderListNavigation();
   renderCurrentTasks();
@@ -839,11 +843,13 @@ async function reorderTaskLists({ selectedIds, beforeId }) {
 }
 
 function selectTask(id) {
+  selectedTodayGroupId = null;
   selectedTaskIds = new Set([id]);
   renderCurrentTasks();
 }
 
 function toggleTaskSelection(id) {
+  selectedTodayGroupId = null;
   const next = new Set(selectedTaskIds);
   if (next.has(id)) next.delete(id); else next.add(id);
   selectedTaskIds = next;
@@ -852,9 +858,102 @@ function toggleTaskSelection(id) {
 
 function clearTaskSelection() {
   selectedTaskIds = new Set();
+  selectedTodayGroupId = null;
   closeSelectedListDropdown();
   closeTodayGroupDialog();
+  closeTodayGroupRenameDialog();
   renderCurrentTasks();
+}
+
+function closeTodayGroupRenameDialog() {
+  if (els.todayGroupRenameBackdrop.hidden) return;
+  els.todayGroupRenameBackdrop.hidden = true;
+  els.todayGroupRenameError.hidden = true;
+  if (selectedTodayGroupId) els.renameSelectedGroup.focus({ preventScroll: true });
+}
+
+function openTodayGroupRenameDialog() {
+  const group = todayLayout?.groups.find(item => item.id === selectedTodayGroupId);
+  if (!group) return;
+  els.todayGroupRenameInput.value = group.title || TODAY_GROUP_NAMES.get(group.color);
+  els.todayGroupRenameError.hidden = true;
+  els.todayGroupRenameBackdrop.hidden = false;
+  els.todayGroupRenameInput.focus();
+  els.todayGroupRenameInput.select();
+}
+
+async function saveTodayGroupName(event) {
+  event.preventDefault();
+  const title = els.todayGroupRenameInput.value.trim();
+  if (!title) {
+    els.todayGroupRenameError.textContent = "Введіть назву групи";
+    els.todayGroupRenameError.hidden = false;
+    els.todayGroupRenameInput.focus();
+    return;
+  }
+  const groupId = selectedTodayGroupId;
+  try {
+    await changeTodayLayout((layout, visible, date) => setTodayGroupTitle(layout, visible, date, groupId, title));
+    closeTodayGroupRenameDialog();
+    renderCurrentTasks();
+    toast("Групу перейменовано");
+  } catch (_error) {
+    els.todayGroupRenameError.textContent = "Не вдалося зберегти назву групи";
+    els.todayGroupRenameError.hidden = false;
+  }
+}
+
+function selectTodayGroup(id) {
+  const group = todayLayout?.groups.find(item => item.id === id);
+  if (!group?.collapsed || activeListId !== TODAY_LIST_ID) return;
+  selectedTaskIds = new Set();
+  selectedTodayGroupId = id;
+  renderCurrentTasks();
+}
+
+async function reorderSelectedTodayGroup(beforeType, beforeId) {
+  const groupId = selectedTodayGroupId;
+  if (!groupId) return false;
+  try {
+    await changeTodayLayout((layout, visible, date) => moveTodayOuterItem(layout, visible, date, "group", groupId, beforeType, beforeId));
+    renderCurrentTasks();
+    return true;
+  } catch (_error) {
+    renderCurrentTasks();
+    toast("Не вдалося зберегти порядок групи");
+    return false;
+  }
+}
+
+async function completeSelectedTodayGroup() {
+  const group = todayLayout?.groups.find(item => item.id === selectedTodayGroupId);
+  if (!group) return;
+  const originals = tasks.filter(task => group.taskIds.includes(task.id) && !isTaskCompleted(task));
+  if (!originals.length) return;
+  const layoutBefore = todayLayout;
+  const dateBefore = localDateValue();
+  const completedAt = new Date().toISOString();
+  const completed = originals.map(task => ({ ...task, status: "completed", completedAt, updatedAt: completedAt }));
+  try {
+    els.completeSelectedGroup.disabled = true;
+    await taskDb.putMany(completed);
+    selectedTodayGroupId = null;
+    await refresh();
+    toast(`Виконано завдань: ${completed.length}`, { duration: 3000, action: async () => {
+      try {
+        await taskDb.putMany(originals.map(task => ({ ...task, updatedAt: new Date().toISOString() })));
+        if (dateBefore === localDateValue()) await settingsDb.saveTodayLayout(layoutBefore, dateBefore);
+        await refresh();
+        toast("Виконання скасовано");
+      } catch (_error) {
+        await refresh();
+        toast("Не вдалося скасувати виконання");
+      }
+    } });
+  } catch (_error) {
+    await refresh();
+    toast("Не вдалося виконати групу");
+  } finally { els.completeSelectedGroup.disabled = false; }
 }
 
 function closeTodayGroupDialog() {
@@ -1123,9 +1222,24 @@ async function addTask() {
   return true;
 }
 
-async function reorderSelectedTasks({ beforeId, groupId = null }) {
+async function reorderSelectedTasks({ beforeType = "task", beforeId, groupId = null }) {
   const isToday = activeListId === TODAY_LIST_ID;
   if (isToday && todayLayout?.groups?.length) {
+    if (!groupId) {
+      try {
+        const date = localDateValue();
+        const next = reorderTodayOuterTaskBlock(todayLayout, visibleTodayLayoutTasks(date), date, selectedTaskIds, beforeType, beforeId);
+        if (JSON.stringify(next.items) === JSON.stringify(todayLayout.items)) return false;
+        await changeTodayLayout((layout, visible, currentDate) =>
+          reorderTodayOuterTaskBlock(layout, visible, currentDate, selectedTaskIds, beforeType, beforeId));
+        renderCurrentTasks();
+        return true;
+      } catch (_error) {
+        renderCurrentTasks();
+        toast("Не вдалося зберегти порядок");
+        return false;
+      }
+    }
     const group = todayLayout.groups.find(item => item.id === groupId);
     if (!group) return false;
     const selectedIds = new Set(selectedTaskIds);
@@ -1617,6 +1731,12 @@ els.desktopSaveTask.addEventListener("click", () => saveAndLeaveTaskEditor({ all
 els.selectionClose.addEventListener("click", clearTaskSelection);
 els.selectAllTasks.addEventListener("click", toggleAllVisibleTasks);
 els.groupSelected.addEventListener("click", openTodayGroupDialog);
+els.renameSelectedGroup.addEventListener("click", openTodayGroupRenameDialog);
+els.todayGroupRenameForm.addEventListener("submit", saveTodayGroupName);
+els.todayGroupRenameCancel.addEventListener("click", closeTodayGroupRenameDialog);
+els.todayGroupRenameBackdrop.addEventListener("click", event => { if (event.target === els.todayGroupRenameBackdrop) closeTodayGroupRenameDialog(); });
+els.todayGroupRenameDialog.addEventListener("keydown", event => { if (event.key === "Escape") { event.preventDefault(); closeTodayGroupRenameDialog(); } });
+els.completeSelectedGroup.addEventListener("click", completeSelectedTodayGroup);
 els.todayGroupCancel.addEventListener("click", closeTodayGroupDialog);
 els.todayGroupBackdrop.addEventListener("click", event => { if (event.target === els.todayGroupBackdrop) closeTodayGroupDialog(); });
 els.todayGroupDialog.addEventListener("keydown", event => { if (event.key === "Escape") { event.preventDefault(); closeTodayGroupDialog(); } });
@@ -1821,6 +1941,8 @@ els.list.addEventListener("click", async event => {
   if (groupToggle && els.list.contains(groupToggle)) {
     const wrapper = groupToggle.closest(".today-group");
     const groupId = wrapper?.dataset.groupId;
+    if (els.list.dataset.suppressGroupClick === groupId) { delete els.list.dataset.suppressGroupClick; return; }
+    if (selectedTodayGroupId) { clearTaskSelection(); return; }
     const group = todayLayout?.groups.find(item => item.id === groupId);
     if (!group || groupToggle.disabled) return;
     groupToggle.disabled = true;
@@ -1830,7 +1952,7 @@ els.list.addEventListener("click", async event => {
         setTodayGroupCollapsed(layout, visible, date, groupId, collapsed));
       wrapper.querySelector(".today-group-tasks").hidden = collapsed;
       groupToggle.setAttribute("aria-expanded", String(!collapsed));
-      groupToggle.setAttribute("aria-label", `${collapsed ? "Розгорнути" : "Згорнути"} ${TODAY_GROUP_NAMES.get(group.color).toLowerCase()} групу`);
+      groupToggle.setAttribute("aria-label", `${collapsed ? "Розгорнути" : "Згорнути"} групу «${group.title || TODAY_GROUP_NAMES.get(group.color)}»`);
     } catch (_error) {
       toast("Не вдалося зберегти стан групи");
     } finally {
@@ -1910,9 +2032,10 @@ enableTaskGestures({
   getSelectedIds: () => new Set(selectedTaskIds),
   onReorder: reorderSelectedTasks,
   canDragRow: row => activeListId === TODAY_LIST_ID && todayLayout?.groups?.length
-    ? Boolean(row.parentElement?.classList.contains("today-group-tasks"))
+    ? row.parentElement === els.list || Boolean(row.parentElement?.classList.contains("today-group-tasks"))
     : row.parentElement === els.list
 });
+enableTodayGroupReordering({ isSelected: id => selectedTodayGroupId === id, onSelect: selectTodayGroup, onReorder: reorderSelectedTodayGroup });
 let appServiceWorkerRegistration = null;
 let lastAppUpdateCheck = 0;
 

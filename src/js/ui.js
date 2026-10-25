@@ -4,12 +4,22 @@ const els = {
   selectionToolbar: document.querySelector("#selection-toolbar"),
   selectionClose: document.querySelector("#selection-close"),
   selectionCount: document.querySelector("#selection-count"),
+  selectionControls: document.querySelector("#selection-controls"),
   selectAllTasks: document.querySelector("#select-all-tasks"),
   dateSelected: document.querySelector("#date-selected"),
   listSelected: document.querySelector("#list-selected"),
   selectedListOptions: document.querySelector("#selected-list-options"),
   deleteSelected: document.querySelector("#delete-selected"),
   groupSelected: document.querySelector("#group-selected"),
+  selectedGroupActions: document.querySelector("#selected-group-actions"),
+  completeSelectedGroup: document.querySelector("#complete-selected-group"),
+  renameSelectedGroup: document.querySelector("#rename-selected-group"),
+  todayGroupRenameBackdrop: document.querySelector("#today-group-rename-backdrop"),
+  todayGroupRenameDialog: document.querySelector("#today-group-rename-dialog"),
+  todayGroupRenameForm: document.querySelector("#today-group-rename-form"),
+  todayGroupRenameInput: document.querySelector("#today-group-rename-input"),
+  todayGroupRenameError: document.querySelector("#today-group-rename-error"),
+  todayGroupRenameCancel: document.querySelector("#today-group-rename-cancel"),
   todayOrderHint: document.querySelector("#today-order-hint"),
   todayGroupBackdrop: document.querySelector("#today-group-backdrop"),
   todayGroupDialog: document.querySelector("#today-group-dialog"),
@@ -545,15 +555,18 @@ const TODAY_GROUP_NAMES = new Map([
   ["#607D8B", "Сланцева"]
 ]);
 
-function renderTasks(tasks, selectedIds = new Set(), taskLists = [], taskProjects = [], contextList = null, layout = null) {
+function renderTasks(tasks, selectedIds = new Set(), taskLists = [], taskProjects = [], contextList = null, layout = null, selectedGroupId = null) {
   const active = tasks.filter(task => !isTaskCompleted(task));
-  const selectionMode = selectedIds.size > 0;
+  const groupSelection = Boolean(selectedGroupId);
+  const selectionMode = selectedIds.size > 0 || groupSelection;
   els.shell.classList.toggle("selection-active", selectionMode);
   els.normalHeader.hidden = selectionMode;
   els.selectionToolbar.hidden = !selectionMode;
-  els.selectionCount.textContent = `Вибрано: ${selectedIds.size}`;
+  els.selectionCount.textContent = groupSelection ? "Вибрано групу" : `Вибрано: ${selectedIds.size}`;
+  els.selectionControls.hidden = groupSelection;
+  els.selectedGroupActions.hidden = !groupSelection;
   const groupedToday = contextList?.kind === "today" && layout?.groups?.length > 0;
-  els.groupSelected.hidden = contextList?.kind !== "today" || !selectionMode;
+  els.groupSelected.hidden = contextList?.kind !== "today" || !selectedIds.size;
   els.todayOrderHint.hidden = !groupedToday || !selectionMode;
   const allSelected = active.length > 0 && active.every(task => selectedIds.has(task.id));
   els.selectAllTasks.setAttribute("aria-pressed", String(allSelected));
@@ -598,6 +611,8 @@ function renderTasks(tasks, selectedIds = new Set(), taskLists = [], taskProject
       const wrapper = document.createElement("li");
       wrapper.className = "today-group";
       wrapper.dataset.groupId = group.id;
+      wrapper.classList.toggle("selected", selectedGroupId === group.id);
+      wrapper.setAttribute("aria-selected", String(selectedGroupId === group.id));
       wrapper.style.setProperty("--group-color", group.color);
       const heading = document.createElement("h2");
       heading.className = "today-group-heading";
@@ -606,9 +621,13 @@ function renderTasks(tasks, selectedIds = new Set(), taskLists = [], taskProject
       toggle.className = "today-group-toggle";
       toggle.setAttribute("aria-controls", `today-group-tasks-${group.id}`);
       toggle.setAttribute("aria-expanded", String(!group.collapsed));
-      toggle.setAttribute("aria-label", `${group.collapsed ? "Розгорнути" : "Згорнути"} ${TODAY_GROUP_NAMES.get(group.color).toLowerCase()} групу`);
+      const groupTitle = group.title || TODAY_GROUP_NAMES.get(group.color);
+      toggle.setAttribute("aria-label", `${group.collapsed ? "Розгорнути" : "Згорнути"} групу «${groupTitle}»`);
       const label = document.createElement("span");
-      label.textContent = `${TODAY_GROUP_NAMES.get(group.color)} · ${group.taskIds.filter(id => rows.has(id)).length}`;
+      const count = document.createElement("span");
+      count.className = "today-group-count";
+      count.textContent = group.taskIds.filter(id => rows.has(id)).length;
+      label.append(`${groupTitle} · `, count);
       const chevron = document.createElement("span");
       chevron.className = "today-group-chevron";
       chevron.setAttribute("aria-hidden", "true");
@@ -625,7 +644,7 @@ function renderTasks(tasks, selectedIds = new Set(), taskLists = [], taskProject
   } else els.list.replaceChildren(...rows.values());
   els.list.hidden = active.length === 0 && !groupedToday;
   els.empty.hidden = active.length > 0 || groupedToday;
-  els.count.textContent = selectionMode
+  els.count.textContent = groupSelection ? "Вибрано групу" : selectionMode
     ? `Вибрано: ${selectedIds.size}`
     : `${active.length} ${active.length === 1 ? "задача" : active.length > 1 && active.length < 5 ? "задачі" : "задач"}`;
 }
