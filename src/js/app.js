@@ -15,6 +15,7 @@ let editingSelectedTaskDates = false;
 let editingProjectDate = false;
 let currentLocalDate = localDateValue();
 let todayLayout = null;
+let dayChangePending = false;
 let currentLocalMinute = localTimeValue();
 let overdueProcessing;
 let dateChangeTimer;
@@ -131,29 +132,45 @@ function clearPreparedBackupDownload() {
   setTimeout(() => URL.revokeObjectURL(url), 60000);
 }
 const todayList = { id: TODAY_LIST_ID, title: "Сьогодні", kind: "today" };
+const tomorrowList = { id: TOMORROW_LIST_ID, title: "Завтра", kind: "today" };
+function isDayList(id = activeListId) { return id === TODAY_LIST_ID || id === TOMORROW_LIST_ID; }
+function activePlanDate() { return activeListId === TOMORROW_LIST_ID ? nextLocalDate() : localDateValue(); }
+function ensureCurrentDay() {
+  if (localDateValue() === currentLocalDate && !dayChangePending) return true;
+  showDayChangePrompt();
+  return false;
+}
+function showDayChangePrompt() {
+  dayChangePending = true;
+  els.dayChangeBackdrop.hidden = false;
+  els.dayChangeConfirm.focus({ preventScroll: true });
+}
 
 function activeList() {
   if (activeListId === TODAY_LIST_ID) return todayList;
+  if (activeListId === TOMORROW_LIST_ID) return tomorrowList;
   return lists.find(list => list.id === activeListId) || lists.find(list => list.kind === "inbox");
 }
 
 function visibleTasks() {
-  if (activeListId === TODAY_LIST_ID) {
-    const today = localDateValue();
-    return visibleProjectTasks(tasks).filter(task => isTaskDueToday(task, today)).sort(compareTodayTasks);
+  if (isDayList()) {
+    const date = activePlanDate();
+    return visibleProjectTasks(tasks).filter(task => isTaskDueToday(task, date)).sort(compareDayTasks);
   }
   return visibleListTasks(tasks, activeListId).sort(compareTasks);
 }
 
 function renderCurrentTasks() {
-  if (activeListId !== TODAY_LIST_ID || todayLayout?.date !== localDateValue()) selectedTodayGroupIds = new Set();
+  if (!isDayList() || todayLayout?.date !== activePlanDate()) selectedTodayGroupIds = new Set();
   else selectedTodayGroupIds = new Set([...selectedTodayGroupIds].filter(id =>
     todayLayout.groups.some(group => group.id === id && group.collapsed)));
   renderTasks(visibleTasks(), selectedTaskIds, lists, projects, activeList(),
-    activeListId === TODAY_LIST_ID && todayLayout?.date === localDateValue() ? todayLayout : null, selectedTodayGroupIds);
+    isDayList() && todayLayout?.date === activePlanDate() ? todayLayout : null, selectedTodayGroupIds);
   updateMainMenuTaskCounts(tasks);
   renderSelectedListOptions(lists, activeListId);
   renderProjects();
+  els.daySwitch.hidden = !isDayList();
+  els.daySwitch.textContent = activeListId === TOMORROW_LIST_ID ? "← Сьогодні" : "Завтра →";
 }
 
 function renderListNavigation() {
@@ -167,6 +184,7 @@ function renderListMenu() {
   const inboxIndex = lists.findIndex(list => list.kind === "inbox");
   const menuLists = lists.slice();
   menuLists.splice(inboxIndex < 0 ? 0 : inboxIndex + 1, 0, todayList);
+  menuLists.splice(inboxIndex < 0 ? 1 : inboxIndex + 2, 0, tomorrowList);
   renderMainMenuLists(menuLists, activeListId, selectedListIds, tasks);
   renderTaskListOptions(lists);
 }
@@ -273,52 +291,57 @@ async function loadAndNormalizeTaskOrder() {
 }
 
 function visibleTodayLayoutTasks(date) {
-  return visibleProjectTasks(tasks).filter(task => isTaskDueToday(task, date));
+  return visibleProjectTasks(tasks).filter(task => isTaskDueToday(task, date))
+    .map(task => ({ ...task, todayPosition: null }));
 }
 
 async function syncTodayLayout() {
-  const date = localDateValue();
-  const stored = await settingsDb.todayLayout();
-  if (date !== localDateValue()) { todayLayout = null; return null; }
-  if (!stored || stored.date !== date || !isValidTodayLayoutShape(stored)) {
+  if (!isDayList()) { todayLayout = null; return null; }
+  const date = activePlanDate();
+  const screen = activeListId;
+  const stored = await settingsDb.todayLayout(date);
+  if (!ensureCurrentDay() || screen !== activeListId) return null;
+  if (!stored || !isValidDayPlanShape(stored)) {
     todayLayout = null;
-    if (stored) try { await settingsDb.clearStaleTodayLayout(date); } catch (_error) {
-      // An obsolete layout must never be applied, even if cleanup fails.
-    }
     return null;
   }
-  const normalized = normalizeTodayGroups(stored, visibleTodayLayoutTasks(date), date);
+  const normalized = normalizeDayPlan(stored, visibleTodayLayoutTasks(date), date);
   if (!normalized) {
     todayLayout = null;
-    try { await settingsDb.saveTodayLayout(null, date); } catch (_error) {
-      // An empty layout must not reappear when cleanup cannot be saved.
-    }
+    await settingsDb.saveTodayLayout(null, date);
     return null;
   }
   if (JSON.stringify({ date: stored.date, groups: stored.groups, items: stored.items }) !== JSON.stringify(normalized)) {
     await settingsDb.saveTodayLayout(normalized, date);
-    if (date !== localDateValue()) { todayLayout = null; return null; }
+    if (!ensureCurrentDay() || screen !== activeListId) return null;
   }
   todayLayout = normalized;
   return normalized;
 }
 
 async function changeTodayLayout(change) {
-  const date = localDateValue();
+  if (!ensureCurrentDay()) throw new Error("Настала нова доба");
+  const date = activePlanDate();
   await syncTodayLayout();
-  if (date !== localDateValue()) throw new Error("Дата змінилася під час дії");
+  if (!ensureCurrentDay() || date !== activePlanDate()) throw new Error("Дата змінилася під час дії");
   const next = change(todayLayout, visibleTodayLayoutTasks(date), date);
-  if (date !== localDateValue()) throw new Error("Дата змінилася під час дії");
-  await settingsDb.saveTodayLayout(next, date);
-  if (date !== localDateValue()) { todayLayout = null; throw new Error("Дата змінилася під час дії"); }
-  todayLayout = next;
-  return next;
+  const plan = next || flattenDayPlan(todayLayout, date);
+  if (!ensureCurrentDay()) throw new Error("Дата змінилася під час дії");
+  await settingsDb.saveTodayLayout(plan, date);
+  todayLayout = plan;
+  return plan;
+}
+function flattenDayPlan(layout, date, omitted = new Set()) {
+  if (!layout) return null;
+  return { date, groups: [], items: layout.items.flatMap(item =>
+    item.type === "task" ? [item] : (layout.groups.find(group => group.id === item.id)?.taskIds || []).map(id => ({ type: "task", id })))
+    .filter(item => !omitted.has(item.id)) };
 }
 
 async function loadLists() {
   lists = (await listDb.all()).sort(compareLists);
   selectedListIds = new Set([...selectedListIds].filter(id => lists.some(list => list.id === id && list.kind === "regular")));
-  if (activeListId !== TODAY_LIST_ID && !lists.some(list => list.id === activeListId)) {
+  if (!isDayList() && !lists.some(list => list.id === activeListId)) {
     activeListId = lists.find(list => list.kind === "inbox")?.id || INBOX_LIST_ID;
   }
   renderListNavigation();
@@ -326,6 +349,8 @@ async function loadLists() {
 
 async function initializeApp({ openStartScreen = false } = {}) {
   await loadLists();
+  await settingsDb.migrateTodayLayout();
+  await settingsDb.migrateTodayOrder();
   await loadAppearanceSettings();
   todayDefaultListId = await settingsDb.todayListId() || INBOX_LIST_ID;
   returnOverdueToInbox = await settingsDb.returnOverdueToInbox();
@@ -588,10 +613,9 @@ async function refreshDateDependentUI() {
   const minute = localTimeValue();
   if (today === currentLocalDate && minute === currentLocalMinute) return;
   const dayChanged = today !== currentLocalDate;
+  if (dayChanged) { showDayChangePrompt(); return; }
   currentLocalDate = today;
   currentLocalMinute = minute;
-  if (dayChanged) { todayLayout = null; await syncTodayLayout(); }
-  if (dayChanged && activeListId === TODAY_LIST_ID) selectedTaskIds = new Set();
   await processOverdueTasks();
   renderCurrentTasks();
   if (!els.editor.hidden) {
@@ -620,22 +644,40 @@ function scheduleDateChangeCheck() {
 }
 
 function checkForDateChange() {
-  refreshDateDependentUI().then(() => syncTodayLayout()).catch(() => { todayLayout = null; });
+  refreshDateDependentUI().catch(() => { todayLayout = null; });
   scheduleDateChangeCheck();
 }
 
 function openList(listId) {
   closeProjects();
-  if (listId !== TODAY_LIST_ID && !lists.some(list => list.id === listId)) return;
+  if (!isDayList(listId) && !lists.some(list => list.id === listId)) return;
   activeListId = listId;
+  todayLayout = null;
   selectedTaskIds = new Set();
   selectedTodayGroupIds = new Set();
   selectedListIds = new Set();
   renderListNavigation();
   renderCurrentTasks();
+  if (isDayList()) syncTodayLayout().then(() => renderCurrentTasks()).catch(() => { todayLayout = null; });
   closeMainMenu();
   window.scrollTo(0, 0);
 }
+els.daySwitch.addEventListener("click", () => {
+  openList(activeListId === TODAY_LIST_ID ? TOMORROW_LIST_ID : TODAY_LIST_ID);
+  clearTimeout(mobileNavTimer);
+  recordMobileNavigation(true);
+});
+els.dayChangeConfirm.addEventListener("click", () => window.location.reload());
+document.addEventListener("click", event => {
+  if (ensureCurrentDay() || event.target.closest("#day-change-confirm")) return;
+  event.preventDefault();
+  event.stopImmediatePropagation();
+}, true);
+document.addEventListener("submit", event => {
+  if (ensureCurrentDay()) return;
+  event.preventDefault();
+  event.stopImmediatePropagation();
+}, true);
 
 async function addList(title, { fromMainMenu = true } = {}) {
   const normalizedTitle = title.trim();
@@ -911,7 +953,7 @@ function closeTodayGroupDeleteDialog() {
 }
 
 function openTodayGroupDeleteDialog() {
-  if (activeListId !== TODAY_LIST_ID || !selectedTodayGroupIds.size) return;
+  if (!isDayList() || !selectedTodayGroupIds.size) return;
   const count = selectedTodayGroupIds.size;
   els.todayGroupDeleteTitle.textContent = count === 1 ? "Видалити групу?" : `Видалити групи (${count})?`;
   els.todayGroupDeleteKeepTasks.checked = true;
@@ -926,7 +968,7 @@ async function deleteSelectedTodayGroups() {
   if (!ids.size) return;
   try {
     await syncTodayLayout();
-    const date = localDateValue();
+    const date = activePlanDate();
     const before = todayLayout;
     const groups = before?.groups.filter(group => ids.has(group.id)) || [];
     if (groups.length !== ids.size) throw new Error("Групу не знайдено");
@@ -936,6 +978,7 @@ async function deleteSelectedTodayGroups() {
     const visible = visibleTodayLayoutTasks(date);
     for (const group of groups) next = ungroupTodayGroup(next, visible, date, group.id);
     if (!keepTasks && next) next = normalizeTodayGroups(next, visible.filter(task => !deletedIds.has(task.id)), date);
+    if (!next) next = flattenDayPlan(before, date, keepTasks ? new Set() : deletedIds);
     await settingsDb.changeTodayLayoutAndTasks(before, next, date, deletedTasks.map(task => ({ id: task.id, remove: true })));
     todayLayout = next;
     if (!keepTasks) tasks = tasks.filter(task => !deletedIds.has(task.id));
@@ -990,7 +1033,7 @@ function todayGroupColorOption(color, name) {
 }
 
 function openTodayGroupRecolorDialog() {
-  if (activeListId !== TODAY_LIST_ID || selectedTodayGroupIds.size !== 1) return;
+  if (!isDayList() || selectedTodayGroupIds.size !== 1) return;
   const source = todayLayout?.groups.find(group => selectedTodayGroupIds.has(group.id));
   if (!source) return;
   els.todayGroupRecolorOptions.replaceChildren(...[...TODAY_GROUP_NAMES].map(([color, name]) => {
@@ -1026,7 +1069,7 @@ function chooseTodayGroupColor(color) {
 async function applyTodayGroupColor(sourceId, color, keepId) {
   try {
     await syncTodayLayout();
-    const date = localDateValue();
+    const date = activePlanDate();
     const before = todayLayout;
     const merging = before.groups.some(group => group.color === color && group.id !== sourceId);
     const next = recolorTodayGroup(before, visibleTodayLayoutTasks(date), date, sourceId, color, keepId);
@@ -1050,7 +1093,7 @@ async function applyTodayGroupColor(sourceId, color, keepId) {
 
 async function selectTodayGroup(id) {
   const group = todayLayout?.groups.find(item => item.id === id);
-  if (!group || activeListId !== TODAY_LIST_ID) return false;
+  if (!group || !isDayList()) return false;
   if (selectedTaskIds.size) { toast("Групи виділяються окремо від завдань"); return false; }
   if (!group.collapsed) {
     const wrapper = [...els.list.children].find(item => item.dataset.groupId === id);
@@ -1099,7 +1142,7 @@ function closeTodayGroupDialog() {
 }
 
 function openTodayGroupDialog() {
-  if (activeListId !== TODAY_LIST_ID || !selectedTaskIds.size) return;
+  if (!isDayList() || !selectedTaskIds.size) return;
   closeSelectedListDropdown();
   els.todayGroupOptions.replaceChildren(...[...TODAY_GROUP_NAMES].map(([color, name]) => todayGroupColorOption(color, name)));
   const clear = document.createElement("button");
@@ -1112,7 +1155,7 @@ function openTodayGroupDialog() {
 }
 
 async function applyTodayGroupSelection(color) {
-  if (activeListId !== TODAY_LIST_ID || !selectedTaskIds.size) return;
+  if (!isDayList() || !selectedTaskIds.size) return;
   const selected = new Set(visibleTasks().filter(task => !isTaskCompleted(task) && selectedTaskIds.has(task.id)).map(task => task.id));
   closeTodayGroupDialog();
   if (!selected.size) return;
@@ -1333,14 +1376,18 @@ function handleDropdownListCreationKeydown(event, container) {
 }
 
 async function addTask() {
+  if (!ensureCurrentDay()) return false;
   const title = els.input.value.trim();
   if (!title) { els.input.focus(); return false; }
-  const task = createTask({ listId: els.taskListSelect.value || activeListId, title, description: els.description.value.trim(), dueDate: els.date.value || null, dueTime: els.date.value && els.time.value ? els.time.value : null, position: 0 });
+  const origin = els.editor.dataset.originListId;
+  const date = isDayList(origin) && els.editor.dataset.dateChosen !== "true"
+    ? origin === TOMORROW_LIST_ID ? nextLocalDate() : localDateValue() : els.date.value;
+  const task = createTask({ listId: els.taskListSelect.value || INBOX_LIST_ID, title, description: els.description.value.trim(), dueDate: date || null, dueTime: date && els.time.value ? els.time.value : null, position: 0 });
   const scope = taskOrderScope(task);
   const shifted = tasks.filter(item => taskOrderScope(item) === scope).map(item => ({ ...item, position: item.position + 1 }));
   await taskDb.putMany([task, ...shifted]);
   await refresh();
-  if (els.editor.dataset.originListId === TODAY_LIST_ID) {
+  if (isDayList(els.editor.dataset.originListId)) {
     todayDefaultListId = task.listId;
     try { await settingsDb.setTodayListId(task.listId); } catch (_error) {
       // The task is already saved; keep the chosen default for this session.
@@ -1350,11 +1397,12 @@ async function addTask() {
 }
 
 async function reorderSelectedTasks({ beforeType = "task", beforeId, groupId = null }) {
-  const isToday = activeListId === TODAY_LIST_ID;
+  if (!ensureCurrentDay()) return false;
+  const isToday = isDayList();
   if (isToday && todayLayout?.groups?.length) {
     if (!groupId) {
       try {
-        const date = localDateValue();
+        const date = activePlanDate();
         const next = reorderTodayOuterTaskBlock(todayLayout, visibleTodayLayoutTasks(date), date, selectedTaskIds, beforeType, beforeId);
         if (JSON.stringify(next.items) === JSON.stringify(todayLayout.items)) return false;
         await changeTodayLayout((layout, visible, currentDate) =>
@@ -1371,7 +1419,7 @@ async function reorderSelectedTasks({ beforeType = "task", beforeId, groupId = n
     if (!group) return false;
     const selectedIds = new Set(selectedTaskIds);
     try {
-      const date = localDateValue();
+      const date = activePlanDate();
       const next = reorderTodayGroupTaskBlock(todayLayout, visibleTodayLayoutTasks(date), date, groupId, selectedIds, beforeId);
       if (JSON.stringify(next.groups.find(item => item.id === groupId).taskIds) === JSON.stringify(group.taskIds)) return false;
       await changeTodayLayout((layout, visible, currentDate) =>
@@ -1384,12 +1432,17 @@ async function reorderSelectedTasks({ beforeType = "task", beforeId, groupId = n
       return false;
     }
   }
-  const selected = tasks.filter(task => selectedTaskIds.has(task.id)).sort(isToday ? compareTodayTasks : compareTasks);
+  if (isToday) {
+    const date = activePlanDate();
+    const next = reorderDayPlan(todayLayout, visibleTodayLayoutTasks(date), date, selectedTaskIds, beforeId);
+    await changeTodayLayout(() => next);
+    renderCurrentTasks();
+    return true;
+  }
+  const selected = tasks.filter(task => selectedTaskIds.has(task.id)).sort(compareTasks);
   if (!selected.length) return false;
   const previous = tasks;
-  const reordered = isToday
-    ? reorderTodayTaskBlock(tasks, visibleTasks(), selectedTaskIds, beforeId)
-    : reorderTaskBlock(tasks, selectedTaskIds, beforeId, taskOrderScope(selected[0]));
+  const reordered = reorderTaskBlock(tasks, selectedTaskIds, beforeId, taskOrderScope(selected[0]));
   const changed = reordered.filter((task, index) => task !== tasks[index]);
   if (!changed.length) return false;
   tasks = reordered.sort(compareTasks);
@@ -1406,6 +1459,7 @@ async function reorderSelectedTasks({ beforeType = "task", beforeId, groupId = n
 }
 
 async function saveOpenTask() {
+  if (!ensureCurrentDay()) return false;
   const id = els.editor.dataset.taskId;
   if (!id) return false;
   const task = tasks.find(item => item.id === id);
@@ -1616,7 +1670,7 @@ async function completeTask(task, changes = {}, toggle) {
 }
 
 els.add.addEventListener("click", () => openNewTaskEditor(
-  activeListId === TODAY_LIST_ID ? validTodayDefaultListId() : activeListId,
+  isDayList() ? validTodayDefaultListId() : activeListId,
   activeListId
 ));
 els.navToday.addEventListener("click", () => openList(TODAY_LIST_ID));
@@ -2011,6 +2065,7 @@ async function savePendingDateSelection() {
     return true;
   }
   els.date.value = pendingDateValue;
+  els.editor.dataset.dateChosen = "true";
   els.time.value = pendingDateValue ? pendingTimeValue : "";
   els.dateLabel.textContent = readableDueDate(pendingDateValue, pendingTimeValue);
   applyDateTone(els.datePickerOpen, pendingDateValue, pendingTimeValue);
@@ -2183,7 +2238,7 @@ enableTaskGestures({
   onSelectOnly: selectTask,
   getSelectedIds: () => new Set(selectedTaskIds),
   onReorder: reorderSelectedTasks,
-  canDragRow: row => activeListId === TODAY_LIST_ID && todayLayout?.groups?.length
+  canDragRow: row => isDayList() && todayLayout?.groups?.length
     ? row.parentElement === els.list || Boolean(row.parentElement?.classList.contains("today-group-tasks"))
     : row.parentElement === els.list
 });
@@ -2291,11 +2346,11 @@ function mobileNavigationEntry(index, view) {
   return { dimsTasksNavigation: mobileNavSession, index, view };
 }
 
-function recordMobileNavigation() {
+function recordMobileNavigation(alwaysPush = false) {
   if (!mobileNavSession || mobileNavApplying || !mobileNavigationEnabled()) return;
   const view = mobileNavigationState();
   if (sameMobileNavigation(view, mobileNavEntries[mobileNavIndex])) return;
-  if (mobileNavIndex > 0 && sameMobileNavigation(view, mobileNavEntries[mobileNavIndex - 1])) {
+  if (!alwaysPush && mobileNavIndex > 0 && sameMobileNavigation(view, mobileNavEntries[mobileNavIndex - 1])) {
     history.back();
     return;
   }
@@ -2379,7 +2434,7 @@ async function restoreMobileNavigation(view) {
       openProjects();
       if (view.projectId && projects.some(project => project.id === view.projectId)) openProject(view.projectId);
     } else {
-      openList(lists.some(list => list.id === view.listId) || view.listId === TODAY_LIST_ID
+      openList(lists.some(list => list.id === view.listId) || isDayList(view.listId)
         ? view.listId : INBOX_LIST_ID);
     }
     if (view.menu) openMainMenu();

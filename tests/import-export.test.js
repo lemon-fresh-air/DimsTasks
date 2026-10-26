@@ -50,10 +50,10 @@ test("project fixed list survives format 14 and format 13 defaults to automatic"
 
 test("format 14 remains importable without a daily layout", async () => {
   const restored = await parseBackup(file({ format: "local-first-pwa-backup", appId: "dims-tasks", formatVersion: 14, data }));
-  assert.equal(restored.settings.some(record => record.id === "today-layout"), false);
+  assert.equal(restored.settings.some(record => record.id.startsWith("day-plan:")), false);
 });
 
-test("format 15 keeps its daily groups when imported into format 16", async () => {
+test("format 15 keeps its daily groups on their original date", async () => {
   const today = new Date();
   const date = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
   const old = structuredClone(data);
@@ -62,49 +62,61 @@ test("format 15 keeps its daily groups when imported into format 16", async () =
     groups: [{ id: "green", color: "#2D9E6B", collapsed: true, taskIds: ["late"] }],
     items: [{ type: "group", id: "green" }] });
   const restored = await parseBackup(file({ format: "local-first-pwa-backup", appId: "dims-tasks", formatVersion: 15, data: old }));
-  assert.equal(restored.settings.find(record => record.id === "today-layout").groups[0].title, null);
+  assert.equal(restored.settings.find(record => record.id === `day-plan:${date}`).groups[0].title, null);
 });
 
-test("current layout survives only its local date and loses missing or invisible references", async () => {
+test("format 17 preserves separate ungrouped plans for two dates", async () => {
+  const current = structuredClone(data);
+  current.tasks[0].dueDate = "2026-10-27";
+  current.settings.push({ ...base("day-plan:2026-10-26"), date: "2026-10-26", groups: [], items: [] });
+  current.settings.push({ ...base("day-plan:2026-10-27"), date: "2026-10-27", groups: [], items: [{ type: "task", id: "late" }] });
+  const restored = await parseBackup(file({ format: "local-first-pwa-backup", appId: "dims-tasks", formatVersion: BACKUP_FORMAT_VERSION, data: current }));
+  assert.equal(restored.settings.filter(record => record.id.startsWith("day-plan:")).length, 2);
+  assert.deepEqual(Array.from(restored.settings.find(record => record.id === "day-plan:2026-10-27").items, item => item.id), ["late"]);
+});
+
+test("current plan keeps its date and loses missing or invisible references", async () => {
   const today = new Date();
   const date = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
   const current = structuredClone(data);
   current.tasks[0].dueDate = date;
   current.tasks.push({ ...current.tasks[0], id: "hidden", status: "completed" });
-  current.settings.push({ ...base("today-layout"), date,
+  current.settings.push({ ...base(`day-plan:${date}`), date,
     groups: [{ id: "green", color: "#2D9E6B", title: "Мої справи", collapsed: false, taskIds: ["late", "hidden", "missing"] }],
     items: [{ type: "group", id: "green" }, { type: "task", id: "lost-outside" }] });
   const payload = { format: "local-first-pwa-backup", appId: "dims-tasks", formatVersion: BACKUP_FORMAT_VERSION, data: current };
   const restored = await parseBackup(file(payload));
-  const layout = restored.settings.find(record => record.id === "today-layout");
+  const layout = restored.settings.find(record => record.id === `day-plan:${date}`);
   assert.deepEqual(Array.from(layout.groups[0].taskIds), ["late"]);
   assert.equal(layout.groups[0].title, "Мої справи");
   assert.deepEqual(Array.from(layout.items, item => item.type), ["group"]);
-  assert.equal(normalizeBackupTodayLayout(restored, "2000-01-01").settings.some(record => record.id === "today-layout"), false);
+  assert.equal(normalizeBackupTodayLayout(restored, "2000-01-01").settings.some(record => record.id === `day-plan:${date}`), true);
 });
 
-test("malformed current layout is rejected before import and merge keeps one whole record", async () => {
+test("malformed current plan is rejected before import and merge keeps one whole record", async () => {
   const current = structuredClone(data);
-  current.settings.push({ ...base("today-layout"), date: "2026-01-01", groups: [], items: [] });
+  current.settings.push({ ...base("day-plan:2026-01-01"), date: "2026-01-02", groups: [], items: [] });
   const payload = { format: "local-first-pwa-backup", appId: "dims-tasks", formatVersion: BACKUP_FORMAT_VERSION, data: current };
-  await assert.rejects(parseBackup(file(payload)), /денне компонування/);
+  await assert.rejects(parseBackup(file(payload)), /денний план/);
   const local = structuredClone(data);
-  local.settings.push({ ...base("today-layout"), date: "2026-01-01", groups: [{ id: "g", color: "#2D9E6B", collapsed: false, taskIds: [] }], items: [{ type: "group", id: "g" }] });
+  local.settings.push({ ...base("day-plan:2026-01-01"), date: "2026-01-01", groups: [{ id: "g", color: "#2D9E6B", collapsed: false, taskIds: [] }], items: [{ type: "group", id: "g" }] });
   const incoming = structuredClone(local);
-  incoming.settings.find(record => record.id === "today-layout").groups = [{ id: "b", color: "#3A7BD5", collapsed: true, taskIds: [] }];
-  incoming.settings.find(record => record.id === "today-layout").items = [{ type: "group", id: "b" }];
-  incoming.settings.find(record => record.id === "today-layout").updatedAt = "2099-01-01T00:00:00.000Z";
+  incoming.settings.find(record => record.id === "day-plan:2026-01-01").groups = [{ id: "b", color: "#3A7BD5", collapsed: true, taskIds: [] }];
+  incoming.settings.find(record => record.id === "day-plan:2026-01-01").items = [{ type: "group", id: "b" }];
+  incoming.settings.find(record => record.id === "day-plan:2026-01-01").updatedAt = "2099-01-01T00:00:00.000Z";
   const merged = mergeBackupData(local, incoming);
-  assert.equal(merged.data.settings.some(record => record.id === "today-layout"), false);
+  assert.deepEqual(Array.from(merged.data.settings.find(record => record.id === "day-plan:2026-01-01").groups), []);
   const sameDay = new Date();
   const date = `${sameDay.getFullYear()}-${String(sameDay.getMonth() + 1).padStart(2, "0")}-${String(sameDay.getDate()).padStart(2, "0")}`;
-  local.settings.find(record => record.id === "today-layout").date = date;
-  incoming.settings.find(record => record.id === "today-layout").date = date;
+  local.settings.find(record => record.id.startsWith("day-plan:")).date = date;
+  incoming.settings.find(record => record.id.startsWith("day-plan:")).date = date;
+  local.settings.find(record => record.id.startsWith("day-plan:")).id = `day-plan:${date}`;
+  incoming.settings.find(record => record.id.startsWith("day-plan:")).id = `day-plan:${date}`;
   local.tasks[0].dueDate = date;
   incoming.tasks[0].dueDate = date;
-  local.settings.find(record => record.id === "today-layout").groups[0].taskIds = ["late"];
-  incoming.settings.find(record => record.id === "today-layout").groups[0].taskIds = ["late"];
-  const selected = mergeBackupData(local, incoming).data.settings.find(record => record.id === "today-layout");
+  local.settings.find(record => record.id === `day-plan:${date}`).groups[0].taskIds = ["late"];
+  incoming.settings.find(record => record.id === `day-plan:${date}`).groups[0].taskIds = ["late"];
+  const selected = mergeBackupData(local, incoming).data.settings.find(record => record.id === `day-plan:${date}`);
   assert.deepEqual(Array.from(selected.groups, group => group.id), ["b"]);
   assert.deepEqual(Array.from(selected.items, item => item.id), ["b"]);
 });

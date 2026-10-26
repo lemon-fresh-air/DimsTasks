@@ -1,6 +1,6 @@
 const BACKUP_FORMAT = "local-first-pwa-backup";
 const APP_ID = "dims-tasks";
-const BACKUP_FORMAT_VERSION = 16;
+const BACKUP_FORMAT_VERSION = 17;
 const BACKUP_MAX_BYTES = 50 * 1024 * 1024;
 
 function backupCounts(data) { return Object.fromEntries(STORE_NAMES.map(name => [name, data[name].length])); }
@@ -18,13 +18,25 @@ function backupLocalDate(now = new Date()) {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
 }
 function normalizeBackupTodayLayout(data, date = backupLocalDate()) {
-  const record = data.settings.find(item => item.id === "today-layout");
-  if (!record) return data;
-  const settings = data.settings.filter(item => item.id !== "today-layout");
-  if (record.date !== date) return { ...data, settings };
-  const visible = visibleProjectTasks(data.tasks).filter(task => isTaskDueToday(task, date));
-  const layout = normalizeTodayGroups(record, visible, date);
-  return { ...data, settings: layout ? [...settings, { ...record, ...layout }] : settings };
+  for (const record of data.settings) if (record.id === "today-layout" && (!validDate(record.date) || !record.date || !isValidTodayLayoutShape(record))) {
+    throw new Error("Некоректне денне компонування");
+  }
+  const converted = data.settings.map(record => record.id === "today-layout"
+    ? { ...record, id: dayPlanId(record.date) } : record);
+  const byId = new Map();
+  for (const record of converted) {
+    const existing = byId.get(record.id);
+    if (!existing || String(record.updatedAt) > String(existing.updatedAt)) byId.set(record.id, record);
+  }
+  const settings = [];
+  for (const record of byId.values()) {
+    if (!record.id.startsWith("day-plan:")) { settings.push(record); continue; }
+    const visible = visibleProjectTasks(data.tasks).filter(task => isTaskDueToday(task, record.date))
+      .map(task => ({ ...task, todayPosition: null }));
+    const plan = normalizeDayPlan(record, visible, record.date);
+    if (plan) settings.push({ ...record, ...plan });
+  }
+  return { ...data, settings };
 }
 function normalizeBackupPrefix(value) {
   const cleaned = String(value || "").trim().replace(/[<>:"/\\|?*\u0000-\u001f]/g, "-").replace(/[. ]+$/g, "");
@@ -79,7 +91,8 @@ function validateBackupData(data, { strict = true } = {}) {
       if (name === "projects" && (typeof record.title !== "string" || typeof record.goal !== "string" || typeof record.description !== "string" || !["active", "completed"].includes(record.status) || !validDate(record.dueDate) || !validTime(record.dueTime) || record.dueTime && !record.dueDate || typeof record.showCountdown !== "boolean" || !validOptionalId(record.lastListId) || !validOptionalId(record.defaultListId) || typeof record.addNewTasksFirst !== "boolean" || record.completedAt !== null && !validIso(record.completedAt) || !validPosition(record.position))) throw new Error(`Некоректний проєкт: ${record.id}`);
       if (name === "tasks" && (typeof record.listId !== "string" || !validOptionalId(record.sectionId) || !validOptionalId(record.projectId) || typeof record.title !== "string" || typeof record.description !== "string" || !["active", "completed", "archived"].includes(record.status) || record.completedAt !== null && !validIso(record.completedAt) || !validDate(record.dueDate) || !validTime(record.dueTime) || record.dueTime && !record.dueDate || !validPosition(record.position) || record.todayPosition !== null && !validPosition(record.todayPosition) || record.projectPosition !== null && !validPosition(record.projectPosition) || record.returnedToInboxAt !== null && !validIso(record.returnedToInboxAt))) throw new Error(`Некоректне завдання: ${record.id}`);
       if (name === "settings" && (record.id === "appearance" && (!["light", "dark"].includes(record.theme) || typeof record.useSystemTheme !== "boolean") || record.id === "task-defaults" && typeof record.todayListId !== "string" || record.id === "workflow" && typeof record.returnOverdueToInbox !== "boolean" || record.id === "backup-naming" && (typeof record.prefix !== "string" || !record.prefix.trim() || !Number.isSafeInteger(record.nextVersion) || record.nextVersion < 1) || record.id === "navigation" && !["today", "upcoming", "projects", "inbox", "overview"].includes(record.startScreen))) throw new Error(`Некоректне налаштування: ${record.id}`);
-      if (name === "settings" && record.id === "today-layout" && (!validDate(record.date) || !isValidTodayLayoutShape(record))) throw new Error("Некоректне денне компонування");
+      if (name === "settings" && record.id.startsWith("day-plan:") && (!validDate(record.date) || !isValidDayPlanShape(record))) throw new Error("Некоректний денний план");
+      if (name === "settings" && record.id === "today-layout") throw new Error("Застарілий формат денного плану");
     }
   }
   if (!strict) return data;
@@ -189,8 +202,8 @@ async function readBackup(file) {
   else if (version === 2 && ["lists", "sections", "projects", "tasks"].every(name => Array.isArray(data?.[name]))) data = { ...data, settings: [] };
   validateBackupData(data, { strict: version === BACKUP_FORMAT_VERSION });
   if (version < BACKUP_FORMAT_VERSION) data = normalizeOlderBackup(data);
-  validateBackupData(data);
   data = normalizeBackupTodayLayout(data);
+  validateBackupData(data);
   const fileNumber = backupNumberFromFileName(file.name);
   if (fileNumber) {
     const naming = backupNamingRecord(data);

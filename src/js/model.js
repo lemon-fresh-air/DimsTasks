@@ -177,6 +177,50 @@ function compareTodayTasks(a, b) {
   }
   return String(b.createdAt || "").localeCompare(String(a.createdAt || "")) || String(a.id).localeCompare(String(b.id));
 }
+function compareDayTasks(a, b) {
+  return String(b.createdAt || "").localeCompare(String(a.createdAt || "")) || String(a.id).localeCompare(String(b.id));
+}
+function dayPlanId(date) { return `day-plan:${date}`; }
+function nextLocalDate(date = new Date()) {
+  const next = new Date(date);
+  next.setDate(next.getDate() + 1);
+  return `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, "0")}-${String(next.getDate()).padStart(2, "0")}`;
+}
+function normalizeDayPlan(plan, visible, date) {
+  if (!plan || plan.date !== date) return null;
+  if (plan.groups?.length) {
+    const grouped = normalizeTodayGroups(plan, visible, date);
+    if (grouped) return grouped;
+    const groups = new Map(plan.groups.map(group => [group.id, group]));
+    const items = (plan.items || []).flatMap(item => item.type === "task" ? [item]
+      : (groups.get(item.id)?.taskIds || []).map(id => ({ type: "task", id })));
+    return normalizeDayPlan({ date, groups: [], items }, visible, date);
+  }
+  const ordered = visible.slice().sort(compareDayTasks);
+  const byId = new Map(ordered.map(task => [task.id, task]));
+  const seen = new Set();
+  const items = [];
+  for (const item of plan.items || []) if (item?.type === "task" && byId.has(item.id) && !seen.has(item.id)) {
+    items.push({ type: "task", id: item.id });
+    seen.add(item.id);
+  }
+  const missing = ordered.filter(task => !seen.has(task.id)).map(task => ({ type: "task", id: task.id }));
+  return { date, groups: [], items: [...missing, ...items] };
+}
+function isValidDayPlanShape(plan) {
+  return plan?.id === dayPlanId(plan.date) && Array.isArray(plan.groups) &&
+    (plan.groups.length ? isValidTodayLayoutShape(plan) :
+      Array.isArray(plan.items) && plan.items.every(item => item?.type === "task" && typeof item.id === "string" && item.id) &&
+      new Set(plan.items.map(item => item.id)).size === plan.items.length);
+}
+function reorderDayPlan(plan, visible, date, selectedIds, beforeId) {
+  const current = normalizeDayPlan(plan, visible, date) || { date, groups: [], items: visible.slice().sort(compareDayTasks).map(task => ({ type: "task", id: task.id })) };
+  const selected = current.items.filter(item => selectedIds.has(item.id));
+  const remaining = current.items.filter(item => !selectedIds.has(item.id));
+  const index = beforeId ? remaining.findIndex(item => item.id === beforeId) : remaining.length;
+  remaining.splice(index < 0 ? remaining.length : index, 0, ...selected);
+  return { ...current, items: remaining };
+}
 function reorderTodayTaskBlock(records, visible, selectedIds, beforeId) {
   const inScope = visible.slice().sort(compareTodayTasks);
   const selected = inScope.filter(task => selectedIds.has(task.id));

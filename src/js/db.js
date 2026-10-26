@@ -3,6 +3,7 @@ const DB_VERSION = 3;
 const STORE_NAMES = ["lists", "sections", "projects", "tasks", "settings"];
 const INBOX_LIST_ID = "system-list-inbox";
 const TODAY_LIST_ID = "system-list-today";
+const TOMORROW_LIST_ID = "system-list-tomorrow";
 const APPEARANCE_SETTINGS_ID = "appearance";
 const TASK_DEFAULTS_SETTINGS_ID = "task-defaults";
 const WORKFLOW_SETTINGS_ID = "workflow";
@@ -89,11 +90,17 @@ function openDatabase() {
 }
 
 async function transact(storeNames, mode, action) {
+  if (mode === "readwrite" && typeof currentLocalDate !== "undefined" && localDateValue() !== currentLocalDate) {
+    throw new Error("Настала нова доба");
+  }
   const names = Array.isArray(storeNames) ? storeNames : [storeNames];
   const db = await openDatabase();
   return new Promise((resolve, reject) => {
     const tx = db.transaction(names, mode);
     try {
+      if (mode === "readwrite" && typeof currentLocalDate !== "undefined" && localDateValue() !== currentLocalDate) {
+        throw new Error("Настала нова доба");
+      }
       action(tx, Object.fromEntries(names.map(name => [name, tx.objectStore(name)])));
     } catch (error) {
       tx.abort();
@@ -361,21 +368,62 @@ const projectDb = {
 };
 
 const settingsDb = {
-  todayLayout: () => appDb.get("settings", TODAY_LAYOUT_SETTINGS_ID),
-  changeTodayLayoutAndTasks: (expected, layout, date, taskChanges = []) => transact(["settings", "tasks"], "readwrite", (tx, stores) => {
-    if (localDateValue() !== date || layout && (layout.date !== date || !isValidTodayLayoutShape(layout))) {
-      throw new Error("Денне компонування більше не актуальне");
-    }
+  todayLayout: date => appDb.get("settings", dayPlanId(date)),
+  migrateTodayLayout: () => transact("settings", "readwrite", (_tx, stores) => {
     const request = stores.settings.get(TODAY_LAYOUT_SETTINGS_ID);
     request.onsuccess = () => {
-      const current = request.result?.date === date ? request.result : null;
+      const legacy = request.result;
+      if (!legacy) return;
+      const target = dayPlanId(legacy.date);
+      if (isValidTodayLayoutShape(legacy)) {
+        const existing = stores.settings.get(target);
+        existing.onsuccess = () => {
+          if (!existing.result) stores.settings.put({ ...legacy, id: target });
+          stores.settings.delete(TODAY_LAYOUT_SETTINGS_ID);
+        };
+      } else stores.settings.delete(TODAY_LAYOUT_SETTINGS_ID);
+    };
+  }),
+  migrateTodayOrder: () => transact(["settings", "tasks"], "readwrite", (_tx, stores) => {
+    const marker = stores.settings.get("day-plan-migration");
+    marker.onsuccess = () => {
+      if (marker.result) return;
+      const date = localDateValue();
+      const key = dayPlanId(date);
+      const plan = stores.settings.get(key);
+      plan.onsuccess = () => {
+        const records = stores.tasks.getAll();
+        records.onsuccess = () => {
+          const now = new Date().toISOString();
+          if (!plan.result) {
+            const visible = visibleProjectTasks(records.result).filter(task => isTaskDueToday(task, date));
+            if (visible.some(task => Number.isSafeInteger(task.todayPosition) && task.todayPosition >= 0)) {
+              stores.settings.put({ id: key, entityVersion: 1, date, groups: [],
+                items: visible.sort(compareTodayTasks).map(task => ({ type: "task", id: task.id })),
+                createdAt: now, updatedAt: now });
+            }
+          }
+          stores.settings.put({ id: "day-plan-migration", entityVersion: 1, createdAt: now, updatedAt: now });
+        };
+      };
+    };
+  }),
+  changeTodayLayoutAndTasks: (expected, layout, date, taskChanges = []) => transact(["settings", "tasks"], "readwrite", (tx, stores) => {
+    if (localDateValue() !== currentLocalDate) throw new Error("Настала нова доба");
+    if (layout && (layout.date !== date || !isValidDayPlanShape({ ...layout, id: dayPlanId(date) }))) {
+      throw new Error("Денне компонування більше не актуальне");
+    }
+    const key = dayPlanId(date);
+    const request = stores.settings.get(key);
+    request.onsuccess = () => {
+      const current = request.result || null;
       const shape = value => value ? JSON.stringify({ date: value.date, groups: value.groups, items: value.items }) : null;
-      if (localDateValue() !== date || shape(current) !== shape(expected)) { tx.abort(); return; }
+      if (localDateValue() !== currentLocalDate || shape(current) !== shape(expected)) { tx.abort(); return; }
       if (layout) {
         const now = new Date().toISOString();
-        stores.settings.put({ id: TODAY_LAYOUT_SETTINGS_ID, entityVersion: 1, date,
+        stores.settings.put({ id: key, entityVersion: 1, date,
           groups: layout.groups, items: layout.items, createdAt: current?.createdAt || now, updatedAt: now });
-      } else if (current) stores.settings.delete(TODAY_LAYOUT_SETTINGS_ID);
+      } else if (current) stores.settings.delete(key);
       for (const change of taskChanges) {
         if (change.remove) stores.tasks.delete(change.id);
         else stores.tasks.put(change);
@@ -383,26 +431,22 @@ const settingsDb = {
     };
   }),
   saveTodayLayout: (layout, date) => transact("settings", "readwrite", (tx, stores) => {
-    if (localDateValue() !== date || layout && (layout.date !== date || !isValidTodayLayoutShape(layout))) {
+    if (localDateValue() !== currentLocalDate) throw new Error("Настала нова доба");
+    if (layout && (layout.date !== date || !isValidDayPlanShape({ ...layout, id: dayPlanId(date) }))) {
       throw new Error("Денне компонування більше не актуальне");
     }
-    const request = stores.settings.get(TODAY_LAYOUT_SETTINGS_ID);
+    const key = dayPlanId(date);
+    const request = stores.settings.get(key);
     request.onsuccess = () => {
-      if (localDateValue() !== date) { tx.abort(); return; }
+      if (localDateValue() !== currentLocalDate) { tx.abort(); return; }
       if (!layout) {
-        if (request.result?.date === date) stores.settings.delete(TODAY_LAYOUT_SETTINGS_ID);
+        if (request.result?.date === date) stores.settings.delete(key);
         return;
       }
       const now = new Date().toISOString();
-      stores.settings.put({ id: TODAY_LAYOUT_SETTINGS_ID, entityVersion: 1,
+      stores.settings.put({ id: key, entityVersion: 1,
         date, groups: layout.groups, items: layout.items,
         createdAt: request.result?.createdAt || now, updatedAt: now });
-    };
-  }),
-  clearStaleTodayLayout: date => transact("settings", "readwrite", (_tx, stores) => {
-    const request = stores.settings.get(TODAY_LAYOUT_SETTINGS_ID);
-    request.onsuccess = () => {
-      if (request.result && request.result.date !== date) stores.settings.delete(TODAY_LAYOUT_SETTINGS_ID);
     };
   }),
   appearance: async () => {

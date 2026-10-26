@@ -90,6 +90,9 @@ const els = {
   mainMenu: document.querySelector("#main-menu"),
   mainMenuOpen: document.querySelector("#main-menu-open"),
   navToday: document.querySelector("#nav-today"),
+  daySwitch: document.querySelector("#day-switch"),
+  dayChangeBackdrop: document.querySelector("#day-change-backdrop"),
+  dayChangeConfirm: document.querySelector("#day-change-confirm"),
   navUpcoming: document.querySelector("#nav-upcoming"),
   navProjects: document.querySelector("#nav-projects"),
   navInbox: document.querySelector("#nav-inbox"),
@@ -272,6 +275,7 @@ function taskCountsByList(tasks) {
     if (isTaskDueToday(task, today)) todayCount += 1;
   }
   counts.set(TODAY_LIST_ID, todayCount);
+  counts.set(TOMORROW_LIST_ID, visibleProjectTasks(tasks).filter(task => isTaskDueToday(task, nextLocalDate())).length);
   return counts;
 }
 
@@ -294,7 +298,7 @@ function renderMainMenuLists(lists, activeListId, selectedIds = new Set(), tasks
     if (active) button.setAttribute("aria-current", "page");
     button.setAttribute("aria-selected", String(selected));
     const icon = document.createElement("span");
-    icon.className = list.kind === "inbox" ? "inbox-icon" : list.kind === "today" ? "sun-icon" : "list-menu-icon";
+    icon.className = list.kind === "inbox" ? "inbox-icon" : list.id === TOMORROW_LIST_ID ? "calendar-icon" : list.kind === "today" ? "sun-icon" : "list-menu-icon";
     icon.setAttribute("aria-hidden", "true");
     const count = document.createElement("span");
     count.className = "main-menu-count";
@@ -657,6 +661,10 @@ function renderTasks(tasks, selectedIds = new Set(), taskLists = [], taskProject
       wrapper.append(heading, members);
       return wrapper;
     }).filter(Boolean));
+  } else if (contextList?.kind === "today" && layout?.items?.length) {
+    const placed = new Set(layout.items.map(item => item.id));
+    els.list.replaceChildren(...active.filter(task => !placed.has(task.id)).map(task => rows.get(task.id)),
+      ...layout.items.map(item => rows.get(item.id)).filter(Boolean));
   } else els.list.replaceChildren(...rows.values());
   els.list.hidden = active.length === 0 && !groupedToday;
   els.empty.hidden = active.length > 0 || groupedToday;
@@ -711,7 +719,8 @@ function openNewTaskEditor(listId, originListId = listId) {
   els.taskDetachProject.hidden = true;
   delete els.taskProjectLink.dataset.projectId;
   setTaskEditorListUI(listId);
-  els.date.value = originListId === TODAY_LIST_ID ? localDateValue() : "";
+  els.date.value = originListId === TODAY_LIST_ID ? localDateValue() : originListId === TOMORROW_LIST_ID ? nextLocalDate() : "";
+  els.editor.dataset.dateChosen = "false";
   els.time.value = "";
   els.dateLabel.textContent = readableDueDate(els.date.value);
   applyDateTone(els.datePickerOpen, els.date.value, els.time.value);

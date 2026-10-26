@@ -8,7 +8,7 @@
   </svg>
   <header class="page-header">
     <div id="normal-header">
-      <div class="page-title-row"><h1 id="current-list-heading">Нові</h1><button id="list-editor-open" class="list-editor-open" type="button" aria-label="Редагувати список" aria-controls="list-editor" aria-expanded="false" hidden><span class="edit-list-icon" aria-hidden="true"></span></button></div>
+      <div class="page-title-row"><h1 id="current-list-heading">Нові</h1><button id="day-switch" class="day-switch" type="button" hidden>Завтра →</button><button id="list-editor-open" class="list-editor-open" type="button" aria-label="Редагувати список" aria-controls="list-editor" aria-expanded="false" hidden><span class="edit-list-icon" aria-hidden="true"></span></button></div>
       <p id="task-count">0 завдань</p>
     </div>
     <div id="selection-toolbar" class="selection-toolbar" hidden>
@@ -64,6 +64,12 @@
     <button id="nav-inbox" class="nav-item active" type="button" data-nav="inbox" aria-current="page"><span class="nav-icon-field" aria-hidden="true"><span class="inbox-icon"></span></span><span>Нові</span></button>
     <button id="main-menu-open" class="nav-item" type="button" data-nav="overview" aria-label="Відкрити огляд" aria-controls="main-menu" aria-expanded="false"><span class="nav-icon-field" aria-hidden="true"><span class="overview-icon"></span></span><span>Огляд</span></button>
   </div></nav>
+</div>
+<div id="day-change-backdrop" class="project-delete-dialog-backdrop" hidden>
+  <section role="alertdialog" aria-modal="true" aria-labelledby="day-change-title" class="project-delete-dialog">
+    <h2 id="day-change-title">Настала нова доба. Оновити сторінку?</h2>
+    <button id="day-change-confirm" type="button">Оновити</button>
+  </section>
 </div>
 <div id="today-group-rename-backdrop" class="project-delete-dialog-backdrop" hidden>
   <section id="today-group-rename-dialog" class="today-group-dialog" role="dialog" aria-modal="true" aria-labelledby="today-group-rename-title" tabindex="-1">
