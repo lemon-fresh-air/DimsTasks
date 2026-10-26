@@ -266,7 +266,10 @@ h1 { font-size:clamp(2.25rem,9vw,3.4rem); line-height:1; letter-spacing:-.05em; 
 .settings-copy { display:grid; gap:2px; }
 .settings-copy small { color:var(--muted); font-size:.82rem; font-weight:520; }
 .settings-panel { height:100dvh; overflow-y:auto; overscroll-behavior:contain; }
-.settings-version { margin:auto 0 0; padding-top:32px; color:var(--muted); text-align:center; font-size:.76rem; line-height:1.4; }
+.settings-version { margin:auto 0 0; padding-top:32px; display:flex; flex-wrap:wrap; align-items:center; justify-content:center; column-gap:8px; color:var(--muted); text-align:center; font-size:.76rem; line-height:1.4; }
+.settings-version button { min-height:36px; border:0; padding:0 4px; background:transparent; color:var(--accent); font-family:inherit; font-size:.78rem; font-weight:700; line-height:1.4; cursor:pointer; }
+.settings-version button:focus-visible { outline:2px solid var(--accent); outline-offset:2px; border-radius:4px; }
+.settings-version button:disabled { opacity:.55; cursor:default; }
 .completed-tasks-icon { width:24px; height:24px; display:grid; place-items:center; justify-self:center; border:2px solid currentColor; border-radius:50%; font-weight:800; }
 .completed-tasks-screen { position:fixed; z-index:46; inset:0; overflow-y:auto; background:var(--bg); color:var(--text); }
 .completed-tasks-screen[hidden] { display:none; }

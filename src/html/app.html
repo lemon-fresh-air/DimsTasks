@@ -9,7 +9,7 @@
   <header class="page-header">
     <div id="normal-header">
       <div class="page-title-row"><h1 id="current-list-heading">Нові</h1><button id="list-editor-open" class="list-editor-open" type="button" aria-label="Редагувати список" aria-controls="list-editor" aria-expanded="false" hidden><span class="edit-list-icon" aria-hidden="true"></span></button></div>
-      <p id="task-count">0 задач</p>
+      <p id="task-count">0 завдань</p>
     </div>
     <div id="selection-toolbar" class="selection-toolbar" hidden>
       <button id="selection-close" class="toolbar-action" type="button" aria-label="Завершити виділення"><span class="back-icon" aria-hidden="true"></span></button>
@@ -35,8 +35,8 @@
   </header>
   <main><section class="task-section" aria-labelledby="current-list-heading">
     <ul id="task-list" aria-live="polite"></ul>
-    <p id="today-order-hint" class="today-order-hint" hidden>Перетягуйте вибрані задачі в межах їхньої групи або згорнуту групу серед інших груп і задач.</p>
-    <div id="empty-state" class="empty"><span class="empty-icon" aria-hidden="true">✓</span><p>У цьому списку поки немає задач</p><small>Натисніть кнопку внизу, щоб додати першу.</small></div>
+    <p id="today-order-hint" class="today-order-hint" hidden>Перетягуйте вибрані завдання в межах їхньої групи або згорнуту групу серед інших груп і завдань.</p>
+    <div id="empty-state" class="empty"><span class="empty-icon" aria-hidden="true">✓</span><p>У цьому списку поки немає завдань</p><small>Натисніть кнопку внизу, щоб додати перше.</small></div>
   </section><div id="list-swipe-zone" class="list-swipe-zone" aria-hidden="true"></div></main>
   <section id="projects-overview" class="projects-overview" aria-labelledby="projects-title" hidden>
     <div id="projects-selection-toolbar" class="projects-selection-toolbar" hidden>
@@ -56,7 +56,7 @@
     <div id="active-projects" class="project-grid"></div>
     <details id="completed-projects" class="completed-projects" hidden><summary>Завершені <span id="completed-projects-count">0</span></summary><div id="completed-project-list" class="project-grid"></div></details>
   </section>
-  <button id="add-task-btn" class="fab" aria-label="Додати задачу"><span aria-hidden="true">＋</span></button>
+  <button id="add-task-btn" class="fab" aria-label="Додати завдання"><span aria-hidden="true">＋</span></button>
   <nav class="bottom-nav" aria-label="Основна навігація"><div class="bottom-nav-inner">
     <button id="nav-today" class="nav-item" type="button" data-nav="today"><span class="nav-icon-field" aria-hidden="true"><span class="sun-icon"></span></span><span>Сьогодні</span></button>
     <button id="nav-upcoming" class="nav-item" type="button" data-nav="upcoming" aria-label="Скоро — розділ у розробці"><span class="nav-icon-field" aria-hidden="true"><span class="upcoming-icon"></span></span><span>Скоро</span></button>
@@ -102,7 +102,7 @@
 </div>
 <div id="today-group-backdrop" class="project-delete-dialog-backdrop" hidden>
   <section id="today-group-dialog" class="today-group-dialog" role="dialog" aria-modal="true" aria-labelledby="today-group-title" tabindex="-1">
-    <h2 id="today-group-title">Група для вибраних задач</h2>
+    <h2 id="today-group-title">Група для вибраних завдань</h2>
     <div id="today-group-options" class="today-group-options"></div>
     <button id="today-group-cancel" class="today-group-cancel" type="button">Скасувати</button>
   </section>
@@ -122,7 +122,7 @@
         </div>
       </div>
     </header>
-    <nav id="main-menu-lists" class="main-menu-list" aria-label="Списки задач"></nav>
+    <nav id="main-menu-lists" class="main-menu-list" aria-label="Списки завдань"></nav>
     <form id="new-list-form" class="new-list-form" hidden>
       <span class="list-menu-icon" aria-hidden="true"></span>
       <label class="sr-only" for="new-list-title">Назва нового списку</label>
@@ -139,7 +139,7 @@
 <div id="list-selection-delete-backdrop" class="project-delete-dialog-backdrop" hidden>
   <section id="list-selection-delete-dialog" class="project-delete-dialog" role="dialog" aria-modal="true" aria-labelledby="list-selection-delete-title" tabindex="-1">
     <h2 id="list-selection-delete-title">Видалити списки?</h2>
-    <p>Задачі з вибраних списків буде перенесено до «Нові».</p>
+    <p>Завдання з вибраних списків буде перенесено до «Нові».</p>
     <footer><button id="list-selection-delete-cancel" type="button">Скасувати</button><button id="list-selection-delete-confirm" class="dialog-confirm-destructive" type="button">Видалити</button></footer>
   </section>
 </div>
@@ -170,7 +170,7 @@
         <span class="calendar-icon" aria-hidden="true"></span>
         <span class="settings-copy"><strong>Повертати прострочені до «Нові»</strong><small>Зберігати прострочені дату й час</small></span>
         <label class="theme-switch">
-          <input id="return-overdue-toggle" type="checkbox" role="switch" aria-label="Повертати прострочені задачі до Нових">
+          <input id="return-overdue-toggle" type="checkbox" role="switch" aria-label="Повертати прострочені завдання до Нових">
           <span aria-hidden="true"></span>
         </label>
       </div>
@@ -212,7 +212,7 @@
         </div>
       </div>
     </div>
-    <p class="settings-version">Версія 0.10 · 26 жовтня 2026, 20:55</p>
+    <p class="settings-version"><span>Версія 0.11 · 26 жовтня 2026, 21:03</span><button id="check-app-update" type="button">Перевірити оновлення</button></p>
   </div>
 </section>
 <section id="completed-tasks-screen" class="completed-tasks-screen" aria-labelledby="completed-tasks-title" hidden>
@@ -247,7 +247,7 @@
     <div class="list-danger-zone">
       <button id="list-delete-open" class="danger-action" type="button"><span class="trash-icon" aria-hidden="true"></span><span>Видалити список</span></button>
       <div id="list-delete-confirm" class="delete-confirm" hidden>
-        <p><strong>Видалити цей список?</strong><span>Його задачі буде перенесено до «Нові».</span></p>
+        <p><strong>Видалити цей список?</strong><span>Його завдання буде перенесено до «Нові».</span></p>
         <div><button id="list-delete-cancel" type="button">Скасувати</button><button id="list-delete-confirm-button" type="button">Видалити</button></div>
       </div>
     </div>
@@ -309,8 +309,8 @@
   <form id="task-form" class="task-editor-form">
     <div class="task-title-row">
       <button id="detail-toggle" class="toggle detail-toggle" type="button" aria-label="Позначити виконаною" hidden><span>✓</span></button>
-      <label class="sr-only" for="task-title">Назва задачі</label>
-      <textarea id="task-title" name="title" rows="1" maxlength="160" placeholder="Назва задачі" required></textarea>
+      <label class="sr-only" for="task-title">Назва завдання</label>
+      <textarea id="task-title" name="title" rows="1" maxlength="160" placeholder="Назва завдання" required></textarea>
     </div>
     <div class="detail-fields" hidden>
       <span class="modal-field-icon description-icon" aria-hidden="true"></span>

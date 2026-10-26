@@ -744,7 +744,7 @@ async function deleteActiveList() {
     renderListNavigation();
     renderCurrentTasks();
     window.scrollTo(0, 0);
-    toast("Список видалено, задачі перенесено до «Нові»");
+    toast("Список видалено, завдання перенесено до «Нові»");
   } catch (_error) {
     showListEditorError("Не вдалося видалити список. Спробуйте ще раз.");
   } finally {
@@ -795,7 +795,7 @@ async function deleteSelectedLists() {
     closeSelectedListsDeleteDialog();
     renderListNavigation();
     renderCurrentTasks();
-    toast(ids.size === 1 ? "Список видалено, задачі перенесено до «Нові»" : `Видалено списків: ${ids.size}. Задачі перенесено до «Нові»`, {
+    toast(ids.size === 1 ? "Список видалено, завдання перенесено до «Нові»" : `Видалено списків: ${ids.size}. Завдання перенесено до «Нові»`, {
       duration: 3000,
       action: async () => {
         try {
@@ -1570,7 +1570,7 @@ async function saveAndLeaveTaskEditor({ allowEmptyNew = false } = {}) {
   if (!saved) { els.input.focus(); return; }
   els.editor.dataset.taskId = "";
   hideTaskEditor();
-  toast(editing ? "Зміни збережено" : "Задачу додано");
+  toast(editing ? "Зміни збережено" : "Завдання додано");
 }
 
 async function deleteTask(id) {
@@ -2197,6 +2197,32 @@ function checkForAppUpdate() {
   lastAppUpdateCheck = Date.now();
   appServiceWorkerRegistration.update().catch(() => {});
 }
+
+async function manuallyCheckForAppUpdate() {
+  if (els.checkAppUpdate.disabled) return;
+  if (!("serviceWorker" in navigator)) { toast("Перевірка оновлень недоступна в цьому браузері"); return; }
+  if (!document.getElementById("app-update").hidden) { toast("Оновлення готове — натисніть «Оновити»"); return; }
+  els.checkAppUpdate.disabled = true;
+  els.checkAppUpdate.textContent = "Перевіряю…";
+  try {
+    const registration = appServiceWorkerRegistration || await navigator.serviceWorker.register("./service-worker.js", { updateViaCache: "none" });
+    appServiceWorkerRegistration = registration;
+    let updateFound = false;
+    registration.addEventListener?.("updatefound", () => { updateFound = true; }, { once: true });
+    const previousController = navigator.serviceWorker.controller;
+    await registration.update();
+    lastAppUpdateCheck = Date.now();
+    const ready = !document.getElementById("app-update").hidden || navigator.serviceWorker.controller !== previousController;
+    toast(ready ? "Оновлення готове — натисніть «Оновити»" : updateFound || registration.installing || registration.waiting
+      ? "Оновлення знайдено — дочекайтеся кнопки «Оновити»" : "У вас найновіша версія");
+  } catch (_error) { toast("Не вдалося перевірити оновлення. Перевірте з’єднання"); }
+  finally {
+    els.checkAppUpdate.disabled = false;
+    els.checkAppUpdate.textContent = "Перевірити оновлення";
+  }
+}
+
+els.checkAppUpdate.addEventListener("click", manuallyCheckForAppUpdate);
 
 if ("serviceWorker" in navigator) {
   let hadController = Boolean(navigator.serviceWorker.controller);

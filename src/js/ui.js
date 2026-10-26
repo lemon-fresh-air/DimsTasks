@@ -113,6 +113,7 @@ const els = {
   settingsOpen: document.querySelector("#settings-open"),
   settingsScreen: document.querySelector("#settings-screen"),
   settingsClose: document.querySelector("#settings-close"),
+  checkAppUpdate: document.querySelector("#check-app-update"),
   completedTasksOpen: document.querySelector("#completed-tasks-open"),
   completedTasksScreen: document.querySelector("#completed-tasks-screen"),
   completedTasksClose: document.querySelector("#completed-tasks-close"),
@@ -659,9 +660,10 @@ function renderTasks(tasks, selectedIds = new Set(), taskLists = [], taskProject
   } else els.list.replaceChildren(...rows.values());
   els.list.hidden = active.length === 0 && !groupedToday;
   els.empty.hidden = active.length > 0 || groupedToday;
+  const oneToFour = ![11, 12, 13, 14].includes(active.length % 100) && [1, 2, 3, 4].includes(active.length % 10);
   els.count.textContent = groupSelection ? `Вибрано груп: ${selectedGroupIds.size}` : selectionMode
     ? `Вибрано: ${selectedIds.size}`
-    : `${active.length} ${active.length === 1 ? "задача" : active.length > 1 && active.length < 5 ? "задачі" : "задач"}`;
+    : `${active.length} ${oneToFour ? "завдання" : "завдань"}`;
 }
 
 function showTaskEditor() {

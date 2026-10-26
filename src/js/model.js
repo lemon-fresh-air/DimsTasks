@@ -286,7 +286,7 @@ function createTodayGroup(layout, visible, date, color, selectedIds, groupId) {
   if (current.groups.some(group => group.id === groupId || group.color === color)) throw new Error("Група або колір уже існує");
   const selected = new Set(selectedIds);
   const positions = current.items.map((item, index) => selected.has(item.id) && item.type === "task" ? index : -1).filter(index => index >= 0);
-  if (!positions.length || positions.length !== selected.size) throw new Error("Виберіть видимі незгруповані задачі");
+  if (!positions.length || positions.length !== selected.size) throw new Error("Виберіть видимі незгруповані завдання");
   const taskIds = positions.map(index => current.items[index].id);
   const firstId = taskIds[0];
   const items = current.items.filter(item => item.type !== "task" || !selected.has(item.id));
@@ -303,7 +303,7 @@ function assignTodayGroupTasks(layout, visible, date, groupId, selectedIds) {
   if (!target) throw new Error("Групу не знайдено");
   const selected = new Set(selectedIds);
   const visibleIds = new Set(visible.map(task => task.id));
-  if ([...selected].some(id => !visibleIds.has(id))) throw new Error("Задачу не видно на Сьогодні");
+  if ([...selected].some(id => !visibleIds.has(id))) throw new Error("Завдання не видно на Сьогодні");
   const ordered = current.items.flatMap(item => item.type === "task" ? [item.id]
     : current.groups.find(group => group.id === item.id).taskIds).filter(id => selected.has(id) && !target.taskIds.includes(id));
   return normalizeTodayGroups({ date, groups: current.groups.map(group => ({ ...group, taskIds: group.id === groupId
@@ -316,7 +316,7 @@ function removeTodayGroupTasks(layout, visible, date, groupId, selectedIds) {
   const group = current?.groups.find(item => item.id === groupId);
   if (!group) throw new Error("Групу не знайдено");
   const selected = new Set(selectedIds);
-  if ([...selected].some(id => !group.taskIds.includes(id))) throw new Error("Задачі немає в групі");
+  if ([...selected].some(id => !group.taskIds.includes(id))) throw new Error("Завдання немає в групі");
   const removed = group.taskIds.filter(id => selected.has(id));
   const groups = current.groups.map(item => item.id === groupId
     ? { ...item, taskIds: item.taskIds.filter(id => !selected.has(id)) } : item).filter(item => item.taskIds.length);
@@ -403,9 +403,9 @@ function reorderTodayOuterTaskBlock(layout, visible, date, selectedIds, beforeTy
 function shiftTodayGroupTask(layout, visible, date, groupId, taskId, direction) {
   const current = normalizeTodayGroups(layout, visible, date);
   const group = current?.groups.find(item => item.id === groupId);
-  if (!group || ![-1, 1].includes(direction)) throw new Error("Некоректний зсув задачі");
+  if (!group || ![-1, 1].includes(direction)) throw new Error("Некоректний зсув завдання");
   const index = group.taskIds.indexOf(taskId);
-  if (index < 0) throw new Error("Задачі немає в групі");
+  if (index < 0) throw new Error("Завдання немає в групі");
   const taskIds = group.taskIds.slice();
   const next = index + direction;
   if (next >= 0 && next < taskIds.length) [taskIds[index], taskIds[next]] = [taskIds[next], taskIds[index]];
