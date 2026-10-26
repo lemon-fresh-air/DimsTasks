@@ -266,6 +266,7 @@ h1 { font-size:clamp(2.25rem,9vw,3.4rem); line-height:1; letter-spacing:-.05em; 
 .settings-copy { display:grid; gap:2px; }
 .settings-copy small { color:var(--muted); font-size:.82rem; font-weight:520; }
 .settings-panel { height:100dvh; overflow-y:auto; overscroll-behavior:contain; }
+.settings-version { margin:auto 0 0; padding-top:32px; color:var(--muted); text-align:center; font-size:.76rem; line-height:1.4; }
 .completed-tasks-icon { width:24px; height:24px; display:grid; place-items:center; justify-self:center; border:2px solid currentColor; border-radius:50%; font-weight:800; }
 .completed-tasks-screen { position:fixed; z-index:46; inset:0; overflow-y:auto; background:var(--bg); color:var(--text); }
 .completed-tasks-screen[hidden] { display:none; }

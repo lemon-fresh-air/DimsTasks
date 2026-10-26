@@ -971,25 +971,30 @@ function closeTodayGroupMergeDialog() {
   els.recolorSelectedGroup.focus({ preventScroll: true });
 }
 
+function todayGroupColorOption(color, name) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.dataset.color = color;
+  const swatch = document.createElement("span");
+  swatch.className = "today-group-swatch";
+  swatch.style.backgroundColor = color;
+  const existing = todayLayout?.groups.find(group => group.color === color);
+  const label = document.createElement("span");
+  label.textContent = existing?.title || name;
+  if (existing) {
+    label.className = "today-group-existing-name";
+    label.style.setProperty("--group-color", color);
+  }
+  button.append(swatch, label);
+  return button;
+}
+
 function openTodayGroupRecolorDialog() {
   if (activeListId !== TODAY_LIST_ID || selectedTodayGroupIds.size !== 1) return;
   const source = todayLayout?.groups.find(group => selectedTodayGroupIds.has(group.id));
   if (!source) return;
   els.todayGroupRecolorOptions.replaceChildren(...[...TODAY_GROUP_NAMES].map(([color, name]) => {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.dataset.color = color;
-    const swatch = document.createElement("span");
-    swatch.className = "today-group-swatch";
-    swatch.style.backgroundColor = color;
-    const existing = todayLayout.groups.find(group => group.color === color);
-    const label = document.createElement("span");
-    label.textContent = existing?.title || name;
-    if (existing) {
-      label.className = "today-group-existing-name";
-      label.style.setProperty("--group-color", color);
-    }
-    button.append(swatch, label);
+    const button = todayGroupColorOption(color, name);
     if (color === source.color) button.disabled = true;
     return button;
   }));
@@ -1096,16 +1101,7 @@ function closeTodayGroupDialog() {
 function openTodayGroupDialog() {
   if (activeListId !== TODAY_LIST_ID || !selectedTaskIds.size) return;
   closeSelectedListDropdown();
-  els.todayGroupOptions.replaceChildren(...[...TODAY_GROUP_NAMES].map(([color, name]) => {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.dataset.color = color;
-    const swatch = document.createElement("span");
-    swatch.className = "today-group-swatch";
-    swatch.style.backgroundColor = color;
-    button.append(swatch, `${name} група`);
-    return button;
-  }));
+  els.todayGroupOptions.replaceChildren(...[...TODAY_GROUP_NAMES].map(([color, name]) => todayGroupColorOption(color, name)));
   const clear = document.createElement("button");
   clear.type = "button";
   clear.dataset.color = "none";
