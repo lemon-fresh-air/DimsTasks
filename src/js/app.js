@@ -904,6 +904,145 @@ async function saveTodayGroupName(event) {
   }
 }
 
+function closeTodayGroupDeleteDialog() {
+  if (els.todayGroupDeleteBackdrop.hidden) return;
+  els.todayGroupDeleteBackdrop.hidden = true;
+  els.deleteSelectedGroup.focus({ preventScroll: true });
+}
+
+function openTodayGroupDeleteDialog() {
+  if (activeListId !== TODAY_LIST_ID || !selectedTodayGroupIds.size) return;
+  const count = selectedTodayGroupIds.size;
+  els.todayGroupDeleteTitle.textContent = count === 1 ? "Видалити групу?" : `Видалити групи (${count})?`;
+  els.todayGroupDeleteKeepTasks.checked = true;
+  els.todayGroupDeleteBackdrop.hidden = false;
+  requestAnimationFrame(() => els.todayGroupDeleteDialog.focus());
+}
+
+async function deleteSelectedTodayGroups() {
+  const keepTasks = els.todayGroupDeleteKeepTasks.checked;
+  const ids = new Set(selectedTodayGroupIds);
+  closeTodayGroupDeleteDialog();
+  if (!ids.size) return;
+  try {
+    await syncTodayLayout();
+    const date = localDateValue();
+    const before = todayLayout;
+    const groups = before?.groups.filter(group => ids.has(group.id)) || [];
+    if (groups.length !== ids.size) throw new Error("Групу не знайдено");
+    const deletedIds = new Set(groups.flatMap(group => group.taskIds));
+    const deletedTasks = keepTasks ? [] : tasks.filter(task => deletedIds.has(task.id));
+    let next = before;
+    const visible = visibleTodayLayoutTasks(date);
+    for (const group of groups) next = ungroupTodayGroup(next, visible, date, group.id);
+    if (!keepTasks && next) next = normalizeTodayGroups(next, visible.filter(task => !deletedIds.has(task.id)), date);
+    await settingsDb.changeTodayLayoutAndTasks(before, next, date, deletedTasks.map(task => ({ id: task.id, remove: true })));
+    todayLayout = next;
+    if (!keepTasks) tasks = tasks.filter(task => !deletedIds.has(task.id));
+    selectedTodayGroupIds = new Set();
+    renderCurrentTasks();
+    toast(keepTasks ? "Групи видалено, завдання збережено" : "Групи та їхні завдання видалено", {
+      duration: 3000,
+      action: async () => {
+        try {
+          await settingsDb.changeTodayLayoutAndTasks(next, before, date, deletedTasks);
+          todayLayout = before;
+          if (deletedTasks.length) tasks = [...tasks, ...deletedTasks];
+          renderCurrentTasks();
+          toast("Видалення груп скасовано");
+        } catch (_error) { toast("Не вдалося скасувати видалення груп"); }
+      }
+    });
+  } catch (_error) { toast("Не вдалося видалити групи"); }
+}
+
+let pendingTodayGroupMerge = null;
+
+function closeTodayGroupRecolorDialog() {
+  if (els.todayGroupRecolorBackdrop.hidden) return;
+  els.todayGroupRecolorBackdrop.hidden = true;
+  els.recolorSelectedGroup.focus({ preventScroll: true });
+}
+
+function closeTodayGroupMergeDialog() {
+  if (els.todayGroupMergeBackdrop.hidden) return;
+  els.todayGroupMergeBackdrop.hidden = true;
+  pendingTodayGroupMerge = null;
+  els.recolorSelectedGroup.focus({ preventScroll: true });
+}
+
+function openTodayGroupRecolorDialog() {
+  if (activeListId !== TODAY_LIST_ID || selectedTodayGroupIds.size !== 1) return;
+  const source = todayLayout?.groups.find(group => selectedTodayGroupIds.has(group.id));
+  if (!source) return;
+  els.todayGroupRecolorOptions.replaceChildren(...[...TODAY_GROUP_NAMES].map(([color, name]) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.dataset.color = color;
+    const swatch = document.createElement("span");
+    swatch.className = "today-group-swatch";
+    swatch.style.backgroundColor = color;
+    const existing = todayLayout.groups.find(group => group.color === color);
+    const label = document.createElement("span");
+    label.textContent = existing?.title || name;
+    if (existing) {
+      label.className = "today-group-existing-name";
+      label.style.setProperty("--group-color", color);
+    }
+    button.append(swatch, label);
+    if (color === source.color) button.disabled = true;
+    return button;
+  }));
+  els.todayGroupRecolorBackdrop.hidden = false;
+  els.todayGroupRecolorOptions.querySelector("button:not(:disabled)")?.focus();
+}
+
+function chooseTodayGroupColor(color) {
+  const source = todayLayout?.groups.find(group => selectedTodayGroupIds.has(group.id));
+  if (!source || source.color === color || !TODAY_GROUP_NAMES.has(color)) return;
+  const target = todayLayout.groups.find(group => group.color === color);
+  closeTodayGroupRecolorDialog();
+  if (!target) { applyTodayGroupColor(source.id, color, source.id); return; }
+  pendingTodayGroupMerge = { sourceId: source.id, targetId: target.id, color };
+  els.todayGroupMergeOptions.replaceChildren(...[source, target].map(group => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.dataset.keepId = group.id;
+    const swatch = document.createElement("span");
+    swatch.className = "today-group-swatch today-group-merge-swatch";
+    swatch.style.backgroundColor = group.color;
+    button.append(swatch, group.title || TODAY_GROUP_NAMES.get(group.color));
+    return button;
+  }));
+  els.todayGroupMergeBackdrop.hidden = false;
+  els.todayGroupMergeOptions.querySelector("button")?.focus();
+}
+
+async function applyTodayGroupColor(sourceId, color, keepId) {
+  try {
+    await syncTodayLayout();
+    const date = localDateValue();
+    const before = todayLayout;
+    const merging = before.groups.some(group => group.color === color && group.id !== sourceId);
+    const next = recolorTodayGroup(before, visibleTodayLayoutTasks(date), date, sourceId, color, keepId);
+    await settingsDb.changeTodayLayoutAndTasks(before, next, date);
+    todayLayout = next;
+    selectedTodayGroupIds = new Set();
+    renderCurrentTasks();
+    toast(merging ? "Групи злито" : "Колір групи змінено", {
+      duration: 3000,
+      action: async () => {
+        try {
+          await settingsDb.changeTodayLayoutAndTasks(next, before, date);
+          todayLayout = before;
+          renderCurrentTasks();
+          toast(merging ? "Злиття груп скасовано" : "Зміну кольору скасовано");
+        } catch (_error) { toast("Не вдалося скасувати зміну групи"); }
+      }
+    });
+  } catch (_error) { toast("Не вдалося змінити групу"); }
+}
+
 async function selectTodayGroup(id) {
   const group = todayLayout?.groups.find(item => item.id === id);
   if (!group || activeListId !== TODAY_LIST_ID) return false;
@@ -1724,6 +1863,30 @@ els.selectionClose.addEventListener("click", clearTaskSelection);
 els.selectAllTasks.addEventListener("click", toggleAllVisibleTasks);
 els.groupSelected.addEventListener("click", openTodayGroupDialog);
 els.renameSelectedGroup.addEventListener("click", openTodayGroupRenameDialog);
+els.deleteSelectedGroup.addEventListener("click", openTodayGroupDeleteDialog);
+els.recolorSelectedGroup.addEventListener("click", openTodayGroupRecolorDialog);
+els.todayGroupRecolorCancel.addEventListener("click", closeTodayGroupRecolorDialog);
+els.todayGroupRecolorBackdrop.addEventListener("click", event => { if (event.target === els.todayGroupRecolorBackdrop) closeTodayGroupRecolorDialog(); });
+els.todayGroupRecolorDialog.addEventListener("keydown", event => { if (event.key === "Escape") { event.preventDefault(); closeTodayGroupRecolorDialog(); } });
+els.todayGroupRecolorOptions.addEventListener("click", event => {
+  const option = event.target.closest("button[data-color]");
+  if (option && !option.disabled) chooseTodayGroupColor(option.dataset.color);
+});
+els.todayGroupMergeCancel.addEventListener("click", closeTodayGroupMergeDialog);
+els.todayGroupMergeBackdrop.addEventListener("click", event => { if (event.target === els.todayGroupMergeBackdrop) closeTodayGroupMergeDialog(); });
+els.todayGroupMergeDialog.addEventListener("keydown", event => { if (event.key === "Escape") { event.preventDefault(); closeTodayGroupMergeDialog(); } });
+els.todayGroupMergeOptions.addEventListener("click", event => {
+  const option = event.target.closest("button[data-keep-id]");
+  if (!option || !pendingTodayGroupMerge) return;
+  const { sourceId, color } = pendingTodayGroupMerge;
+  const keepId = option.dataset.keepId;
+  closeTodayGroupMergeDialog();
+  applyTodayGroupColor(sourceId, color, keepId);
+});
+els.todayGroupDeleteNo.addEventListener("click", closeTodayGroupDeleteDialog);
+els.todayGroupDeleteYes.addEventListener("click", deleteSelectedTodayGroups);
+els.todayGroupDeleteBackdrop.addEventListener("click", event => { if (event.target === els.todayGroupDeleteBackdrop) closeTodayGroupDeleteDialog(); });
+els.todayGroupDeleteDialog.addEventListener("keydown", event => { if (event.key === "Escape") { event.preventDefault(); closeTodayGroupDeleteDialog(); } });
 els.todayGroupRenameForm.addEventListener("submit", saveTodayGroupName);
 els.todayGroupRenameCancel.addEventListener("click", closeTodayGroupRenameDialog);
 els.todayGroupRenameBackdrop.addEventListener("click", event => { if (event.target === els.todayGroupRenameBackdrop) closeTodayGroupRenameDialog(); });

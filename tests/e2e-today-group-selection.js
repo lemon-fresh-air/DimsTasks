@@ -47,7 +47,7 @@ const { openTestApp } = require("./e2e-helper");
     await page.waitForFunction(() => selectedTodayGroupIds.size === 2 && todayLayout.groups.find(group => group.id === "orange")?.collapsed);
     await page.mouse.up();
     assert.equal(await page.locator("#rename-selected-group").isDisabled(), true);
-    assert.equal(await page.locator("#group-action-placeholder").isDisabled(), true);
+    assert.equal(await page.locator("#recolor-selected-group").isDisabled(), true);
     await page.click("#selection-close");
     assert.equal(await page.evaluate(() => selectedTodayGroupIds.size), 0);
 

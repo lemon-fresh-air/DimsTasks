@@ -28,9 +28,8 @@
       </div>
         <div id="selected-group-actions" class="selection-actions" aria-label="Дії з вибраними групами" hidden>
           <button id="rename-selected-group" class="toolbar-action" type="button" aria-label="Перейменувати групу" aria-haspopup="dialog"><span class="rename-group-icon" aria-hidden="true">T</span></button>
-          <button id="group-action-placeholder" class="toolbar-action" type="button" aria-label="Дія з групами — незабаром" disabled><span aria-hidden="true">⋯</span></button>
-          <button id="delete-selected-group" class="toolbar-action destructive" type="button" aria-label="Видалити групу — незабаром" disabled><span class="trash-icon" aria-hidden="true"></span></button>
-          <button id="recolor-selected-group" class="toolbar-action" type="button" aria-label="Змінити колір групи — незабаром" disabled><svg class="selection-glyph" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="#selection-icon-group"/></svg></button>
+          <button id="recolor-selected-group" class="toolbar-action" type="button" aria-label="Змінити колір групи" aria-haspopup="dialog"><svg class="selection-glyph" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 3a9 9 0 0 0 0 18h1.1a1.6 1.6 0 0 0 1.1-2.7 1.6 1.6 0 0 1 1.1-2.7H17a5 5 0 0 0 5-5A9 9 0 0 0 12 3Z"/><circle cx="7.5" cy="11" r=".8" fill="currentColor" stroke="none"/><circle cx="10" cy="7" r=".8" fill="currentColor" stroke="none"/><circle cx="15" cy="7" r=".8" fill="currentColor" stroke="none"/><circle cx="18" cy="11" r=".8" fill="currentColor" stroke="none"/></svg></button>
+          <button id="delete-selected-group" class="toolbar-action destructive" type="button" aria-label="Видалити вибрані групи" aria-haspopup="dialog"><span class="trash-icon" aria-hidden="true"></span></button>
         </div>
     </div>
   </header>
@@ -78,6 +77,27 @@
         <button class="primary-action" type="submit">Зберегти</button>
       </div>
     </form>
+  </section>
+</div>
+<div id="today-group-delete-backdrop" class="project-delete-dialog-backdrop" hidden>
+  <section id="today-group-delete-dialog" class="project-delete-dialog" role="dialog" aria-modal="true" aria-labelledby="today-group-delete-title" tabindex="-1">
+    <h2 id="today-group-delete-title">Видалити групу?</h2>
+    <label class="project-delete-keep"><input id="today-group-delete-keep-tasks" type="checkbox" checked><span>Залишити завдання без групи</span></label>
+    <footer><button id="today-group-delete-no" type="button">Ні</button><button id="today-group-delete-yes" type="button">Так</button></footer>
+  </section>
+</div>
+<div id="today-group-recolor-backdrop" class="project-delete-dialog-backdrop" hidden>
+  <section id="today-group-recolor-dialog" class="today-group-dialog" role="dialog" aria-modal="true" aria-labelledby="today-group-recolor-title" tabindex="-1">
+    <h2 id="today-group-recolor-title">Новий колір групи</h2>
+    <div id="today-group-recolor-options" class="today-group-options"></div>
+    <button id="today-group-recolor-cancel" class="today-group-cancel" type="button">Скасувати</button>
+  </section>
+</div>
+<div id="today-group-merge-backdrop" class="project-delete-dialog-backdrop" hidden>
+  <section id="today-group-merge-dialog" class="today-group-dialog" role="dialog" aria-modal="true" aria-labelledby="today-group-merge-title" tabindex="-1">
+    <h2 id="today-group-merge-title">Яку групу залишити після об’єднання?</h2>
+    <div id="today-group-merge-options" class="today-group-options"></div>
+    <button id="today-group-merge-cancel" class="today-group-cancel" type="button">Скасувати</button>
   </section>
 </div>
 <div id="today-group-backdrop" class="project-delete-dialog-backdrop" hidden>

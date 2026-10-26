@@ -191,6 +191,11 @@ function reorderTodayTaskBlock(records, visible, selectedIds, beforeId) {
   return records.map(task => replacements.get(task.id) || task);
 }
 const TODAY_GROUP_COLORS = ["#E05A3A", "#3A7BD5", "#2D9E6B", "#9B59B6", "#D4A017", "#E05E87", "#607D8B"];
+const TODAY_GROUP_NAMES = new Map([
+  ["#E05A3A", "Помаранчева"], ["#3A7BD5", "Синя"], ["#2D9E6B", "Зелена"],
+  ["#9B59B6", "Фіолетова"], ["#D4A017", "Жовта"], ["#E05E87", "Рожева"],
+  ["#607D8B", "Сланцева"]
+]);
 
 function isValidTodayLayoutShape(layout) {
   if (!layout || typeof layout !== "object" || Array.isArray(layout)
@@ -350,6 +355,24 @@ function setTodayGroupTitle(layout, visible, date, groupId, title) {
   const normalized = String(title).trim();
   if (!normalized || normalized.length > 80) throw new Error("Назва групи має містити від 1 до 80 символів");
   return { ...current, groups: current.groups.map(group => group.id === groupId ? { ...group, title: normalized } : group) };
+}
+
+function recolorTodayGroup(layout, visible, date, sourceId, color, keepId = sourceId) {
+  const current = normalizeTodayGroups(layout, visible, date);
+  const source = current?.groups.find(group => group.id === sourceId);
+  if (!source || !TODAY_GROUP_COLORS.includes(color)) throw new Error("Групу або колір не знайдено");
+  const target = current.groups.find(group => group.color === color);
+  if (!target || target.id === sourceId) {
+    if (keepId !== sourceId) throw new Error("Невідома група для збереження");
+    return { ...current, groups: current.groups.map(group => group.id === sourceId ? { ...group, color } : group) };
+  }
+  if (keepId !== sourceId && keepId !== target.id) throw new Error("Невідома група для збереження");
+  const removedId = keepId === sourceId ? target.id : sourceId;
+  const kept = keepId === sourceId ? source : target;
+  const removed = keepId === sourceId ? target : source;
+  return { date, groups: current.groups.filter(group => group.id !== removedId).map(group => group.id === keepId
+    ? { ...kept, color, title: kept.title || TODAY_GROUP_NAMES.get(kept.color), taskIds: [...kept.taskIds, ...removed.taskIds] } : group),
+    items: current.items.filter(item => item.type !== "group" || item.id !== removedId) };
 }
 
 function moveTodayOuterItem(layout, visible, date, type, id, beforeType = null, beforeId = null) {

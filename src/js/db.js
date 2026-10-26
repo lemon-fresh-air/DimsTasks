@@ -362,6 +362,26 @@ const projectDb = {
 
 const settingsDb = {
   todayLayout: () => appDb.get("settings", TODAY_LAYOUT_SETTINGS_ID),
+  changeTodayLayoutAndTasks: (expected, layout, date, taskChanges = []) => transact(["settings", "tasks"], "readwrite", (tx, stores) => {
+    if (localDateValue() !== date || layout && (layout.date !== date || !isValidTodayLayoutShape(layout))) {
+      throw new Error("Денне компонування більше не актуальне");
+    }
+    const request = stores.settings.get(TODAY_LAYOUT_SETTINGS_ID);
+    request.onsuccess = () => {
+      const current = request.result?.date === date ? request.result : null;
+      const shape = value => value ? JSON.stringify({ date: value.date, groups: value.groups, items: value.items }) : null;
+      if (localDateValue() !== date || shape(current) !== shape(expected)) { tx.abort(); return; }
+      if (layout) {
+        const now = new Date().toISOString();
+        stores.settings.put({ id: TODAY_LAYOUT_SETTINGS_ID, entityVersion: 1, date,
+          groups: layout.groups, items: layout.items, createdAt: current?.createdAt || now, updatedAt: now });
+      } else if (current) stores.settings.delete(TODAY_LAYOUT_SETTINGS_ID);
+      for (const change of taskChanges) {
+        if (change.remove) stores.tasks.delete(change.id);
+        else stores.tasks.put(change);
+      }
+    };
+  }),
   saveTodayLayout: (layout, date) => transact("settings", "readwrite", (tx, stores) => {
     if (localDateValue() !== date || layout && (layout.date !== date || !isValidTodayLayoutShape(layout))) {
       throw new Error("Денне компонування більше не актуальне");

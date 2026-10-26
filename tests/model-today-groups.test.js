@@ -6,7 +6,7 @@ const vm = require("node:vm");
 
 const source = fs.readFileSync(path.join(__dirname, "..", "src", "js", "model.js"), "utf8");
 const context = vm.createContext({ crypto: { randomUUID: () => "generated" }, INBOX_LIST_ID: "inbox" });
-vm.runInContext(`${source}\nthis.model = { isValidTodayLayoutShape, normalizeTodayGroups, createTodayGroup, assignTodayGroupTasks, removeTodayGroupTasks, ungroupTodayGroup, setTodayGroupCollapsed, setTodayGroupTitle, moveTodayOuterItem, reorderTodayOuterTaskBlock, shiftTodayGroupTask, reorderTodayGroupTaskBlock };`, context);
+vm.runInContext(`${source}\nthis.model = { isValidTodayLayoutShape, normalizeTodayGroups, createTodayGroup, assignTodayGroupTasks, removeTodayGroupTasks, ungroupTodayGroup, setTodayGroupCollapsed, setTodayGroupTitle, recolorTodayGroup, moveTodayOuterItem, reorderTodayOuterTaskBlock, shiftTodayGroupTask, reorderTodayGroupTaskBlock };`, context);
 const m = context.model;
 const date = "2026-10-23";
 const tasks = ["a", "b", "c", "d", "e"].map((id, i) => ({ id, todayPosition: i, createdAt: `2026-10-23T0${i}:00:00Z` }));
@@ -76,6 +76,29 @@ test("renaming a group persists its title while keeping its color and member ord
   assert.equal(m.normalizeTodayGroups(renamed, tasks, date).groups[0].title, "Мої справи");
   assert.throws(() => m.setTodayGroupTitle(group, tasks, date, "blue", "   "));
   assert.equal(m.isValidTodayLayoutShape({ ...group, groups: [{ ...group.groups[0], title: " " }] }), false);
+});
+
+test("recoloring to an unused color keeps the group and its tasks", () => {
+  const green = m.createTodayGroup(null, tasks, date, "#2D9E6B", ["b"], "green");
+  const recolored = m.recolorTodayGroup(green, tasks, date, "green", "#D4A017");
+  assert.deepEqual(plain(recolored.groups[0]), { id: "green", color: "#D4A017", title: null, collapsed: false, taskIds: ["b"] });
+  assert.deepEqual(ids(recolored), ids(green));
+  assert.deepEqual(plain(green.groups[0].taskIds), ["b"]);
+});
+
+test("merging into an occupied color keeps the chosen group's name and position", () => {
+  const green = m.setTodayGroupTitle(m.createTodayGroup(null, tasks, date, "#2D9E6B", ["b", "c"], "green"), tasks, date, "green", "Робота");
+  const both = m.createTodayGroup(green, tasks, date, "#D4A017", ["e"], "yellow");
+  const keepGreen = m.recolorTodayGroup(both, tasks, date, "green", "#D4A017", "green");
+  assert.deepEqual(plain(keepGreen.groups.map(group => ({ id: group.id, color: group.color, title: group.title, taskIds: group.taskIds }))),
+    [{ id: "green", color: "#D4A017", title: "Робота", taskIds: ["b", "c", "e"] }]);
+  assert.deepEqual(ids(keepGreen), ["task:a", "group:green", "task:d"]);
+  const keepYellow = m.recolorTodayGroup(both, tasks, date, "green", "#D4A017", "yellow");
+  assert.deepEqual(plain(keepYellow.groups.map(group => ({ id: group.id, title: group.title, taskIds: group.taskIds }))),
+    [{ id: "yellow", title: "Жовта", taskIds: ["e", "b", "c"] }]);
+  assert.deepEqual(ids(keepYellow), ["task:a", "task:d", "group:yellow"]);
+  assert.deepEqual(plain(both.groups.map(group => group.taskIds)), [["b", "c"], ["e"]]);
+  assert.throws(() => m.recolorTodayGroup(both, tasks, date, "green", "#D4A017", "missing"));
 });
 
 test("ungrouped tasks move across groups as a block without changing group members", () => {

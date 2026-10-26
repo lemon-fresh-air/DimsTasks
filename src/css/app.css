@@ -97,6 +97,10 @@ h1 { font-size:clamp(2.25rem,9vw,3.4rem); line-height:1; letter-spacing:-.05em; 
 .today-group-options button { min-height:46px; display:flex; align-items:center; gap:12px; border:0; border-radius:12px; padding:6px 10px; background:var(--control); color:var(--text); text-align:left; font:650 1rem/1.25 system-ui,sans-serif; }
 .today-group-options button:focus-visible,.today-group-cancel:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
 .today-group-swatch { width:23px; height:23px; flex:0 0 auto; border-radius:7px; border:1px solid color-mix(in srgb,var(--text) 25%,transparent); }
+.today-group-merge-swatch { border-radius:50%; }
+.today-group-existing-name { color:var(--group-color); }
+#today-group-recolor-options button:disabled { color:var(--muted); cursor:default; }
+#today-group-recolor-options button:disabled .today-group-existing-name { color:var(--muted); }
 .today-group-cancel { min-height:44px; border:0; border-radius:12px; background:transparent; color:var(--accent); font-weight:750; }
 .swipe-row { position:relative; overflow:hidden; border-radius:16px; background:transparent; }
 .swipe-row.swiping,.swipe-row.deleting { background:var(--danger); }

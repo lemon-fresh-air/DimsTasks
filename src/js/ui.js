@@ -13,6 +13,22 @@ const els = {
   groupSelected: document.querySelector("#group-selected"),
   selectedGroupActions: document.querySelector("#selected-group-actions"),
   renameSelectedGroup: document.querySelector("#rename-selected-group"),
+  deleteSelectedGroup: document.querySelector("#delete-selected-group"),
+  recolorSelectedGroup: document.querySelector("#recolor-selected-group"),
+  todayGroupRecolorBackdrop: document.querySelector("#today-group-recolor-backdrop"),
+  todayGroupRecolorDialog: document.querySelector("#today-group-recolor-dialog"),
+  todayGroupRecolorOptions: document.querySelector("#today-group-recolor-options"),
+  todayGroupRecolorCancel: document.querySelector("#today-group-recolor-cancel"),
+  todayGroupMergeBackdrop: document.querySelector("#today-group-merge-backdrop"),
+  todayGroupMergeDialog: document.querySelector("#today-group-merge-dialog"),
+  todayGroupMergeOptions: document.querySelector("#today-group-merge-options"),
+  todayGroupMergeCancel: document.querySelector("#today-group-merge-cancel"),
+  todayGroupDeleteBackdrop: document.querySelector("#today-group-delete-backdrop"),
+  todayGroupDeleteDialog: document.querySelector("#today-group-delete-dialog"),
+  todayGroupDeleteTitle: document.querySelector("#today-group-delete-title"),
+  todayGroupDeleteKeepTasks: document.querySelector("#today-group-delete-keep-tasks"),
+  todayGroupDeleteNo: document.querySelector("#today-group-delete-no"),
+  todayGroupDeleteYes: document.querySelector("#today-group-delete-yes"),
   todayGroupRenameBackdrop: document.querySelector("#today-group-rename-backdrop"),
   todayGroupRenameDialog: document.querySelector("#today-group-rename-dialog"),
   todayGroupRenameForm: document.querySelector("#today-group-rename-form"),
@@ -548,12 +564,6 @@ els.toastAction.addEventListener("click", async () => {
   if (action) await action();
 });
 
-const TODAY_GROUP_NAMES = new Map([
-  ["#E05A3A", "Помаранчева"], ["#3A7BD5", "Синя"], ["#2D9E6B", "Зелена"],
-  ["#9B59B6", "Фіолетова"], ["#D4A017", "Жовта"], ["#E05E87", "Рожева"],
-  ["#607D8B", "Сланцева"]
-]);
-
 function renderTasks(tasks, selectedIds = new Set(), taskLists = [], taskProjects = [], contextList = null, layout = null, selectedGroupIds = new Set()) {
   const active = tasks.filter(task => !isTaskCompleted(task));
   const groupSelection = selectedGroupIds.size > 0;
@@ -565,6 +575,7 @@ function renderTasks(tasks, selectedIds = new Set(), taskLists = [], taskProject
   els.selectionControls.hidden = groupSelection;
   els.selectedGroupActions.hidden = !groupSelection;
   els.renameSelectedGroup.disabled = selectedGroupIds.size !== 1;
+  els.recolorSelectedGroup.disabled = selectedGroupIds.size !== 1;
   const groupedToday = contextList?.kind === "today" && layout?.groups?.length > 0;
   els.groupSelected.hidden = contextList?.kind !== "today" || !selectedIds.size;
   els.todayOrderHint.hidden = !groupedToday || !selectionMode;
