@@ -177,7 +177,7 @@ h1 { font-size:clamp(2.25rem,9vw,3.4rem); line-height:1; letter-spacing:-.05em; 
 .projects-icon { width:24px; height:18px; margin-top:4px; border:2px solid currentColor; border-radius:3px 5px 5px 5px; position:relative; }
 .projects-icon::before { content:""; position:absolute; width:10px; height:5px; left:-2px; top:-6px; border:2px solid currentColor; border-bottom:0; border-radius:4px 4px 0 0; }
 .overview-icon { width:23px; height:18px; position:relative; background:linear-gradient(currentColor,currentColor) 0 0/23px 2px no-repeat,linear-gradient(currentColor,currentColor) 0 8px/18px 2px no-repeat,linear-gradient(currentColor,currentColor) 0 16px/23px 2px no-repeat; border-radius:2px; }
-:where(.back-icon,.trash-icon,.edit-list-icon,.inbox-icon,.calendar-icon,.clock-icon,.list-menu-icon,.menu-placeholder-icon,.settings-icon,.theme-icon,.no-date-icon,.delete-icon,.list-action-icon,.upcoming-icon,.projects-icon,.overview-icon) { box-sizing:border-box; }
+:where(.back-icon,.trash-icon,.edit-list-icon,.inbox-icon,.calendar-icon,.clock-icon,.list-menu-icon,.menu-placeholder-icon,.theme-icon,.no-date-icon,.delete-icon,.list-action-icon,.upcoming-icon,.projects-icon,.overview-icon) { box-sizing:border-box; }
 .main-menu,.settings-screen,.list-editor { position:fixed; inset:0; overflow:hidden; background:var(--bg); color:var(--text); opacity:0; transform:translateX(-100%); transition:opacity .22s ease,transform .24s var(--ease-swipe); }
 .main-menu { z-index:40; }
 .settings-screen,.list-editor { z-index:45; transform:translateX(100%); }
@@ -221,9 +221,6 @@ h1 { font-size:clamp(2.25rem,9vw,3.4rem); line-height:1; letter-spacing:-.05em; 
 .main-menu-footer { flex:0 0 58px; min-height:58px; display:flex; align-items:center; justify-content:space-between; border-top:1px solid var(--line); }
 .menu-icon-action { min-width:52px; height:50px; display:grid; place-items:center; border:0; border-radius:16px; background:transparent; color:var(--text); }
 .menu-icon-action:active { background:color-mix(in srgb,var(--accent) 10%,transparent); }
-.settings-icon { width:22px; height:22px; justify-self:center; border:2px solid currentColor; border-radius:50%; position:relative; }
-.settings-icon::before,.settings-icon::after { content:""; position:absolute; inset:5px; border:2px solid currentColor; border-radius:50%; }
-.settings-icon::after { inset:-5px 8px; border-width:2px 0; border-radius:2px; }
 .add-list-icon { width:24px; height:24px; position:relative; }
 .add-list-icon::before,.add-list-icon::after { content:""; position:absolute; background:currentColor; border-radius:999px; }
 .add-list-icon::before { width:22px; height:2px; left:0; top:11px; }
