@@ -12,7 +12,6 @@ const els = {
   deleteSelected: document.querySelector("#delete-selected"),
   groupSelected: document.querySelector("#group-selected"),
   selectedGroupActions: document.querySelector("#selected-group-actions"),
-  completeSelectedGroup: document.querySelector("#complete-selected-group"),
   renameSelectedGroup: document.querySelector("#rename-selected-group"),
   todayGroupRenameBackdrop: document.querySelector("#today-group-rename-backdrop"),
   todayGroupRenameDialog: document.querySelector("#today-group-rename-dialog"),
@@ -555,16 +554,17 @@ const TODAY_GROUP_NAMES = new Map([
   ["#607D8B", "Сланцева"]
 ]);
 
-function renderTasks(tasks, selectedIds = new Set(), taskLists = [], taskProjects = [], contextList = null, layout = null, selectedGroupId = null) {
+function renderTasks(tasks, selectedIds = new Set(), taskLists = [], taskProjects = [], contextList = null, layout = null, selectedGroupIds = new Set()) {
   const active = tasks.filter(task => !isTaskCompleted(task));
-  const groupSelection = Boolean(selectedGroupId);
+  const groupSelection = selectedGroupIds.size > 0;
   const selectionMode = selectedIds.size > 0 || groupSelection;
   els.shell.classList.toggle("selection-active", selectionMode);
   els.normalHeader.hidden = selectionMode;
   els.selectionToolbar.hidden = !selectionMode;
-  els.selectionCount.textContent = groupSelection ? "Вибрано групу" : `Вибрано: ${selectedIds.size}`;
+  els.selectionCount.textContent = groupSelection ? `Вибрано груп: ${selectedGroupIds.size}` : `Вибрано: ${selectedIds.size}`;
   els.selectionControls.hidden = groupSelection;
   els.selectedGroupActions.hidden = !groupSelection;
+  els.renameSelectedGroup.disabled = selectedGroupIds.size !== 1;
   const groupedToday = contextList?.kind === "today" && layout?.groups?.length > 0;
   els.groupSelected.hidden = contextList?.kind !== "today" || !selectedIds.size;
   els.todayOrderHint.hidden = !groupedToday || !selectionMode;
@@ -604,15 +604,18 @@ function renderTasks(tasks, selectedIds = new Set(), taskLists = [], taskProject
   }));
   if (groupedToday) {
     const groups = new Map(layout.groups.map(group => [group.id, group]));
-    els.list.replaceChildren(...layout.items.map(item => {
+    const placedIds = new Set(layout.groups.flatMap(group => group.taskIds));
+    for (const item of layout.items) if (item.type === "task") placedIds.add(item.id);
+    const newlyVisible = active.filter(task => !placedIds.has(task.id)).map(task => rows.get(task.id));
+    els.list.replaceChildren(...newlyVisible, ...layout.items.map(item => {
       if (item.type === "task") return rows.get(item.id);
       const group = groups.get(item.id);
       if (!group) return null;
       const wrapper = document.createElement("li");
       wrapper.className = "today-group";
       wrapper.dataset.groupId = group.id;
-      wrapper.classList.toggle("selected", selectedGroupId === group.id);
-      wrapper.setAttribute("aria-selected", String(selectedGroupId === group.id));
+      wrapper.classList.toggle("selected", selectedGroupIds.has(group.id));
+      wrapper.setAttribute("aria-selected", String(selectedGroupIds.has(group.id)));
       wrapper.style.setProperty("--group-color", group.color);
       const heading = document.createElement("h2");
       heading.className = "today-group-heading";
@@ -624,6 +627,7 @@ function renderTasks(tasks, selectedIds = new Set(), taskLists = [], taskProject
       const groupTitle = group.title || TODAY_GROUP_NAMES.get(group.color);
       toggle.setAttribute("aria-label", `${group.collapsed ? "Розгорнути" : "Згорнути"} групу «${groupTitle}»`);
       const label = document.createElement("span");
+      label.className = "today-group-label";
       const count = document.createElement("span");
       count.className = "today-group-count";
       count.textContent = group.taskIds.filter(id => rows.has(id)).length;
@@ -644,7 +648,7 @@ function renderTasks(tasks, selectedIds = new Set(), taskLists = [], taskProject
   } else els.list.replaceChildren(...rows.values());
   els.list.hidden = active.length === 0 && !groupedToday;
   els.empty.hidden = active.length > 0 || groupedToday;
-  els.count.textContent = groupSelection ? "Вибрано групу" : selectionMode
+  els.count.textContent = groupSelection ? `Вибрано груп: ${selectedGroupIds.size}` : selectionMode
     ? `Вибрано: ${selectedIds.size}`
     : `${active.length} ${active.length === 1 ? "задача" : active.length > 1 && active.length < 5 ? "задачі" : "задач"}`;
 }

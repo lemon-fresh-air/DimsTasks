@@ -8,7 +8,7 @@ let manualTheme = "light";
 let useSystemTheme = true;
 const systemThemeQuery = matchMedia("(prefers-color-scheme: dark)");
 let selectedTaskIds = new Set();
-let selectedTodayGroupId = null;
+let selectedTodayGroupIds = new Set();
 let selectedListIds = new Set();
 let completionAudioContext;
 let editingSelectedTaskDates = false;
@@ -146,10 +146,11 @@ function visibleTasks() {
 }
 
 function renderCurrentTasks() {
-  if (activeListId !== TODAY_LIST_ID || todayLayout?.date !== localDateValue()
-    || !todayLayout.groups.some(group => group.id === selectedTodayGroupId && group.collapsed)) selectedTodayGroupId = null;
+  if (activeListId !== TODAY_LIST_ID || todayLayout?.date !== localDateValue()) selectedTodayGroupIds = new Set();
+  else selectedTodayGroupIds = new Set([...selectedTodayGroupIds].filter(id =>
+    todayLayout.groups.some(group => group.id === id && group.collapsed)));
   renderTasks(visibleTasks(), selectedTaskIds, lists, projects, activeList(),
-    activeListId === TODAY_LIST_ID && todayLayout?.date === localDateValue() ? todayLayout : null, selectedTodayGroupId);
+    activeListId === TODAY_LIST_ID && todayLayout?.date === localDateValue() ? todayLayout : null, selectedTodayGroupIds);
   updateMainMenuTaskCounts(tasks);
   renderSelectedListOptions(lists, activeListId);
   renderProjects();
@@ -628,7 +629,7 @@ function openList(listId) {
   if (listId !== TODAY_LIST_ID && !lists.some(list => list.id === listId)) return;
   activeListId = listId;
   selectedTaskIds = new Set();
-  selectedTodayGroupId = null;
+  selectedTodayGroupIds = new Set();
   selectedListIds = new Set();
   renderListNavigation();
   renderCurrentTasks();
@@ -843,13 +844,13 @@ async function reorderTaskLists({ selectedIds, beforeId }) {
 }
 
 function selectTask(id) {
-  selectedTodayGroupId = null;
+  if (selectedTodayGroupIds.size) { toast("Завдання виділяються окремо від груп"); return; }
   selectedTaskIds = new Set([id]);
   renderCurrentTasks();
 }
 
 function toggleTaskSelection(id) {
-  selectedTodayGroupId = null;
+  if (selectedTodayGroupIds.size) { toast("Завдання виділяються окремо від груп"); return; }
   const next = new Set(selectedTaskIds);
   if (next.has(id)) next.delete(id); else next.add(id);
   selectedTaskIds = next;
@@ -858,7 +859,7 @@ function toggleTaskSelection(id) {
 
 function clearTaskSelection() {
   selectedTaskIds = new Set();
-  selectedTodayGroupId = null;
+  selectedTodayGroupIds = new Set();
   closeSelectedListDropdown();
   closeTodayGroupDialog();
   closeTodayGroupRenameDialog();
@@ -869,11 +870,11 @@ function closeTodayGroupRenameDialog() {
   if (els.todayGroupRenameBackdrop.hidden) return;
   els.todayGroupRenameBackdrop.hidden = true;
   els.todayGroupRenameError.hidden = true;
-  if (selectedTodayGroupId) els.renameSelectedGroup.focus({ preventScroll: true });
+  if (selectedTodayGroupIds.size === 1) els.renameSelectedGroup.focus({ preventScroll: true });
 }
 
 function openTodayGroupRenameDialog() {
-  const group = todayLayout?.groups.find(item => item.id === selectedTodayGroupId);
+  const group = todayLayout?.groups.find(item => selectedTodayGroupIds.has(item.id));
   if (!group) return;
   els.todayGroupRenameInput.value = group.title || TODAY_GROUP_NAMES.get(group.color);
   els.todayGroupRenameError.hidden = true;
@@ -891,7 +892,7 @@ async function saveTodayGroupName(event) {
     els.todayGroupRenameInput.focus();
     return;
   }
-  const groupId = selectedTodayGroupId;
+  const groupId = [...selectedTodayGroupIds][0];
   try {
     await changeTodayLayout((layout, visible, date) => setTodayGroupTitle(layout, visible, date, groupId, title));
     closeTodayGroupRenameDialog();
@@ -903,16 +904,38 @@ async function saveTodayGroupName(event) {
   }
 }
 
-function selectTodayGroup(id) {
+async function selectTodayGroup(id) {
   const group = todayLayout?.groups.find(item => item.id === id);
-  if (!group?.collapsed || activeListId !== TODAY_LIST_ID) return;
+  if (!group || activeListId !== TODAY_LIST_ID) return false;
+  if (selectedTaskIds.size) { toast("Групи виділяються окремо від завдань"); return false; }
+  if (!group.collapsed) {
+    const wrapper = [...els.list.children].find(item => item.dataset.groupId === id);
+    const members = wrapper?.querySelector(".today-group-tasks");
+    if (members && !matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      const expandedHeight = wrapper.getBoundingClientRect().height;
+      members.hidden = true;
+      const collapsedHeight = wrapper.getBoundingClientRect().height;
+      members.hidden = false;
+      wrapper.style.overflow = "hidden";
+      const collapse = wrapper.animate([{ height: `${expandedHeight}px` }, { height: `${collapsedHeight}px` }],
+        { duration: 220, easing: "ease-in-out", fill: "forwards" });
+      const fade = members.animate([{ opacity: 1 }, { opacity: 0 }],
+        { duration: 180, easing: "ease-in", fill: "forwards" });
+      await Promise.all([collapse.finished.catch(() => {}), fade.finished.catch(() => {})]);
+      members.hidden = true;
+    }
+    try { await changeTodayLayout((layout, visible, date) => setTodayGroupCollapsed(layout, visible, date, id, true)); }
+    catch (_error) { renderCurrentTasks(); toast("Не вдалося згорнути групу"); return false; }
+  }
   selectedTaskIds = new Set();
-  selectedTodayGroupId = id;
+  const next = new Set(selectedTodayGroupIds);
+  if (next.has(id)) next.delete(id); else next.add(id);
+  selectedTodayGroupIds = next;
   renderCurrentTasks();
+  return true;
 }
 
-async function reorderSelectedTodayGroup(beforeType, beforeId) {
-  const groupId = selectedTodayGroupId;
+async function reorderSelectedTodayGroup(beforeType, beforeId, groupId) {
   if (!groupId) return false;
   try {
     await changeTodayLayout((layout, visible, date) => moveTodayOuterItem(layout, visible, date, "group", groupId, beforeType, beforeId));
@@ -923,37 +946,6 @@ async function reorderSelectedTodayGroup(beforeType, beforeId) {
     toast("Не вдалося зберегти порядок групи");
     return false;
   }
-}
-
-async function completeSelectedTodayGroup() {
-  const group = todayLayout?.groups.find(item => item.id === selectedTodayGroupId);
-  if (!group) return;
-  const originals = tasks.filter(task => group.taskIds.includes(task.id) && !isTaskCompleted(task));
-  if (!originals.length) return;
-  const layoutBefore = todayLayout;
-  const dateBefore = localDateValue();
-  const completedAt = new Date().toISOString();
-  const completed = originals.map(task => ({ ...task, status: "completed", completedAt, updatedAt: completedAt }));
-  try {
-    els.completeSelectedGroup.disabled = true;
-    await taskDb.putMany(completed);
-    selectedTodayGroupId = null;
-    await refresh();
-    toast(`Виконано завдань: ${completed.length}`, { duration: 3000, action: async () => {
-      try {
-        await taskDb.putMany(originals.map(task => ({ ...task, updatedAt: new Date().toISOString() })));
-        if (dateBefore === localDateValue()) await settingsDb.saveTodayLayout(layoutBefore, dateBefore);
-        await refresh();
-        toast("Виконання скасовано");
-      } catch (_error) {
-        await refresh();
-        toast("Не вдалося скасувати виконання");
-      }
-    } });
-  } catch (_error) {
-    await refresh();
-    toast("Не вдалося виконати групу");
-  } finally { els.completeSelectedGroup.disabled = false; }
 }
 
 function closeTodayGroupDialog() {
@@ -1736,7 +1728,6 @@ els.todayGroupRenameForm.addEventListener("submit", saveTodayGroupName);
 els.todayGroupRenameCancel.addEventListener("click", closeTodayGroupRenameDialog);
 els.todayGroupRenameBackdrop.addEventListener("click", event => { if (event.target === els.todayGroupRenameBackdrop) closeTodayGroupRenameDialog(); });
 els.todayGroupRenameDialog.addEventListener("keydown", event => { if (event.key === "Escape") { event.preventDefault(); closeTodayGroupRenameDialog(); } });
-els.completeSelectedGroup.addEventListener("click", completeSelectedTodayGroup);
 els.todayGroupCancel.addEventListener("click", closeTodayGroupDialog);
 els.todayGroupBackdrop.addEventListener("click", event => { if (event.target === els.todayGroupBackdrop) closeTodayGroupDialog(); });
 els.todayGroupDialog.addEventListener("keydown", event => { if (event.key === "Escape") { event.preventDefault(); closeTodayGroupDialog(); } });
@@ -1942,7 +1933,8 @@ els.list.addEventListener("click", async event => {
     const wrapper = groupToggle.closest(".today-group");
     const groupId = wrapper?.dataset.groupId;
     if (els.list.dataset.suppressGroupClick === groupId) { delete els.list.dataset.suppressGroupClick; return; }
-    if (selectedTodayGroupId) { clearTaskSelection(); return; }
+    if (selectedTaskIds.size) { toast("Групи виділяються окремо від завдань"); return; }
+    if (selectedTodayGroupIds.size) { await selectTodayGroup(groupId); return; }
     const group = todayLayout?.groups.find(item => item.id === groupId);
     if (!group || groupToggle.disabled) return;
     groupToggle.disabled = true;
@@ -1964,6 +1956,7 @@ els.list.addEventListener("click", async event => {
   if (!row || !els.list.contains(row)) return;
   if (row?.dataset.swiped) { delete row.dataset.swiped; return; }
   if (row?.dataset.longPressed) { delete row.dataset.longPressed; return; }
+  if (selectedTodayGroupIds.size) { toast("Завдання виділяються окремо від груп"); return; }
   if (selectedTaskIds.size && row) {
     toggleTaskSelection(row.dataset.id);
     return;
@@ -2035,7 +2028,7 @@ enableTaskGestures({
     ? row.parentElement === els.list || Boolean(row.parentElement?.classList.contains("today-group-tasks"))
     : row.parentElement === els.list
 });
-enableTodayGroupReordering({ isSelected: id => selectedTodayGroupId === id, onSelect: selectTodayGroup, onReorder: reorderSelectedTodayGroup });
+enableTodayGroupReordering({ isSelected: id => selectedTodayGroupIds.has(id), onSelect: selectTodayGroup, onReorder: reorderSelectedTodayGroup });
 let appServiceWorkerRegistration = null;
 let lastAppUpdateCheck = 0;
 

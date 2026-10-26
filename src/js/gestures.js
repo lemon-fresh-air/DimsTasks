@@ -445,6 +445,9 @@ function enableTaskGestures({ container = els.list, onDelete, isSelectionMode, i
 function enableTodayGroupReordering({ isSelected, onSelect, onReorder }) {
   const container = els.list;
   let gesture = null;
+  container.addEventListener("contextmenu", event => {
+    if (event.target.closest(".today-group-toggle")) event.preventDefault();
+  });
 
   function capturePositions() {
     return new Map([...container.children].filter(item => item.dataset.groupId || item.dataset.id)
@@ -471,16 +474,19 @@ function enableTodayGroupReordering({ isSelected, onSelect, onReorder }) {
     gesture.followFrame = requestAnimationFrame(renderPreview);
   }
   container.addEventListener("pointerdown", event => {
-    const toggle = event.target.closest(".today-group-toggle[aria-expanded='false']");
+    const label = event.target.closest(".today-group-label");
+    const toggle = label?.closest(".today-group-toggle");
     if (!toggle || !event.isPrimary || event.button > 0) return;
     const group = toggle.closest(".today-group");
-    gesture = { id: group.dataset.groupId, pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, ready: isSelected(group.dataset.groupId), dragging: false };
+    gesture = { id: group.dataset.groupId, pointerId: event.pointerId, startX: event.clientX, startY: event.clientY,
+      ready: isSelected(group.dataset.groupId) && toggle.getAttribute("aria-expanded") === "false", dragging: false };
     if (gesture.ready) return;
-    gesture.timer = setTimeout(() => {
+    gesture.timer = setTimeout(async () => {
       if (!gesture || gesture.pointerId !== event.pointerId) return;
-      gesture.ready = true;
-      container.dataset.suppressGroupClick = gesture.id;
-      onSelect(gesture.id);
+      const id = gesture.id;
+      container.dataset.suppressGroupClick = id;
+      const selected = await onSelect(id);
+      if (gesture?.pointerId === event.pointerId) gesture.ready = selected && isSelected(id);
     }, 450);
   });
 
@@ -546,7 +552,7 @@ function enableTodayGroupReordering({ isSelected, onSelect, onReorder }) {
     g.placeholder.remove();
     g.source.classList.remove("drag-source");
     container.classList.remove("dragging");
-    if (!cancelled && g.moved) onReorder(g.beforeType, g.beforeId);
+    if (!cancelled && g.moved) onReorder(g.beforeType, g.beforeId, g.id);
   }
   window.addEventListener("pointerup", event => finish(event));
   window.addEventListener("pointercancel", event => finish(event, true));
