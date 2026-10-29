@@ -83,7 +83,7 @@ function renderCompletedTasks() {
     if (task) {
       els.completedTaskDetailTitle.textContent = task.title;
       els.completedTaskDetailMeta.textContent = completedTaskMeta(task);
-      els.completedTaskDetailDescription.textContent = task.description || "";
+      els.completedTaskDetailDescription.replaceChildren(richMarkdownFragment(task.description || ""));
       els.completedTaskDetailDescription.hidden = !task.description;
     } else completedDetailId = null;
   }
@@ -1487,11 +1487,12 @@ async function convertOpenTaskToProject() {
   }
   const editedTask = { ...task, title, description: els.description.value.trim(),
     dueDate: els.date.value || null, dueTime: els.date.value && els.time.value ? els.time.value : null };
+  if (!validSavedSteps(task.savedSteps ?? [])) { toast("Некоректні збережені кроки"); return; }
   const project = projectFromTask(editedTask, projects);
   els.taskConvertProject.disabled = true;
   try {
     await projectDb.convertTask(task.id, project);
-    tasks = tasks.filter(item => item.id !== task.id);
+    tasks = (await taskDb.all()).sort(compareTasks);
     selectedTaskIds.delete(task.id);
     projects.push(project);
     els.editor.dataset.taskId = "";
@@ -2312,7 +2313,7 @@ els.taskAttachDialog.addEventListener("keydown", event => {
 els.taskAttachConfirm.addEventListener("click", async () => {
   const task = tasks.find(item => item.id === els.editor.dataset.taskId);
   const projectId = els.taskAttachProjectSelect.value;
-  if (!task || task.status !== "active" || task.projectId || !projects.some(project => project.id === projectId && project.status === "active")) return;
+  if (!task || task.status !== "active" || task.projectId || task.savedSteps?.length || !projects.some(project => project.id === projectId && project.status === "active")) return;
   if (!els.input.value.trim()) { closeTaskAttachDialog(); els.input.focus(); return; }
   els.taskAttachConfirm.disabled = true;
   try {

@@ -46,7 +46,6 @@ const projectEls = {
   convertTask: document.querySelector("#project-convert-task"),
   convertDialogBackdrop: document.querySelector("#project-convert-dialog-backdrop"),
   convertDialog: document.querySelector("#project-convert-dialog"),
-  convertKeepSteps: document.querySelector("#project-convert-keep-steps"),
   convertCancel: document.querySelector("#project-convert-cancel"),
   convertConfirm: document.querySelector("#project-convert-confirm"),
   cardTemplate: document.querySelector("#project-card-template"),
@@ -203,7 +202,7 @@ function renderProjectTask(task) {
   row.setAttribute("aria-selected", String(selected));
   row.querySelector(".task-text").textContent = task.title;
   const description = row.querySelector(".task-description-preview");
-  description.textContent = task.description || "";
+  description.textContent = task.description ? richPreviewText(task.description) : "";
   description.hidden = !task.description;
   const date = row.querySelector(".task-date");
   renderTaskDueDate(date, task);
@@ -376,7 +375,7 @@ async function resolveProjectOverdue(deleteTasks) {
 }
 
 function renderAttachResults() {
-  const available = tasks.filter(task => task.status === "active" && !task.projectId);
+  const available = tasks.filter(task => task.status === "active" && !task.projectId && !task.savedSteps?.length);
   const query = projectEls.attachSearch.value.trim().toLocaleLowerCase("uk");
   const matches = available.filter(task => task.title.toLocaleLowerCase("uk").includes(query))
     .sort((a, b) => a.title.localeCompare(b.title, "uk"));
@@ -424,7 +423,7 @@ function positionAttachDialog() {
 async function saveAttachedTasks() {
   const project = projects.find(item => item.id === activeProjectId);
   if (!project || !attachSelectedIds.size) return;
-  const selected = tasks.filter(task => attachSelectedIds.has(task.id) && task.status === "active" && !task.projectId);
+  const selected = tasks.filter(task => attachSelectedIds.has(task.id) && task.status === "active" && !task.projectId && !task.savedSteps?.length);
   if (!selected.length) return;
   const steps = projectSteps(project.id);
   const start = steps.length ? Math.max(...steps.map(task => task.projectPosition ?? -1)) + 1 : 0;
@@ -618,7 +617,7 @@ function closeProjectConvertDialog() {
 function openProjectConvertDialog() {
   const project = projects.find(item => item.id === activeProjectId);
   if (!project || project.status !== "active") return;
-  projectEls.convertKeepSteps.checked = true;
+  projectEls.convertDialog.querySelector('input[value="save"]').checked = true;
   projectEls.convertDialogBackdrop.hidden = false;
   document.body.classList.add("project-delete-dialog-open");
   requestAnimationFrame(() => projectEls.convertDialog.focus());
@@ -637,8 +636,10 @@ async function convertOpenProjectToTask() {
   const editedProject = { ...project, title, description: projectEls.description.value.trim(),
     dueDate: projectEls.dueDate.value || null,
     dueTime: projectEls.dueDate.value && projectEls.dueTime.value ? projectEls.dueTime.value : null };
-  const keepSteps = projectEls.convertKeepSteps.checked;
-  const plan = projectToTaskChanges(editedProject, tasks, keepSteps, new Date().toISOString());
+  const choice = projectEls.convertDialog.querySelector('input[name="project-convert-choice"]:checked').value;
+  let plan;
+  try { plan = projectToTaskChanges(editedProject, tasks, choice, new Date().toISOString()); }
+  catch (error) { toast(error.message); return; }
   closeProjectConvertDialog();
   projectEls.convertTask.disabled = true;
   try {
@@ -650,7 +651,7 @@ async function convertOpenProjectToTask() {
     await closeProject();
     openList(INBOX_LIST_ID);
     openTaskDetails(plan.task);
-    toast(keepSteps ? "Проєкт став завданням, кроки збережено" : "Проєкт став завданням, кроки видалено");
+    toast(choice === "save" ? "Проєкт став завданням, кроки збережено" : choice === "keep" ? "Проєкт став завданням, кроки залишилися окремими" : "Проєкт став завданням, кроки видалено");
   } catch (_error) {
     toast("Не вдалося перетворити проєкт. Дані не змінено");
   } finally {

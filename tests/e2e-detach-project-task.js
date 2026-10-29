@@ -45,7 +45,7 @@ const { openTestApp } = require("./e2e-helper");
     await page.click("#task-detach-project");
     await page.click("#task-detach-confirm");
     assert.equal(await page.locator("#task-editor").isVisible(), true);
-    assert.equal(await page.locator("#task-description").inputValue(), "Введений опис");
+    assert.equal(await page.locator("#task-description").evaluate(node => node.value), "Введений опис");
     const failedRecord = await page.evaluate(async id => (await taskDb.all()).find(task => task.id === id), stepId);
     assert.equal(failedRecord.projectId, projectId);
     assert.notEqual(failedRecord.title, "Самостійний крок");

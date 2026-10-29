@@ -84,7 +84,7 @@ const { openTestApp } = require("./e2e-helper");
   await page.click(".project-card");
   await page.click("#project-edit-open");
   assert.equal(await page.inputValue("#project-goal"), "Випустити першу версію");
-  assert.equal(await page.inputValue("#project-description"), "Короткий опис у налаштуваннях проєкту.");
+  assert.equal(await page.locator("#project-description").evaluate(node => node.value), "Короткий опис у налаштуваннях проєкту.");
   await page.click("#project-edit-close");
   assert.equal(await page.locator("#project-task-list .swipe-row").count(), 10);
   await page.fill("#project-step-title", "Завдання 11");

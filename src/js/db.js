@@ -300,13 +300,24 @@ const projectDb = {
       stores.projects.delete(projectId);
     };
   }),
-  convertTask: (taskId, project) => transact(["projects", "tasks"], "readwrite", (tx, stores) => {
+  convertTask: (taskId, project) => transact(["projects", "tasks", "lists", "sections"], "readwrite", (tx, stores) => {
     const request = stores.tasks.get(taskId);
     request.onsuccess = () => {
       const task = request.result;
       if (!task || task.status !== "active" || task.projectId) { tx.abort(); return; }
-      stores.projects.add(project);
-      stores.tasks.delete(taskId);
+      const snapshot = task.savedSteps ?? [];
+      if (!validSavedSteps(snapshot)) { tx.abort(); return; }
+      const requests = [stores.lists.getAll(), stores.sections.getAll(), stores.tasks.getAll()];
+      let remaining = requests.length;
+      for (const item of requests) item.onsuccess = () => {
+        if (--remaining) return;
+        try {
+          const steps = restoredProjectSteps(snapshot, project.id, requests[0].result, requests[1].result, requests[2].result);
+          stores.projects.add(project);
+          for (const step of steps) stores.tasks.add(step);
+          stores.tasks.delete(taskId);
+        } catch (_error) { tx.abort(); }
+      };
     };
   }),
   convertStep: (taskId, sourceProjectId, project) => transact(["projects", "tasks"], "readwrite", (tx, stores) => {

@@ -43,6 +43,9 @@ const els = {
   form: document.querySelector("#task-form"),
   input: document.querySelector("#task-title"),
   description: document.querySelector("#task-description"),
+  savedSteps: document.querySelector("#task-saved-steps"),
+  savedStepsTitle: document.querySelector("#task-saved-steps-title"),
+  savedStepsList: document.querySelector("#task-saved-steps-list"),
   taskProjectLink: document.querySelector("#task-project-link"),
   taskProjectRow: document.querySelector("#task-project-row"),
   taskProjectTrigger: document.querySelector("#task-project-trigger"),
@@ -54,6 +57,7 @@ const els = {
   taskAttachCancel: document.querySelector("#task-attach-cancel"),
   taskAttachConfirm: document.querySelector("#task-attach-confirm"),
   taskConvertProject: document.querySelector("#task-convert-project"),
+  taskConvertStepsCount: document.querySelector("#task-convert-steps-count"),
   taskDetachProject: document.querySelector("#task-detach-project"),
   taskDetachDialogBackdrop: document.querySelector("#task-detach-dialog-backdrop"),
   taskDetachDialog: document.querySelector("#task-detach-dialog"),
@@ -184,6 +188,227 @@ const els = {
   toastMessage: document.querySelector(".toast-message"),
   toastAction: document.querySelector("#toast-action")
 };
+
+const richVideoTitles = new Map();
+function richSafeUrl(value) {
+  try {
+    const url = new URL(value);
+    return ["http:", "https:"].includes(url.protocol) ? url.href : null;
+  } catch (_error) { return null; }
+}
+function richLink(url, label, autoTitle = false) {
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.target = "_blank";
+  anchor.rel = "noopener noreferrer";
+  anchor.textContent = label;
+  anchor.title = url;
+  if (autoTitle) queueMicrotask(() => richEnrichVideo(anchor));
+  return anchor;
+}
+function richEnrichVideo(anchor) {
+  if (!anchor.isConnected || anchor.dataset.videoRequested) return;
+  const url = richSafeUrl(anchor.href);
+  if (!url || !/(^|\.)youtube\.com$|(^|\.)youtu\.be$/i.test(new URL(url).hostname)) return;
+  const label = anchor.textContent;
+  if (label !== new URL(url).hostname) return;
+  const cached = richVideoTitles.get(url);
+  if (cached) { anchor.textContent = cached; return; }
+  anchor.dataset.videoRequested = "true";
+  fetch(`https://www.youtube.com/oembed?format=json&url=${encodeURIComponent(url)}`)
+    .then(response => response.ok ? response.json() : null)
+    .then(data => {
+      if (!data?.title || typeof data.title !== "string" || !anchor.isConnected) return;
+      richVideoTitles.set(url, data.title);
+      if (anchor.textContent === label) {
+        anchor.textContent = data.title;
+        anchor.closest(".rich-description")?.dispatchEvent(new Event("input", { bubbles: true }));
+      }
+    }).catch(() => {});
+}
+function richInline(parent, source) {
+  let rest = source;
+  while (rest) {
+    const match = rest.match(/^(\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)|\*\*(.+?)\*\*|__(.+?)__|<u>([\s\S]+?)<\/u>|\*([^*\n]+)\*|_([^_\n]+)_|(https?:\/\/[^\s<>]+))/i);
+    if (match) {
+      let node;
+      if (match[2]) {
+        const url = richSafeUrl(match[3]);
+        node = url ? richLink(url, match[2], match[2] === new URL(url).hostname) : document.createTextNode(match[0]);
+      } else if (match[4] || match[5]) {
+        node = document.createElement("strong"); richInline(node, match[4] || match[5]);
+      } else if (match[6]) {
+        node = document.createElement("u"); richInline(node, match[6]);
+      } else if (match[7] || match[8]) {
+        node = document.createElement("em"); richInline(node, match[7] || match[8]);
+      } else {
+        const clean = match[9].replace(/[.,!?;:]+$/, "");
+        const url = richSafeUrl(clean);
+        node = url ? richLink(url, new URL(url).hostname, true) : document.createTextNode(match[0]);
+        if (clean.length !== match[0].length) rest = match[0].slice(clean.length) + rest.slice(match[0].length);
+      }
+      parent.append(node);
+      if (cleanUndefined(match, node)) rest = rest.slice(match[0].length);
+      continue;
+    }
+    const next = rest.slice(1).search(/\[|\*|_|<u>|https?:\/\//i);
+    const length = next < 0 ? rest.length : next + 1;
+    parent.append(document.createTextNode(rest.slice(0, length)));
+    rest = rest.slice(length);
+  }
+}
+function cleanUndefined(match, node) { return !(match[9] && node.nodeType === 1 && match[9].replace(/[.,!?;:]+$/, "").length !== match[0].length); }
+function richMarkdownFragment(value) {
+  const root = document.createDocumentFragment();
+  if (!value) return root;
+  const lines = String(value || "").replace(/\r\n?/g, "\n").split("\n");
+  let list = null;
+  for (const line of lines) {
+    const bullet = line.match(/^\s*([-*+] |\d+\. )(.*)$/);
+    if (bullet) {
+      const ordered = /^\d/.test(bullet[1]);
+      if (!list || list.tagName !== (ordered ? "OL" : "UL")) {
+        list = document.createElement(ordered ? "ol" : "ul"); root.append(list);
+      }
+      const item = document.createElement("li"); richInline(item, bullet[2]); list.append(item);
+    } else if (!line.trim()) {
+      list = null;
+      const blank = document.createElement("div"); blank.className = "rich-blank-line"; root.append(blank);
+    } else {
+      list = null;
+      const paragraph = document.createElement("p"); root.append(paragraph);
+      richInline(paragraph, line);
+    }
+  }
+  return root;
+}
+function richPreviewText(value) {
+  const holder = document.createElement("div");
+  holder.append(richMarkdownFragment(value));
+  return holder.innerText || holder.textContent || "";
+}
+function richSerializeInline(node) {
+  if (node.nodeType === Node.TEXT_NODE) return node.textContent;
+  if (node.nodeType !== Node.ELEMENT_NODE) return "";
+  const tag = node.tagName.toLowerCase();
+  const content = [...node.childNodes].map(richSerializeInline).join("");
+  if (tag === "br") return "\n";
+  if (tag === "strong" || tag === "b") return `**${content}**`;
+  if (tag === "em" || tag === "i") return `*${content}*`;
+  if (tag === "u") return `<u>${content}</u>`;
+  if (tag === "a") { const url = richSafeUrl(node.getAttribute("href")); return url ? `[${content}](${url})` : content; }
+  return content;
+}
+function richSerialize(node) {
+  const parts = [];
+  for (const child of node.childNodes) {
+    if (child.nodeType === Node.TEXT_NODE) { parts.push(child.textContent); continue; }
+    if (child.nodeType !== Node.ELEMENT_NODE) continue;
+    const tag = child.tagName.toLowerCase();
+    if (tag === "ul" || tag === "ol") {
+      parts.push([...child.children].filter(item => item.tagName === "LI")
+        .map((item, index) => `${tag === "ol" ? `${index + 1}.` : "-"} ${[...item.childNodes].map(richSerializeInline).join("")}`).join("\n"));
+    } else if (child.classList.contains("rich-blank-line")) parts.push("");
+    else if (tag === "p" || tag === "div") parts.push([...child.childNodes].map(richSerializeInline).join(""));
+    else parts.push(richSerializeInline(child));
+  }
+  return parts.join("\n").trim();
+}
+function richFromHtml(html) {
+  const parsed = new DOMParser().parseFromString(html, "text/html");
+  const allowed = document.createElement("div");
+  function sanitize(source, target) {
+    for (const child of source.childNodes) {
+      if (child.nodeType === Node.TEXT_NODE) { target.append(document.createTextNode(child.textContent)); continue; }
+      if (child.nodeType !== Node.ELEMENT_NODE) continue;
+      const tag = child.tagName.toLowerCase();
+      if (["script", "style", "iframe", "img", "svg"].includes(tag)) continue;
+      const mapped = { b: "strong", i: "em" }[tag] || tag;
+      const element = ["strong", "em", "u", "a", "p", "div", "br", "ul", "ol", "li"].includes(mapped)
+        ? document.createElement(mapped) : document.createElement("span");
+      if (mapped === "a") {
+        const url = richSafeUrl(child.getAttribute("href"));
+        if (url) element.setAttribute("href", url);
+      }
+      sanitize(child, element);
+      target.append(element);
+    }
+  }
+  sanitize(parsed.body, allowed);
+  return richSerialize(allowed);
+}
+function installRichDescription(editor, titleInput) {
+  Object.defineProperty(editor, "value", {
+    get: () => richSerialize(editor),
+    set: value => editor.replaceChildren(richMarkdownFragment(value))
+  });
+  editor.addEventListener("paste", event => {
+    event.preventDefault();
+    const plain = event.clipboardData.getData("text/plain");
+    const html = event.clipboardData.getData("text/html");
+    const markdown = html && !/[\*_\[\]<]/.test(plain) ? richFromHtml(html) : plain;
+    const holder = document.createElement("div");
+    holder.append(richMarkdownFragment(markdown));
+    document.execCommand("insertHTML", false, holder.innerHTML);
+    editor.querySelectorAll("a").forEach(richEnrichVideo);
+  });
+  editor.addEventListener("keydown", event => {
+    if (event.key !== " " || !window.getSelection()?.isCollapsed) return;
+    const selection = window.getSelection();
+    const block = selection.anchorNode?.parentElement?.closest("p,div");
+    if (!block || !editor.contains(block)) return;
+    const marker = block.textContent.trim();
+    if (!/^[-*+]$|^\d+\.$/.test(marker)) return;
+    if (block === editor && (editor.childNodes.length !== 1 || editor.textContent.trim() !== marker)) return;
+    event.preventDefault();
+    block.textContent = "";
+    document.execCommand(/^\d/.test(marker) ? "insertOrderedList" : "insertUnorderedList");
+  });
+  const shell = editor.closest(".rich-description-shell");
+  shell.querySelectorAll("[data-rich-command]").forEach(button => {
+    button.addEventListener("pointerdown", event => event.preventDefault());
+    button.addEventListener("click", () => {
+      editor.focus();
+      if (button.dataset.richCommand === "link") {
+        const selection = window.getSelection();
+        const range = selection?.rangeCount ? selection.getRangeAt(0).cloneRange() : null;
+        const raw = prompt("Вставте адресу посилання (https://…)");
+        const url = richSafeUrl(raw);
+        if (!url) return;
+        editor.focus();
+        if (range) { selection.removeAllRanges(); selection.addRange(range); }
+        if (selection?.isCollapsed) document.execCommand("insertHTML", false, richLink(url, new URL(url).hostname).outerHTML);
+        else document.execCommand("createLink", false, url);
+        for (const link of editor.querySelectorAll("a")) if (link.href === url) {
+          link.target = "_blank"; link.rel = "noopener noreferrer";
+          richEnrichVideo(link);
+        }
+      } else document.execCommand(button.dataset.richCommand);
+      editor.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+  });
+  async function copyDescription(withTitle) {
+    const description = editor.value;
+    const value = withTitle ? `${titleInput.value.trim()}\n\n${description}`.trim() : description;
+    try {
+      if (navigator.clipboard?.write && window.ClipboardItem) {
+        const safe = document.createElement("div"); safe.append(richMarkdownFragment(description));
+        const html = safe.innerHTML;
+        const safeTitle = titleInput.value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
+        await navigator.clipboard.write([new ClipboardItem({
+          "text/plain": new Blob([value], { type: "text/plain" }),
+          "text/html": new Blob([withTitle ? `<h2>${safeTitle}</h2>${html}` : html], { type: "text/html" })
+        })]);
+      } else await navigator.clipboard.writeText(value);
+      toast(withTitle ? "Назву й опис скопійовано" : "Опис скопійовано");
+    } catch (_error) { toast("Не вдалося скопіювати опис"); }
+  }
+  shell.querySelectorAll("[data-rich-copy]").forEach(button => button.addEventListener("click", () => copyDescription(button.dataset.richCopy === "title-description")));
+  if (editor.id === "task-description") document.querySelector("#task-copy-description").addEventListener("click", () => copyDescription(false));
+  else document.querySelector('[data-rich-target="project-description"]').addEventListener("click", () => copyDescription(false));
+}
+installRichDescription(els.description, els.input);
+installRichDescription(document.querySelector("#project-description"), document.querySelector("#project-title"));
 
 const dateFormatter = new Intl.DateTimeFormat("uk-UA", { day: "numeric", month: "short" });
 const fullDateFormatter = new Intl.DateTimeFormat("uk-UA", { day: "numeric", month: "long", year: "numeric" });
@@ -607,7 +832,7 @@ function renderTasks(tasks, selectedIds = new Set(), taskLists = [], taskProject
     const description = task.description?.trim();
     const preview = row.querySelector(".task-description-preview");
     preview.hidden = !description;
-    preview.textContent = description || "";
+    preview.textContent = description ? richPreviewText(description) : "";
     const taskDate = row.querySelector(".task-date");
     renderTaskDueDate(taskDate, task);
     const taskProject = taskProjects.find(project => project.id === task.projectId);
@@ -721,6 +946,9 @@ function openNewTaskEditor(listId, originListId = listId) {
   els.editor.dataset.taskId = "";
   els.editor.dataset.originListId = originListId;
   els.form.reset();
+  els.description.value = "";
+  els.savedSteps.hidden = true;
+  els.savedSteps.open = false;
   els.detailFields.hidden = false;
   els.detailToggle.hidden = true;
   els.taskProjectRow.hidden = true;
@@ -752,7 +980,7 @@ function openTaskDetails(task) {
   els.taskProjectOptions.hidden = true;
   els.taskProjectTrigger.setAttribute("aria-expanded", "false");
   els.taskProjectTrigger.disabled = task.status !== "active" || !projects.some(item => item.status === "active");
-  els.taskAttachProject.hidden = task.status !== "active" || Boolean(task.projectId) || !projects.some(item => item.status === "active");
+  els.taskAttachProject.hidden = task.status !== "active" || Boolean(task.projectId) || Boolean(task.savedSteps?.length) || !projects.some(item => item.status === "active");
   els.taskConvertProject.hidden = task.status !== "active" || Boolean(task.projectId);
   els.taskDetachProject.hidden = task.status !== "active" || !project;
   els.taskProjectLink.dataset.projectId = project?.id || "";
@@ -760,6 +988,24 @@ function openTaskDetails(task) {
   setTaskEditorListUI(task.listId || INBOX_LIST_ID);
   els.input.value = task.title;
   els.description.value = task.description || "";
+  const snapshot = Array.isArray(task.savedSteps) ? task.savedSteps : [];
+  els.savedSteps.hidden = snapshot.length === 0;
+  els.savedSteps.open = false;
+  els.savedStepsTitle.textContent = `Збережені кроки · ${snapshot.length}`;
+  els.savedStepsList.replaceChildren();
+  for (const step of snapshot) {
+    const item = document.createElement("li");
+    const title = document.createElement("strong");
+    title.textContent = step.title;
+    const meta = document.createElement("span");
+    meta.textContent = `${step.status === "completed" ? "Виконано" : "Активний"} · ${displayListTitle(lists.find(list => list.id === step.listId)) || "Нові"}`;
+    const description = document.createElement("p");
+    description.textContent = step.description;
+    item.append(title, meta, description);
+    els.savedStepsList.append(item);
+  }
+  els.taskConvertStepsCount.hidden = snapshot.length === 0;
+  els.taskConvertStepsCount.textContent = snapshot.length ? `відновити ${snapshot.length} кроків` : "";
   els.date.value = task.dueDate || "";
   els.time.value = task.dueDate ? (task.dueTime || "") : "";
   els.dateLabel.textContent = readableDueDate(task.dueDate, task.dueTime);

@@ -28,6 +28,18 @@ const data = {
   settings: [{ ...base("appearance"), theme: "dark", useSystemTheme: false }, { ...base("workflow"), returnOverdueToInbox: true }, { ...base("navigation"), startScreen: "projects" }]
 };
 
+test("backup preserves saved steps and rejects malformed snapshots", async () => {
+  const snapshot = [{ title: "Крок", description: "Увесь\nопис", status: "active", listId: "deleted-list", sectionId: "deleted-section" }];
+  const current = structuredClone(data);
+  current.tasks[0].savedSteps = snapshot;
+  const restored = await parseBackup(file({ format: "local-first-pwa-backup", appId: "dims-tasks", formatVersion: BACKUP_FORMAT_VERSION, data: current }));
+  assert.deepEqual(JSON.parse(JSON.stringify(restored.tasks[0].savedSteps)), snapshot);
+  current.tasks[0].savedSteps = [{ ...snapshot[0], description: 42 }];
+  await assert.rejects(parseBackup(file({ format: "local-first-pwa-backup", appId: "dims-tasks", formatVersion: BACKUP_FORMAT_VERSION, data: current })), /Некоректне завдання/);
+  const legacy = await parseBackup(file({ format: "local-first-pwa-backup", appId: "dims-tasks", formatVersion: 17, data }));
+  assert.deepEqual(Array.from(legacy.tasks[0].savedSteps), []);
+});
+
 test("current backup round-trip parser preserves appearance, workflow, and return marker", async () => {
   const restored = await parseBackup(file({ format: "local-first-pwa-backup", appId: "dims-tasks", formatVersion: BACKUP_FORMAT_VERSION, data }));
   assert.equal(restored.settings[0].useSystemTheme, false);

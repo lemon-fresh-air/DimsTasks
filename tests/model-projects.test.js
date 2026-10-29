@@ -6,8 +6,49 @@ const vm = require("node:vm");
 
 const source = fs.readFileSync(path.join(__dirname, "..", "src", "js", "model.js"), "utf8");
 const context = vm.createContext({ crypto: { randomUUID: () => "generated-id" }, INBOX_LIST_ID: "inbox" });
-vm.runInContext(`${source}\nthis.model = { createTask, createProject, projectFromTask, projectFromSelectedSteps, taskFromProject, projectToTaskChanges, detachProjectTask, compareProjects, nextProjectPosition, reorderProjects, reorderProjectBlock, projectCountdown, currentProjectTask, compareProjectTasks, visibleProjectTasks, visibleListTasks, reorderProjectSteps, reorderProjectStepBlock, normalizeTaskOrder };`, context);
-const { createTask, createProject, projectFromTask, projectFromSelectedSteps, taskFromProject, projectToTaskChanges, detachProjectTask, compareProjects, nextProjectPosition, reorderProjects, reorderProjectBlock, projectCountdown, currentProjectTask, compareProjectTasks, visibleProjectTasks, visibleListTasks, reorderProjectSteps, reorderProjectStepBlock, normalizeTaskOrder } = context.model;
+vm.runInContext(`${source}\nthis.model = { createTask, createProject, projectFromTask, projectFromSelectedSteps, taskFromProject, projectToTaskChanges, validSavedSteps, restoredProjectSteps, detachProjectTask, compareProjects, nextProjectPosition, reorderProjects, reorderProjectBlock, projectCountdown, currentProjectTask, compareProjectTasks, visibleProjectTasks, visibleListTasks, reorderProjectSteps, reorderProjectStepBlock, normalizeTaskOrder };`, context);
+const { createTask, createProject, projectFromTask, projectFromSelectedSteps, taskFromProject, projectToTaskChanges, validSavedSteps, restoredProjectSteps, detachProjectTask, compareProjects, nextProjectPosition, reorderProjects, reorderProjectBlock, projectCountdown, currentProjectTask, compareProjectTasks, visibleProjectTasks, visibleListTasks, reorderProjectSteps, reorderProjectStepBlock, normalizeTaskOrder } = context.model;
+
+test("saved project steps preserve order, descriptions, status and restore scopes", () => {
+  const project = createProject({ id: "project", title: "Проєкт", description: "Опис проєкту" });
+  const completed = createTask({ id: "b", title: "Другий", description: "Повний\nопис", status: "completed", projectId: project.id, projectPosition: 2, listId: "lost", sectionId: "gone" });
+  const first = createTask({ id: "a", title: "Перший", description: "# Markdown", projectId: project.id, projectPosition: 1, listId: "work", sectionId: "moved" });
+  const plan = projectToTaskChanges(project, [completed, first], "save", now());
+  assert.deepEqual(Array.from(plan.task.savedSteps, step => step.title), ["Перший"]);
+  assert.deepEqual(Array.from(plan.task.savedSteps, step => step.description), ["# Markdown"]);
+  assert.deepEqual(Array.from(plan.deletedIds), ["b", "a"]);
+  assert.equal(plan.task.description, "Опис проєкту");
+  const restored = restoredProjectSteps(plan.task.savedSteps, "new-project", [{ id: "inbox" }, { id: "work" }],
+    [{ id: "moved", listId: "inbox" }], [createTask({ id: "existing", listId: "work", position: 4 })]);
+  assert.deepEqual(Array.from(restored, step => [step.listId, step.sectionId, step.projectPosition, step.position]),
+    [["work", null, 0, 5]]);
+  assert.equal(restored[0].completedAt, null);
+  assert.equal(restored[0].dueDate, null);
+  assert.notEqual(restored[0].id, first.id);
+});
+function now() { return "2026-10-30T00:00:00.000Z"; }
+
+test("invalid snapshots are rejected and archived steps are omitted", () => {
+  assert.equal(validSavedSteps([{ title: "", description: "", status: "active", listId: "inbox", sectionId: null }]), false);
+  assert.throws(() => restoredProjectSteps([{ title: "X", description: 4, status: "active", listId: "inbox", sectionId: null }], "p", [], [], []));
+  const project = createProject({ id: "p", title: "P" });
+  const archived = createTask({ title: "Архів", projectId: "p", status: "archived" });
+  assert.equal(projectToTaskChanges(project, [archived], "save", now()).task.savedSteps.length, 0);
+  assert.deepEqual(Array.from(createTask({ title: "Old" }).savedSteps), []);
+});
+
+test("restoration keeps a valid section, falls back from deleted list, and supports completed legacy snapshots", () => {
+  const snapshot = [
+    { title: "Секція", description: "А", status: "active", listId: "work", sectionId: "section" },
+    { title: "Втрачений список", description: "Б", status: "completed", listId: "deleted", sectionId: "old" }
+  ];
+  const restored = restoredProjectSteps(snapshot, "project", [{ id: "inbox" }, { id: "work" }],
+    [{ id: "section", listId: "work" }], []);
+  assert.deepEqual(Array.from(restored, task => [task.listId, task.sectionId, task.position]),
+    [["work", "section", 0], ["inbox", null, 0]]);
+  assert.equal(restored[1].status, "completed");
+  assert.ok(restored[1].completedAt);
+});
 
 test("selected steps form a new project in their existing order", () => {
   const source = createProject({ id: "source", title: "Вихідний" });
@@ -34,7 +75,7 @@ test("project conversion creates an Inbox task and keeps steps in their own list
   const inboxStep = createTask({ id: "inbox-step", title: "Крок у Нові", projectId: project.id,
     listId: "inbox", projectPosition: 1, position: 0 });
   const other = createTask({ id: "other", title: "Самостійне", listId: "inbox", position: 1 });
-  const plan = projectToTaskChanges(project, [work, inboxStep, other], true, "2026-10-20T12:00:00Z");
+  const plan = projectToTaskChanges(project, [work, inboxStep, other], "keep", "2026-10-20T12:00:00Z");
   assert.equal(plan.task.id, "generated-id");
   assert.equal(plan.task.title, "Назва");
   assert.equal(plan.task.description, "Опис");
@@ -63,7 +104,7 @@ test("project conversion can delete steps without shifting their positions", () 
   const stepInInbox = createTask({ id: "step-inbox", title: "Крок", projectId: project.id, listId: "inbox", position: 0 });
   const stepElsewhere = createTask({ id: "step-work", title: "Крок", projectId: project.id, listId: "work", position: 4 });
   const survivor = createTask({ id: "survivor", title: "Інше", listId: "inbox", position: 1 });
-  const plan = projectToTaskChanges(project, [stepInInbox, stepElsewhere, survivor], false, "2026-10-20T12:00:00Z");
+  const plan = projectToTaskChanges(project, [stepInInbox, stepElsewhere, survivor], "delete", "2026-10-20T12:00:00Z");
   assert.deepEqual(Array.from(plan.deletedIds), ["step-inbox", "step-work"]);
   assert.deepEqual(Array.from(plan.updates, task => task.id), ["survivor"]);
   assert.equal(plan.updates[0].position, 2);

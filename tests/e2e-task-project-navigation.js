@@ -23,7 +23,7 @@ const { openTestApp } = require("./e2e-helper");
     await page.click(".project-card");
     await page.locator("#project-task-list .task-open").first().click();
     assert.equal(await page.locator("#task-title").inputValue(), "Збережена назва");
-    assert.equal(await page.locator("#task-description").inputValue(), "Збережений опис");
+    assert.equal(await page.locator("#task-description").evaluate(node => node.value), "Збережений опис");
 
     await page.fill("#task-title", "   ");
     await page.click("#task-project-link");
