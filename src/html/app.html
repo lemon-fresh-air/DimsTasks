@@ -404,6 +404,17 @@
     <footer><button id="project-delete-no" type="button">Ні</button><button id="project-delete-yes" type="button">Так</button></footer>
   </section>
 </div>
+<div id="project-overdue-dialog-backdrop" class="project-delete-dialog-backdrop" hidden>
+  <section id="project-overdue-dialog" class="project-delete-dialog project-overdue-dialog" role="dialog" aria-modal="true" aria-labelledby="project-overdue-dialog-title" tabindex="-1">
+    <h2 id="project-overdue-dialog-title">Прострочені завдання</h2>
+    <p id="project-overdue-dialog-message"></p>
+    <footer>
+      <button id="project-overdue-cancel" type="button">Залишити</button>
+      <button id="project-overdue-clear" type="button">Зняти термін</button>
+      <button id="project-overdue-delete" type="button" class="dialog-confirm-destructive">Видалити</button>
+    </footer>
+  </section>
+</div>
 <div id="project-convert-dialog-backdrop" class="project-delete-dialog-backdrop" hidden>
   <section id="project-convert-dialog" class="project-delete-dialog" role="dialog" aria-modal="true" aria-labelledby="project-convert-dialog-title" tabindex="-1">
     <h2 id="project-convert-dialog-title">Зробити проєкт завданням?</h2>

@@ -507,6 +507,19 @@ function reorderTaskBlock(records, selectedIds, beforeId, scope) {
 function currentProjectTask(tasks, projectId) {
   return tasks.filter(task => task.projectId === projectId && !isTaskCompleted(task)).sort(compareProjectTasks)[0] || null;
 }
+function carryTodayProjectGroup(plan, records, completedTask, date) {
+  if (!plan?.groups?.length || !completedTask.projectId) return null;
+  const group = plan.groups.find(item => item.taskIds.includes(completedTask.id));
+  if (!group) return null;
+  const updated = records.map(task => task.id === completedTask.id ? completedTask : task);
+  const next = currentProjectTask(updated, completedTask.projectId);
+  if (!next || !isTaskDueToday(next, date)) return null;
+  const visible = visibleProjectTasks(updated).filter(task => isTaskDueToday(task, date));
+  if (plan.groups.some(item => item.taskIds.includes(next.id))) return null;
+  return normalizeTodayGroups({ ...plan, groups: plan.groups.map(item => item.id === group.id
+    ? { ...item, taskIds: item.taskIds.map(id => id === completedTask.id ? next.id : id) }
+    : item) }, visible, date);
+}
 function compareProjectTasks(a, b) {
   return Number(isTaskCompleted(a)) - Number(isTaskCompleted(b))
     || (a.projectPosition ?? Number.MAX_SAFE_INTEGER) - (b.projectPosition ?? Number.MAX_SAFE_INTEGER)

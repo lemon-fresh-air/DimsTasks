@@ -37,6 +37,12 @@ const projectEls = {
   deleteKeepTasks: document.querySelector("#project-delete-keep-tasks"),
   deleteNo: document.querySelector("#project-delete-no"),
   deleteYes: document.querySelector("#project-delete-yes"),
+  overdueDialogBackdrop: document.querySelector("#project-overdue-dialog-backdrop"),
+  overdueDialog: document.querySelector("#project-overdue-dialog"),
+  overdueMessage: document.querySelector("#project-overdue-dialog-message"),
+  overdueCancel: document.querySelector("#project-overdue-cancel"),
+  overdueClear: document.querySelector("#project-overdue-clear"),
+  overdueDelete: document.querySelector("#project-overdue-delete"),
   convertTask: document.querySelector("#project-convert-task"),
   convertDialogBackdrop: document.querySelector("#project-convert-dialog-backdrop"),
   convertDialog: document.querySelector("#project-convert-dialog"),
@@ -287,7 +293,7 @@ function renderOpenProject() {
   projectEls.listOptions.replaceChildren(...lists.map(createListDropdownOption));
 }
 
-function openProject(projectId) {
+function openProject(projectId, { showOverdue = true } = {}) {
   const project = projects.find(item => item.id === projectId);
   if (!project) return;
   activeProjectId = projectId;
@@ -296,6 +302,70 @@ function openProject(projectId) {
   projectEls.screen.hidden = false;
   document.body.classList.add("project-screen-open");
   renderOpenProject();
+  if (showOverdue && project.status === "active") openProjectOverdueDialog();
+}
+
+function overdueProjectSteps() {
+  if (!activeProjectId) return [];
+  const date = localDateValue();
+  const time = localTimeValue();
+  return tasks.filter(task => task.projectId === activeProjectId && isTaskOverdue(task, date, time));
+}
+
+function openProjectOverdueDialog() {
+  const count = overdueProjectSteps().length;
+  if (!count) return;
+  projectEls.overdueMessage.textContent = count === 1
+    ? "У проєкті є 1 прострочене завдання. Що з ним зробити?"
+    : `У проєкті є ${count} прострочених завдань. Що з ними зробити?`;
+  projectEls.overdueDialogBackdrop.hidden = false;
+  document.body.classList.add("project-delete-dialog-open");
+  requestAnimationFrame(() => projectEls.overdueDialog.focus());
+}
+
+function closeProjectOverdueDialog() {
+  if (projectEls.overdueDialogBackdrop.hidden) return;
+  projectEls.overdueDialogBackdrop.hidden = true;
+  document.body.classList.remove("project-delete-dialog-open");
+  if (!projectEls.screen.hidden) projectEls.back.focus();
+}
+
+async function resolveProjectOverdue(deleteTasks) {
+  const affected = overdueProjectSteps();
+  closeProjectOverdueDialog();
+  if (!affected.length) return;
+  try {
+    if (deleteTasks) await taskDb.deleteMany(affected.map(task => task.id));
+    else {
+      const updatedAt = new Date().toISOString();
+      await taskDb.putMany(affected.map(task => ({ ...task, dueDate: null, dueTime: null, updatedAt })));
+    }
+    selectedTaskIds = new Set([...selectedTaskIds].filter(id => !affected.some(task => task.id === id)));
+    await refresh();
+    toast(deleteTasks
+      ? affected.length === 1 ? "Прострочене завдання видалено" : `Видалено прострочених завдань: ${affected.length}`
+      : affected.length === 1 ? "Термін простроченого завдання знято" : `Знято терміни завдань: ${affected.length}`, {
+      duration: 3000,
+      action: async () => {
+        try {
+          if (deleteTasks) await taskDb.putMany(affected);
+          else {
+            const current = await taskDb.all();
+            const dates = new Map(affected.map(task => [task.id, task]));
+            await taskDb.putMany(current.filter(task => dates.has(task.id)).map(task => ({
+              ...task, dueDate: dates.get(task.id).dueDate, dueTime: dates.get(task.id).dueTime,
+              updatedAt: new Date().toISOString()
+            })));
+          }
+          await refresh();
+          toast("Дію скасовано");
+        } catch (_error) { toast("Не вдалося скасувати дію"); }
+      }
+    });
+  } catch (_error) {
+    await refresh();
+    toast("Не вдалося змінити прострочені завдання");
+  }
 }
 
 function renderAttachResults() {
@@ -390,6 +460,7 @@ function toggleCompletedProjectTasks() {
 }
 
 async function closeProject({ animated = false } = {}) {
+  closeProjectOverdueDialog();
   if (!projectEls.attachBackdrop.hidden) closeAttachDialog();
   if (!projectEls.editor.hidden) closeProjectEditor();
   if (projectEls.steps.classList.contains("is-expanded")) toggleProjectTasks();
@@ -720,10 +791,15 @@ projectEls.completeDialogBackdrop.addEventListener("click", event => { if (event
 projectEls.deleteNo.addEventListener("click", () => closeProjectDeleteDialog(null));
 projectEls.deleteYes.addEventListener("click", () => closeProjectDeleteDialog(projectEls.deleteKeepTasks.checked));
 projectEls.deleteDialogBackdrop.addEventListener("click", event => { if (event.target === projectEls.deleteDialogBackdrop) closeProjectDeleteDialog(null); });
+projectEls.overdueCancel.addEventListener("click", closeProjectOverdueDialog);
+projectEls.overdueClear.addEventListener("click", () => resolveProjectOverdue(false));
+projectEls.overdueDelete.addEventListener("click", () => resolveProjectOverdue(true));
+projectEls.overdueDialogBackdrop.addEventListener("click", event => { if (event.target === projectEls.overdueDialogBackdrop) closeProjectOverdueDialog(); });
 document.addEventListener("keydown", event => {
   if (event.key !== "Escape") return;
   if (!projectEls.completeDialogBackdrop.hidden) closeProjectCompleteDialog(null);
   else if (!projectEls.deleteDialogBackdrop.hidden) closeProjectDeleteDialog(null);
+  else if (!projectEls.overdueDialogBackdrop.hidden) closeProjectOverdueDialog();
 });
 projectEls.back.addEventListener("click", closeProject);
 projectEls.editOpen.addEventListener("click", openProjectEditor);

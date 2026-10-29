@@ -1657,12 +1657,18 @@ async function completeTask(task, changes = {}, toggle) {
   await new Promise(resolve => setTimeout(resolve, 400));
   const completedAt = new Date().toISOString();
   const completedTask = { ...task, ...changes, status: "completed", completedAt, updatedAt: completedAt };
+  const groupDate = activeListId === TODAY_LIST_ID ? activePlanDate() : null;
+  const previousGroupLayout = groupDate && todayLayout?.date === groupDate ? todayLayout : null;
+  const groupSuccessor = previousGroupLayout
+    ? carryTodayProjectGroup(previousGroupLayout, tasks, completedTask, groupDate) : null;
   await taskDb.put(completedTask);
+  if (groupSuccessor) await settingsDb.saveTodayLayout(groupSuccessor, groupDate);
   await refresh({ animateTaskReflow: Boolean(toggle?.closest(".swipe-row")) });
   toast("Виконано", {
     duration: 3000,
     action: async () => {
       await taskDb.put({ ...completedTask, status: "active", completedAt: null, updatedAt: new Date().toISOString() });
+      if (groupSuccessor && groupDate === localDateValue()) await settingsDb.saveTodayLayout(previousGroupLayout, groupDate);
       await refresh();
       toast("Виконання скасовано");
     }
@@ -2333,6 +2339,7 @@ function mobileNavigationState() {
     convertDialog: !projectEls.convertDialogBackdrop.hidden,
     completeDialog: !projectEls.completeDialogBackdrop.hidden,
     deleteDialog: !projectEls.deleteDialogBackdrop.hidden,
+    overdueDialog: !projectEls.overdueDialogBackdrop.hidden,
     detachDialog: !els.taskDetachDialogBackdrop.hidden,
     listDeleteDialog: !els.listSelectionDeleteBackdrop.hidden
   };
@@ -2382,6 +2389,7 @@ async function restoreMobileNavigation(view) {
       if (current.listDeleteDialog && !view.listDeleteDialog) closeSelectedListsDeleteDialog();
       if (current.completeDialog && !view.completeDialog) closeProjectCompleteDialog(null);
       if (current.deleteDialog && !view.deleteDialog) closeProjectDeleteDialog(null);
+      if (current.overdueDialog && !view.overdueDialog) closeProjectOverdueDialog();
       if (view.completed) {
         completedWeekOffset = view.completedWeek;
         completedDetailId = tasks.some(task => task.id === view.completedDetail && task.status === "completed")
@@ -2399,6 +2407,7 @@ async function restoreMobileNavigation(view) {
       if (view.detachDialog && !current.detachDialog) openTaskDetachDialog();
       if (view.completeDialog && !current.completeDialog) requestProjectCompletion(Math.max(1, selectedProjectIds.size));
       if (view.deleteDialog && !current.deleteDialog) requestProjectDeletion(Math.max(1, selectedProjectIds.size));
+      if (view.overdueDialog && !current.overdueDialog) openProjectOverdueDialog();
       if (view.listDeleteDialog && !current.listDeleteDialog) els.mainMenuDeleteSelected.click();
       return;
     }
@@ -2410,6 +2419,7 @@ async function restoreMobileNavigation(view) {
     if (!els.listSelectionDeleteBackdrop.hidden) closeSelectedListsDeleteDialog();
     if (!projectEls.completeDialogBackdrop.hidden) closeProjectCompleteDialog(null);
     if (!projectEls.deleteDialogBackdrop.hidden) closeProjectDeleteDialog(null);
+    if (!projectEls.overdueDialogBackdrop.hidden) closeProjectOverdueDialog();
     if (!els.editor.hidden && !els.editor.classList.contains("is-closing")) {
       await saveAndLeaveTaskEditor({ allowEmptyNew: true });
       if (!els.editor.classList.contains("is-closing")) {
@@ -2432,7 +2442,7 @@ async function restoreMobileNavigation(view) {
 
     if (view.screen === "projects") {
       openProjects();
-      if (view.projectId && projects.some(project => project.id === view.projectId)) openProject(view.projectId);
+      if (view.projectId && projects.some(project => project.id === view.projectId)) openProject(view.projectId, { showOverdue: false });
     } else {
       openList(lists.some(list => list.id === view.listId) || isDayList(view.listId)
         ? view.listId : INBOX_LIST_ID);
@@ -2460,6 +2470,7 @@ async function restoreMobileNavigation(view) {
     if (view.detachDialog && view.taskEditor) openTaskDetachDialog();
     if (view.completeDialog) requestProjectCompletion(Math.max(1, selectedProjectIds.size));
     if (view.deleteDialog) requestProjectDeletion(Math.max(1, selectedProjectIds.size));
+    if (view.overdueDialog && view.projectId) openProjectOverdueDialog();
     if (view.listDeleteDialog) els.mainMenuDeleteSelected.click();
   } finally {
     // The snapshot ignores closing animation frames, so the next user action can be recorded immediately.

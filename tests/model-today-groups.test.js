@@ -6,12 +6,26 @@ const vm = require("node:vm");
 
 const source = fs.readFileSync(path.join(__dirname, "..", "src", "js", "model.js"), "utf8");
 const context = vm.createContext({ crypto: { randomUUID: () => "generated" }, INBOX_LIST_ID: "inbox" });
-vm.runInContext(`${source}\nthis.model = { isValidTodayLayoutShape, normalizeTodayGroups, createTodayGroup, assignTodayGroupTasks, removeTodayGroupTasks, ungroupTodayGroup, setTodayGroupCollapsed, setTodayGroupTitle, recolorTodayGroup, moveTodayOuterItem, reorderTodayOuterTaskBlock, shiftTodayGroupTask, reorderTodayGroupTaskBlock };`, context);
+vm.runInContext(`${source}\nthis.model = { isValidTodayLayoutShape, normalizeTodayGroups, createTodayGroup, assignTodayGroupTasks, removeTodayGroupTasks, ungroupTodayGroup, setTodayGroupCollapsed, setTodayGroupTitle, recolorTodayGroup, moveTodayOuterItem, reorderTodayOuterTaskBlock, shiftTodayGroupTask, reorderTodayGroupTaskBlock, carryTodayProjectGroup };`, context);
 const m = context.model;
 const date = "2026-10-23";
 const tasks = ["a", "b", "c", "d", "e"].map((id, i) => ({ id, todayPosition: i, createdAt: `2026-10-23T0${i}:00:00Z` }));
 const plain = value => JSON.parse(JSON.stringify(value));
 const ids = layout => Array.from(layout.items, item => `${item.type}:${item.id}`);
+
+test("the next project step inherits its predecessor's Today group only when visible today", () => {
+  const steps = ["first", "second", "third"].map((id, projectPosition) => ({
+    id, projectId: "project", projectPosition, status: "active", dueDate: date, createdAt: `2026-10-23T0${projectPosition}:00:00Z`
+  }));
+  const plan = m.createTodayGroup(null, [steps[0]], date, "#2D9E6B", ["first"], "green");
+  const firstDone = { ...steps[0], status: "completed" };
+  const inherited = m.carryTodayProjectGroup(plan, steps, firstDone, date);
+  assert.deepEqual(plain(inherited.groups[0].taskIds), ["second"]);
+  assert.deepEqual(ids(inherited), ["group:green"]);
+  const secondDone = { ...steps[1], status: "completed" };
+  assert.deepEqual(plain(m.carryTodayProjectGroup(inherited, [firstDone, ...steps.slice(1)], secondDone, date).groups[0].taskIds), ["third"]);
+  assert.equal(m.carryTodayProjectGroup(plan, [steps[0], { ...steps[1], dueDate: "2026-10-24" }, steps[2]], firstDone, date), null);
+});
 
 test("creation takes the first selected slot and preserves visible member order without touching tasks", () => {
   const before = plain(tasks);
