@@ -58,6 +58,12 @@ const projectEls = {
   dateSelected: document.querySelector("#project-date-selected"),
   listSelected: document.querySelector("#project-list-selected"),
   listOptions: document.querySelector("#project-list-options"),
+  createFromSteps: document.querySelector("#project-create-from-steps"),
+  createFromStepsBackdrop: document.querySelector("#project-create-from-steps-backdrop"),
+  createFromStepsDialog: document.querySelector("#project-create-from-steps-dialog"),
+  createFromStepsName: document.querySelector("#project-create-from-steps-name"),
+  createFromStepsCancel: document.querySelector("#project-create-from-steps-cancel"),
+  createFromStepsConfirm: document.querySelector("#project-create-from-steps-confirm"),
   deleteSelected: document.querySelector("#project-delete-selected"),
   back: document.querySelector("#project-back"),
   editOpen: document.querySelector("#project-edit-open"),
@@ -290,6 +296,7 @@ function renderOpenProject() {
   projectEls.selectionToolbar.hidden = selectedHere.size === 0;
   projectEls.screen.querySelector(".project-screen-header").hidden = selectedHere.size > 0;
   projectEls.selectionCount.textContent = `Вибрано: ${selectedHere.size}`;
+  projectEls.createFromSteps.hidden = project.status !== "active";
   projectEls.listOptions.replaceChildren(...lists.map(createListDropdownOption));
 }
 
@@ -394,9 +401,24 @@ function renderAttachResults() {
 
 function closeAttachDialog() {
   projectEls.attachBackdrop.hidden = true;
+  if (window.visualViewport) {
+    window.visualViewport.removeEventListener("resize", positionAttachDialog);
+    window.visualViewport.removeEventListener("scroll", positionAttachDialog);
+  }
+  projectEls.attachBackdrop.style.top = "";
+  projectEls.attachBackdrop.style.height = "";
+  projectEls.attachBackdrop.style.bottom = "";
   document.body.classList.remove("project-attach-open");
   attachSelectedIds.clear();
   projectEls.attachOpen.focus();
+}
+
+function positionAttachDialog() {
+  if (projectEls.attachBackdrop.hidden || !window.visualViewport) return;
+  const viewport = window.visualViewport;
+  projectEls.attachBackdrop.style.top = `${viewport.offsetTop}px`;
+  projectEls.attachBackdrop.style.height = `${viewport.height}px`;
+  projectEls.attachBackdrop.style.bottom = "auto";
 }
 
 async function saveAttachedTasks() {
@@ -640,6 +662,42 @@ function selectedActiveProjectStepIds() {
   return new Set(projectSteps(activeProjectId).filter(task => selectedTaskIds.has(task.id) && !isTaskCompleted(task)).map(task => task.id));
 }
 
+function closeCreateFromStepsDialog() {
+  projectEls.createFromStepsBackdrop.hidden = true;
+  projectEls.createFromSteps.focus();
+}
+
+function openCreateFromStepsDialog() {
+  if (!selectedTaskIds.size || !projects.some(project => project.id === activeProjectId && project.status === "active")) return;
+  projectEls.createFromStepsName.value = "";
+  projectEls.createFromStepsBackdrop.hidden = false;
+  projectEls.createFromStepsName.focus();
+}
+
+async function createProjectFromSelectedSteps() {
+  const title = projectEls.createFromStepsName.value.trim();
+  if (!title) { projectEls.createFromStepsName.focus(); return; }
+  const selectedIds = new Set(projectSteps(activeProjectId).filter(task => selectedTaskIds.has(task.id)).map(task => task.id));
+  if (!selectedIds.size) { closeCreateFromStepsDialog(); return; }
+  projectEls.createFromStepsConfirm.disabled = true;
+  try {
+    const plan = projectFromSelectedSteps(title, activeProjectId, selectedIds, tasks, projects);
+    await projectDb.createFromSteps(activeProjectId, plan.project, plan.steps);
+    const moved = new Map(plan.steps.map(task => [task.id, task]));
+    tasks = tasks.map(task => moved.get(task.id) || task);
+    projects = [...projects, plan.project].sort(compareProjects);
+    selectedTaskIds = new Set();
+    closeCreateFromStepsDialog();
+    renderOpenProject();
+    renderProjects();
+    toast("Новий проєкт створено");
+  } catch (_error) {
+    toast("Не вдалося створити проєкт. Кроки не змінено");
+  } finally {
+    projectEls.createFromStepsConfirm.disabled = false;
+  }
+}
+
 async function reorderSelectedProjectSteps({ beforeId }) {
   const projectSelectedIds = selectedActiveProjectStepIds();
   const reordered = reorderProjectStepBlock(tasks, activeProjectId, projectSelectedIds, beforeId);
@@ -821,6 +879,11 @@ projectEls.attachOpen.addEventListener("click", () => {
   renderAttachResults();
   projectEls.attachBackdrop.hidden = false;
   document.body.classList.add("project-attach-open");
+  positionAttachDialog();
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener("resize", positionAttachDialog);
+    window.visualViewport.addEventListener("scroll", positionAttachDialog);
+  }
   projectEls.attachSearch.focus();
 });
 projectEls.attachClose.addEventListener("click", closeAttachDialog);
@@ -895,6 +958,18 @@ projectEls.listOptions.addEventListener("click", event => {
   moveSelectedTasksToList(option.dataset.listId);
 });
 projectEls.deleteSelected.addEventListener("click", deleteSelectedTasks);
+projectEls.createFromSteps.addEventListener("click", openCreateFromStepsDialog);
+projectEls.createFromStepsCancel.addEventListener("click", closeCreateFromStepsDialog);
+projectEls.createFromStepsConfirm.addEventListener("click", createProjectFromSelectedSteps);
+projectEls.createFromStepsName.addEventListener("keydown", event => {
+  if (event.key === "Enter") { event.preventDefault(); createProjectFromSelectedSteps(); }
+});
+projectEls.createFromStepsDialog.addEventListener("keydown", event => {
+  if (event.key === "Escape") { event.preventDefault(); closeCreateFromStepsDialog(); }
+});
+projectEls.createFromStepsBackdrop.addEventListener("click", event => {
+  if (event.target === projectEls.createFromStepsBackdrop) closeCreateFromStepsDialog();
+});
 
 enableTaskGestures({
   container: projectEls.taskList,

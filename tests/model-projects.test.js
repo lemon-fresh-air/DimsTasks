@@ -6,8 +6,25 @@ const vm = require("node:vm");
 
 const source = fs.readFileSync(path.join(__dirname, "..", "src", "js", "model.js"), "utf8");
 const context = vm.createContext({ crypto: { randomUUID: () => "generated-id" }, INBOX_LIST_ID: "inbox" });
-vm.runInContext(`${source}\nthis.model = { createTask, createProject, projectFromTask, taskFromProject, projectToTaskChanges, detachProjectTask, compareProjects, nextProjectPosition, reorderProjects, reorderProjectBlock, projectCountdown, currentProjectTask, compareProjectTasks, visibleProjectTasks, visibleListTasks, reorderProjectSteps, reorderProjectStepBlock, normalizeTaskOrder };`, context);
-const { createTask, createProject, projectFromTask, taskFromProject, projectToTaskChanges, detachProjectTask, compareProjects, nextProjectPosition, reorderProjects, reorderProjectBlock, projectCountdown, currentProjectTask, compareProjectTasks, visibleProjectTasks, visibleListTasks, reorderProjectSteps, reorderProjectStepBlock, normalizeTaskOrder } = context.model;
+vm.runInContext(`${source}\nthis.model = { createTask, createProject, projectFromTask, projectFromSelectedSteps, taskFromProject, projectToTaskChanges, detachProjectTask, compareProjects, nextProjectPosition, reorderProjects, reorderProjectBlock, projectCountdown, currentProjectTask, compareProjectTasks, visibleProjectTasks, visibleListTasks, reorderProjectSteps, reorderProjectStepBlock, normalizeTaskOrder };`, context);
+const { createTask, createProject, projectFromTask, projectFromSelectedSteps, taskFromProject, projectToTaskChanges, detachProjectTask, compareProjects, nextProjectPosition, reorderProjects, reorderProjectBlock, projectCountdown, currentProjectTask, compareProjectTasks, visibleProjectTasks, visibleListTasks, reorderProjectSteps, reorderProjectStepBlock, normalizeTaskOrder } = context.model;
+
+test("selected steps form a new project in their existing order", () => {
+  const source = createProject({ id: "source", title: "Вихідний" });
+  const a = createTask({ id: "a", title: "А", projectId: source.id, projectPosition: 5, listId: "work" });
+  const b = createTask({ id: "b", title: "Б", projectId: source.id, projectPosition: 2, status: "completed", completedAt: "2026-10-20T10:00:00Z" });
+  const c = createTask({ id: "c", title: "В", projectId: source.id, projectPosition: 3 });
+  const plan = projectFromSelectedSteps(" Новий ", source.id, new Set(["a", "b"]), [a, b, c], [source]);
+  assert.equal(plan.project.title, "Новий");
+  assert.deepEqual(Array.from(plan.steps, step => step.id), ["a", "b"]);
+  assert.deepEqual(Array.from(plan.steps, step => step.projectPosition), [0, 1]);
+  assert.ok(plan.steps.every(step => step.projectId === plan.project.id));
+  assert.equal(plan.steps[1].status, "completed");
+  assert.equal(plan.steps[0].listId, "work");
+  assert.equal(c.projectId, source.id);
+  assert.throws(() => projectFromSelectedSteps("", source.id, new Set(["a"]), [a], [source]));
+  assert.throws(() => projectFromSelectedSteps("Назва", source.id, new Set(["missing"]), [a], [source]));
+});
 
 test("project conversion creates an Inbox task and keeps steps in their own lists", () => {
   const project = createProject({ id: "project", title: " Назва ", description: "Опис", goal: "Мета",

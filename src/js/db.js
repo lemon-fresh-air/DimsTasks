@@ -272,6 +272,24 @@ const listDb = {
 const projectDb = {
   all: () => appDb.all("projects"),
   put: project => appDb.put("projects", project),
+  createFromSteps: (sourceProjectId, project, steps) => transact(["projects", "tasks"], "readwrite", (tx, stores) => {
+    const sourceRequest = stores.projects.get(sourceProjectId);
+    sourceRequest.onsuccess = () => {
+      if (!sourceRequest.result || sourceRequest.result.status !== "active") { tx.abort(); return; }
+      let remaining = steps.length;
+      if (!remaining) { tx.abort(); return; }
+      for (const step of steps) {
+        const request = stores.tasks.get(step.id);
+        request.onsuccess = () => {
+          if (!request.result || request.result.projectId !== sourceProjectId) { tx.abort(); return; }
+          if (--remaining === 0) {
+            stores.projects.add(project);
+            for (const moved of steps) stores.tasks.put(moved);
+          }
+        };
+      }
+    };
+  }),
   convertToTask: (projectId, task, updates, deletedIds) => transact(["projects", "tasks"], "readwrite", (tx, stores) => {
     const request = stores.projects.get(projectId);
     request.onsuccess = () => {

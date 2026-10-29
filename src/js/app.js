@@ -2137,6 +2137,7 @@ els.taskListOptions.addEventListener("keydown", event => {
 });
 document.addEventListener("pointerdown", event => {
   if (!els.taskListOptions.hidden && !event.target.closest(".list-dropdown")) closeTaskListDropdown();
+  if (!els.taskProjectOptions.hidden && !event.target.closest("#task-project-row")) closeTaskProjectDropdown();
   if (!els.selectedListOptions.hidden && !event.target.closest(".bulk-list-dropdown")) closeSelectedListDropdown();
 });
 els.form.addEventListener("keydown", event => {
@@ -2223,6 +2224,112 @@ els.taskProjectLink.addEventListener("click", async () => {
   els.editor.dataset.taskId = "";
   hideTaskEditor();
   openProject(projectId);
+});
+
+function closeTaskProjectDropdown({ returnFocus = false } = {}) {
+  els.taskProjectOptions.hidden = true;
+  els.taskProjectTrigger.setAttribute("aria-expanded", "false");
+  if (returnFocus) els.taskProjectTrigger.focus({ preventScroll: true });
+}
+
+els.taskProjectTrigger.addEventListener("click", () => {
+  if (!els.taskProjectOptions.hidden) { closeTaskProjectDropdown(); return; }
+  const currentId = els.taskProjectLink.dataset.projectId;
+  const available = projects.filter(project => project.status === "active");
+  els.taskProjectOptions.replaceChildren(...available.map(project => {
+    const option = document.createElement("button");
+    option.type = "button";
+    option.className = "list-dropdown-option";
+    option.dataset.projectId = project.id;
+    option.setAttribute("role", "option");
+    option.setAttribute("aria-selected", String(project.id === currentId));
+    option.classList.toggle("is-selected", project.id === currentId);
+    const icon = document.createElement("span");
+    icon.className = "projects-icon";
+    icon.setAttribute("aria-hidden", "true");
+    const title = document.createElement("span");
+    title.textContent = project.title;
+    option.append(icon, title);
+    return option;
+  }));
+  if (!available.length) return;
+  els.taskProjectOptions.hidden = false;
+  els.taskProjectTrigger.setAttribute("aria-expanded", "true");
+  requestAnimationFrame(() => els.taskProjectOptions.querySelector(".is-selected")?.focus({ preventScroll: true }));
+});
+els.taskProjectOptions.addEventListener("keydown", event => {
+  if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); closeTaskProjectDropdown({ returnFocus: true }); }
+});
+els.taskProjectOptions.addEventListener("click", async event => {
+  const option = event.target.closest("[data-project-id]");
+  if (!option) return;
+  const projectId = option.dataset.projectId;
+  closeTaskProjectDropdown({ returnFocus: true });
+  const task = tasks.find(item => item.id === els.editor.dataset.taskId);
+  if (!task || task.status !== "active" || task.projectId === projectId || !projects.some(project => project.id === projectId && project.status === "active")) return;
+  if (!els.input.value.trim()) { toast("Введіть назву завдання"); els.input.focus(); return; }
+  els.taskProjectTrigger.disabled = true;
+  try {
+    if (!await saveOpenTask()) return;
+    const current = tasks.find(item => item.id === task.id);
+    const steps = tasks.filter(item => item.projectId === projectId);
+    const position = steps.length ? Math.max(...steps.map(item => item.projectPosition ?? -1)) + 1 : 0;
+    await taskDb.put({ ...current, projectId, projectPosition: position, updatedAt: new Date().toISOString() });
+    await refresh();
+    openTaskDetails(tasks.find(item => item.id === task.id));
+    toast("Проєкт завдання змінено");
+  } catch (_error) {
+    toast("Не вдалося змінити проєкт завдання");
+  } finally {
+    els.taskProjectTrigger.disabled = false;
+  }
+});
+
+function closeTaskAttachDialog() {
+  els.taskAttachDialogBackdrop.hidden = true;
+  els.taskAttachProject.focus();
+}
+
+els.taskAttachProject.addEventListener("click", () => {
+  const available = projects.filter(project => project.status === "active");
+  els.taskAttachProjectSelect.replaceChildren(...available.map(project => {
+    const option = document.createElement("option");
+    option.value = project.id;
+    option.textContent = project.title;
+    return option;
+  }));
+  if (!available.length) return;
+  els.taskAttachDialogBackdrop.hidden = false;
+  requestAnimationFrame(() => els.taskAttachProjectSelect.focus());
+});
+els.taskAttachCancel.addEventListener("click", closeTaskAttachDialog);
+els.taskAttachDialogBackdrop.addEventListener("click", event => {
+  if (event.target === els.taskAttachDialogBackdrop) closeTaskAttachDialog();
+});
+els.taskAttachDialog.addEventListener("keydown", event => {
+  if (event.key === "Escape") { event.preventDefault(); closeTaskAttachDialog(); }
+});
+els.taskAttachConfirm.addEventListener("click", async () => {
+  const task = tasks.find(item => item.id === els.editor.dataset.taskId);
+  const projectId = els.taskAttachProjectSelect.value;
+  if (!task || task.status !== "active" || task.projectId || !projects.some(project => project.id === projectId && project.status === "active")) return;
+  if (!els.input.value.trim()) { closeTaskAttachDialog(); els.input.focus(); return; }
+  els.taskAttachConfirm.disabled = true;
+  try {
+    await saveOpenTask();
+    const current = tasks.find(item => item.id === task.id);
+    const steps = tasks.filter(item => item.projectId === projectId);
+    const position = steps.length ? Math.max(...steps.map(item => item.projectPosition ?? -1)) + 1 : 0;
+    await taskDb.put({ ...current, projectId, projectPosition: position, updatedAt: new Date().toISOString() });
+    await refresh();
+    closeTaskAttachDialog();
+    openTaskDetails(tasks.find(item => item.id === task.id));
+    toast("Завдання додано до проєкту");
+  } catch (_error) {
+    toast("Не вдалося додати завдання до проєкту");
+  } finally {
+    els.taskAttachConfirm.disabled = false;
+  }
 });
 
 els.taskConvertProject.addEventListener("click", convertOpenTaskToProject);
@@ -2337,10 +2444,12 @@ function mobileNavigationState() {
     timeDialog: !els.timeDialogBackdrop.hidden,
     attachDialog: !projectEls.attachBackdrop.hidden,
     convertDialog: !projectEls.convertDialogBackdrop.hidden,
+    createFromStepsDialog: !projectEls.createFromStepsBackdrop.hidden,
     completeDialog: !projectEls.completeDialogBackdrop.hidden,
     deleteDialog: !projectEls.deleteDialogBackdrop.hidden,
     overdueDialog: !projectEls.overdueDialogBackdrop.hidden,
     detachDialog: !els.taskDetachDialogBackdrop.hidden,
+    taskAttachDialog: !els.taskAttachDialogBackdrop.hidden,
     listDeleteDialog: !els.listSelectionDeleteBackdrop.hidden
   };
 }
@@ -2385,7 +2494,9 @@ async function restoreMobileNavigation(view) {
       if (current.datePicker && !view.datePicker) closeDatePicker();
       if (current.attachDialog && !view.attachDialog) closeAttachDialog();
       if (current.convertDialog && !view.convertDialog) closeProjectConvertDialog();
+      if (current.createFromStepsDialog && !view.createFromStepsDialog) closeCreateFromStepsDialog();
       if (current.detachDialog && !view.detachDialog) closeTaskDetachDialog();
+      if (current.taskAttachDialog && !view.taskAttachDialog) closeTaskAttachDialog();
       if (current.listDeleteDialog && !view.listDeleteDialog) closeSelectedListsDeleteDialog();
       if (current.completeDialog && !view.completeDialog) closeProjectCompleteDialog(null);
       if (current.deleteDialog && !view.deleteDialog) closeProjectDeleteDialog(null);
@@ -2404,7 +2515,9 @@ async function restoreMobileNavigation(view) {
       if (view.timeDialog && !current.timeDialog) openTimeDialog();
       if (view.attachDialog && !current.attachDialog) projectEls.attachOpen.click();
       if (view.convertDialog && !current.convertDialog) openProjectConvertDialog();
+      if (view.createFromStepsDialog && !current.createFromStepsDialog) openCreateFromStepsDialog();
       if (view.detachDialog && !current.detachDialog) openTaskDetachDialog();
+      if (view.taskAttachDialog && !current.taskAttachDialog) els.taskAttachProject.click();
       if (view.completeDialog && !current.completeDialog) requestProjectCompletion(Math.max(1, selectedProjectIds.size));
       if (view.deleteDialog && !current.deleteDialog) requestProjectDeletion(Math.max(1, selectedProjectIds.size));
       if (view.overdueDialog && !current.overdueDialog) openProjectOverdueDialog();
@@ -2415,7 +2528,9 @@ async function restoreMobileNavigation(view) {
     if (!els.datePickerBackdrop.hidden) closeDatePicker();
     if (!projectEls.attachBackdrop.hidden) closeAttachDialog();
     if (!projectEls.convertDialogBackdrop.hidden) closeProjectConvertDialog();
+    if (!projectEls.createFromStepsBackdrop.hidden) closeCreateFromStepsDialog();
     if (!els.taskDetachDialogBackdrop.hidden) closeTaskDetachDialog();
+    if (!els.taskAttachDialogBackdrop.hidden) closeTaskAttachDialog();
     if (!els.listSelectionDeleteBackdrop.hidden) closeSelectedListsDeleteDialog();
     if (!projectEls.completeDialogBackdrop.hidden) closeProjectCompleteDialog(null);
     if (!projectEls.deleteDialogBackdrop.hidden) closeProjectDeleteDialog(null);
@@ -2467,7 +2582,9 @@ async function restoreMobileNavigation(view) {
     if (view.timeDialog && view.datePicker) openTimeDialog();
     if (view.attachDialog && view.projectId) projectEls.attachOpen.click();
     if (view.convertDialog && view.projectId) openProjectConvertDialog();
+    if (view.createFromStepsDialog && view.projectId) openCreateFromStepsDialog();
     if (view.detachDialog && view.taskEditor) openTaskDetachDialog();
+    if (view.taskAttachDialog && view.taskEditor) els.taskAttachProject.click();
     if (view.completeDialog) requestProjectCompletion(Math.max(1, selectedProjectIds.size));
     if (view.deleteDialog) requestProjectDeletion(Math.max(1, selectedProjectIds.size));
     if (view.overdueDialog && view.projectId) openProjectOverdueDialog();

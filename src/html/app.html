@@ -218,7 +218,7 @@
         </div>
       </div>
     </div>
-    <p class="settings-version"><span>Версія 0.12 · 26 жовтня 2026, 21:07</span><button id="check-app-update" type="button">Перевірити оновлення</button></p>
+    <p class="settings-version"><span>Версія 0.13 · 30 жовтня 2026</span><button id="check-app-update" type="button">Перевірити оновлення</button></p>
   </div>
 </section>
 <section id="completed-tasks-screen" class="completed-tasks-screen" aria-labelledby="completed-tasks-title" hidden>
@@ -269,6 +269,7 @@
         <button id="project-select-all-tasks" class="toolbar-action" type="button" aria-label="Вибрати всі завдання проєкту" aria-pressed="false"><svg class="selection-glyph" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="#selection-icon-all"/></svg></button>
         <button id="project-date-selected" class="toolbar-action" type="button" aria-label="Змінити дату вибраних кроків"><svg class="selection-glyph" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="#selection-icon-calendar"/></svg></button>
         <span class="project-list-dropdown"><button id="project-list-selected" class="toolbar-action" type="button" aria-label="Перемістити вибрані кроки" aria-expanded="false"><svg class="selection-glyph" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="#selection-icon-move"/></svg></button></span>
+        <button id="project-create-from-steps" class="toolbar-action" type="button" aria-label="Створити проєкт із вибраних кроків" aria-haspopup="dialog"><span class="projects-icon project-create-icon" aria-hidden="true"></span></button>
         <button id="project-delete-selected" class="toolbar-action destructive" type="button" aria-label="Видалити вибрані кроки"><svg class="selection-glyph" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="#selection-icon-delete"/></svg></button>
       </div>
     </div>
@@ -329,11 +330,12 @@
       <input id="task-time" name="time" type="hidden">
     </div>
     <div class="task-attributes" aria-label="Атрибути завдання">
-      <button id="task-project-link" class="project-attribute" type="button" hidden>
-        <span class="projects-icon" aria-hidden="true"></span>
-        <span class="project-attribute-copy"><span>Проєкт</span><strong id="task-project-value"></strong></span>
-        <span class="attribute-chevron" aria-hidden="true"></span>
-      </button>
+      <div id="task-project-row" class="project-attribute" hidden>
+        <button id="task-project-link" class="project-attribute-icon" type="button" aria-label="Відкрити проєкт"><span class="projects-icon" aria-hidden="true"></span></button>
+        <button id="task-project-trigger" class="project-dropdown-trigger" type="button" aria-label="Змінити проєкт завдання" aria-haspopup="listbox" aria-expanded="false" aria-controls="task-project-options"><span class="project-attribute-copy"><span>Проєкт</span><strong id="task-project-value"></strong></span><span class="dropdown-chevron" aria-hidden="true"></span></button>
+        <span id="task-project-options" class="list-dropdown-options project-dropdown-options" role="listbox" aria-label="Активні проєкти" hidden></span>
+      </div>
+      <button id="task-attach-project" class="project-attribute" type="button" hidden><span class="projects-icon" aria-hidden="true"></span><span>Додати до проєкту</span></button>
       <div class="list-attribute">
         <span class="list-menu-icon" aria-hidden="true"></span>
         <span class="list-attribute-copy"><span>Список</span><span class="list-dropdown">
@@ -343,7 +345,7 @@
         </span></span>
       </div>
       <button id="task-convert-project" class="project-attribute" type="button" aria-label="Перетворити завдання на проєкт" hidden><span class="projects-icon" aria-hidden="true"></span><span>Перетворити на проєкт</span></button>
-      <button id="task-detach-project" class="project-attribute" type="button" aria-label="Змінити зв’язок завдання з проєктом" hidden><span class="projects-icon" aria-hidden="true"></span><span>Від’єднати від проєкту</span></button>
+      <button id="task-detach-project" class="project-attribute" type="button" aria-label="Змінити зв’язок завдання з проєктом" hidden><span class="projects-icon project-detach-icon" aria-hidden="true"></span><span>Від’єднати від проєкту</span></button>
       <button id="desktop-save-task" class="desktop-save-task" type="button" disabled>Зберегти</button>
     </div>
   </form>
@@ -423,12 +425,28 @@
     <footer><button id="project-convert-cancel" type="button">Скасувати</button><button id="project-convert-confirm" type="button">Гаразд</button></footer>
   </section>
 </div>
+<div id="project-create-from-steps-backdrop" class="project-delete-dialog-backdrop" hidden>
+  <section id="project-create-from-steps-dialog" class="project-delete-dialog" role="dialog" aria-modal="true" aria-labelledby="project-create-from-steps-title" tabindex="-1">
+    <h2 id="project-create-from-steps-title">Новий проєкт із кроків</h2>
+    <label for="project-create-from-steps-name">Назва проєкту</label>
+    <input id="project-create-from-steps-name" type="text" maxlength="160" autocomplete="off" required>
+    <footer><button id="project-create-from-steps-cancel" type="button">Скасувати</button><button id="project-create-from-steps-confirm" type="button">Створити</button></footer>
+  </section>
+</div>
 <div id="task-detach-dialog-backdrop" class="project-delete-dialog-backdrop" hidden>
   <section id="task-detach-dialog" class="project-delete-dialog" role="dialog" aria-modal="true" aria-labelledby="task-detach-dialog-title" tabindex="-1">
     <h2 id="task-detach-dialog-title">Що зробити з кроком?</h2>
     <label class="task-detach-choice"><input type="radio" name="task-detach-choice" value="task" checked><span>Зробити самостійним завданням</span></label>
     <label class="task-detach-choice"><input type="radio" name="task-detach-choice" value="project"><span>Перетворити на новий проєкт</span></label>
     <footer><button id="task-detach-cancel" type="button">Скасувати</button><button id="task-detach-confirm" type="button">Гаразд</button></footer>
+  </section>
+</div>
+<div id="task-attach-dialog-backdrop" class="project-delete-dialog-backdrop" hidden>
+  <section id="task-attach-dialog" class="project-delete-dialog" role="dialog" aria-modal="true" aria-labelledby="task-attach-dialog-title" tabindex="-1">
+    <h2 id="task-attach-dialog-title">Додати до проєкту</h2>
+    <label for="task-attach-project-select">Проєкт</label>
+    <select id="task-attach-project-select"></select>
+    <footer><button id="task-attach-cancel" type="button">Скасувати</button><button id="task-attach-confirm" type="button">Додати</button></footer>
   </section>
 </div>
 <template id="task-template"><li class="swipe-row"><div class="delete-reveal" aria-hidden="true"><span class="delete-icon"></span><span>Видалити</span></div><article class="task-card"><button class="toggle" aria-label="Позначити виконаною"><span>✓</span></button><button class="task-open" type="button" aria-label="Відкрити деталі завдання"><span class="task-copy"><span class="task-text"></span><span class="task-description-preview" hidden></span></span><span class="task-meta"><span class="task-meta-primary"><span class="task-date"></span><span class="task-list"><span class="task-list-name"></span><span class="inbox-icon" aria-hidden="true"></span></span></span><span class="task-project" hidden><span class="projects-icon" aria-hidden="true"></span><span class="task-project-name"></span></span></span></button></article></li></template>

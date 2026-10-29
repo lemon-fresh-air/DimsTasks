@@ -46,6 +46,15 @@ function projectFromTask(task, projectRecords) {
   return createProject({ title, description: task.description || "", dueDate: task.dueDate || null,
     dueTime: task.dueTime || null, position: nextProjectPosition(projectRecords) });
 }
+function projectFromSelectedSteps(title, sourceProjectId, selectedIds, taskRecords, projectRecords) {
+  const name = String(title || "").trim();
+  if (!name) throw new Error("Введіть назву проєкту");
+  const selected = taskRecords.filter(task => selectedIds.has(task.id) && task.projectId === sourceProjectId).sort(compareProjectTasks);
+  if (!selected.length || selected.length !== selectedIds.size) throw new Error("Вибрані кроки вже змінилися");
+  const project = createProject({ title: name, position: nextProjectPosition(projectRecords) });
+  const updatedAt = new Date().toISOString();
+  return { project, steps: selected.map((task, index) => ({ ...task, projectId: project.id, projectPosition: index, updatedAt })) };
+}
 function compareProjects(a, b) {
   return (a.position ?? Number.MAX_SAFE_INTEGER) - (b.position ?? Number.MAX_SAFE_INTEGER)
     || String(a.createdAt || "").localeCompare(String(b.createdAt || ""))

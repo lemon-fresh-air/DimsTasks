@@ -44,6 +44,15 @@ const els = {
   input: document.querySelector("#task-title"),
   description: document.querySelector("#task-description"),
   taskProjectLink: document.querySelector("#task-project-link"),
+  taskProjectRow: document.querySelector("#task-project-row"),
+  taskProjectTrigger: document.querySelector("#task-project-trigger"),
+  taskProjectOptions: document.querySelector("#task-project-options"),
+  taskAttachProject: document.querySelector("#task-attach-project"),
+  taskAttachDialogBackdrop: document.querySelector("#task-attach-dialog-backdrop"),
+  taskAttachDialog: document.querySelector("#task-attach-dialog"),
+  taskAttachProjectSelect: document.querySelector("#task-attach-project-select"),
+  taskAttachCancel: document.querySelector("#task-attach-cancel"),
+  taskAttachConfirm: document.querySelector("#task-attach-confirm"),
   taskConvertProject: document.querySelector("#task-convert-project"),
   taskDetachProject: document.querySelector("#task-detach-project"),
   taskDetachDialogBackdrop: document.querySelector("#task-detach-dialog-backdrop"),
@@ -714,7 +723,9 @@ function openNewTaskEditor(listId, originListId = listId) {
   els.form.reset();
   els.detailFields.hidden = false;
   els.detailToggle.hidden = true;
-  els.taskProjectLink.hidden = true;
+  els.taskProjectRow.hidden = true;
+  els.taskProjectOptions.hidden = true;
+  els.taskAttachProject.hidden = true;
   els.taskConvertProject.hidden = true;
   els.taskDetachProject.hidden = true;
   delete els.taskProjectLink.dataset.projectId;
@@ -737,7 +748,11 @@ function openTaskDetails(task) {
   els.detailFields.hidden = false;
   els.detailToggle.hidden = false;
   const project = projects.find(item => item.id === task.projectId);
-  els.taskProjectLink.hidden = !project;
+  els.taskProjectRow.hidden = !project;
+  els.taskProjectOptions.hidden = true;
+  els.taskProjectTrigger.setAttribute("aria-expanded", "false");
+  els.taskProjectTrigger.disabled = task.status !== "active" || !projects.some(item => item.status === "active");
+  els.taskAttachProject.hidden = task.status !== "active" || Boolean(task.projectId) || !projects.some(item => item.status === "active");
   els.taskConvertProject.hidden = task.status !== "active" || Boolean(task.projectId);
   els.taskDetachProject.hidden = task.status !== "active" || !project;
   els.taskProjectLink.dataset.projectId = project?.id || "";
