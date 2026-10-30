@@ -1,5 +1,6 @@
 let tasks = [];
 let lists = [];
+let sections = [];
 let activeListId = INBOX_LIST_ID;
 let todayDefaultListId = INBOX_LIST_ID;
 let returnOverdueToInbox = false;
@@ -165,7 +166,8 @@ function renderCurrentTasks() {
   else selectedTodayGroupIds = new Set([...selectedTodayGroupIds].filter(id =>
     todayLayout.groups.some(group => group.id === id && group.collapsed)));
   renderTasks(visibleTasks(), selectedTaskIds, lists, projects, activeList(),
-    isDayList() && todayLayout?.date === activePlanDate() ? todayLayout : null, selectedTodayGroupIds);
+    isDayList() && todayLayout?.date === activePlanDate() ? todayLayout : null, selectedTodayGroupIds,
+    sections);
   updateMainMenuTaskCounts(tasks);
   renderSelectedListOptions(lists, activeListId);
   renderProjects();
@@ -184,7 +186,6 @@ function renderListMenu() {
   const inboxIndex = lists.findIndex(list => list.kind === "inbox");
   const menuLists = lists.slice();
   menuLists.splice(inboxIndex < 0 ? 0 : inboxIndex + 1, 0, todayList);
-  menuLists.splice(inboxIndex < 0 ? 1 : inboxIndex + 2, 0, tomorrowList);
   renderMainMenuLists(menuLists, activeListId, selectedListIds, tasks);
   renderTaskListOptions(lists);
 }
@@ -349,6 +350,7 @@ async function loadLists() {
 
 async function initializeApp({ openStartScreen = false } = {}) {
   await loadLists();
+  sections = await sectionDb.all();
   await settingsDb.migrateTodayLayout();
   await settingsDb.migrateTodayOrder();
   await loadAppearanceSettings();
@@ -709,12 +711,125 @@ function showListEditorError(message = "") {
   els.listEditorError.hidden = !message;
 }
 
+function orderedListSections(listId = activeListId) {
+  return sections.filter(section => section.listId === listId)
+    .sort((a, b) => a.position - b.position || a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id));
+}
+
+function renderListSections() {
+  const container = document.querySelector("#list-sections");
+  const ordered = orderedListSections();
+  container.replaceChildren(...ordered.map((section, index) => {
+    const row = document.createElement("li");
+    row.dataset.sectionId = section.id;
+    const name = document.createElement("input");
+    name.value = section.title;
+    name.maxLength = 80;
+    name.setAttribute("aria-label", `Назва секції ${section.title}`);
+    name.className = "section-name";
+    const controls = document.createElement("div");
+    for (const [action, label, disabled] of [["up", "Вище", index === 0], ["down", "Нижче", index === ordered.length - 1], ["delete", "Видалити", false]]) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.dataset.action = action;
+      if (action === "delete") {
+        const icon = document.createElement("span");
+        icon.className = "trash-icon";
+        icon.setAttribute("aria-hidden", "true");
+        button.append(icon);
+      } else button.textContent = action === "up" ? "↑" : "↓";
+      button.setAttribute("aria-label", `${label}: ${section.title}`);
+      button.title = label;
+      button.disabled = disabled;
+      controls.append(button);
+    }
+    row.append(name, controls);
+    return row;
+  }));
+}
+
+function showSectionError(message = "") {
+  const error = document.querySelector("#section-error");
+  error.textContent = message;
+  error.hidden = !message;
+}
+
+document.querySelector("#section-create-form").addEventListener("submit", async event => {
+  event.preventDefault();
+  const list = activeList();
+  if (list?.kind !== "regular") return;
+  const input = document.querySelector("#section-create-name");
+  const title = input.value.trim();
+  if (!title) { showSectionError("Введіть назву секції"); return; }
+  const section = createSection({ listId: list.id, title, position: orderedListSections().length });
+  try {
+    await sectionDb.put(section);
+    sections.push(section);
+    input.value = "";
+    showSectionError();
+    renderListSections();
+    renderCurrentTasks();
+  } catch (_error) { showSectionError("Не вдалося додати секцію"); }
+});
+
+document.querySelector("#list-sections").addEventListener("change", async event => {
+  if (!event.target.matches(".section-name")) return;
+  const section = sections.find(item => item.id === event.target.closest("li").dataset.sectionId);
+  if (!section) return;
+  const title = event.target.value.trim();
+  if (!title) { event.target.value = section.title; showSectionError("Введіть назву секції"); return; }
+  const updated = { ...section, title, updatedAt: new Date().toISOString() };
+  try {
+    await sectionDb.put(updated);
+    sections = sections.map(item => item.id === updated.id ? updated : item);
+    showSectionError();
+    renderListSections();
+    renderCurrentTasks();
+  } catch (_error) { event.target.value = section.title; showSectionError("Не вдалося перейменувати секцію"); }
+});
+
+document.querySelector("#list-sections").addEventListener("click", async event => {
+  const button = event.target.closest("button[data-action]");
+  if (!button) return;
+  const sectionId = button.closest("li").dataset.sectionId;
+  const ordered = orderedListSections();
+  const index = ordered.findIndex(section => section.id === sectionId);
+  if (index < 0) return;
+  if (button.dataset.action === "delete") {
+    if (!confirm(`Видалити секцію «${ordered[index].title}»? Її завдання залишаться в цьому списку без секції.`)) return;
+    try {
+      await sectionDb.deleteAndUnassign(sectionId, new Date().toISOString());
+      sections = sections.filter(section => section.id !== sectionId);
+      tasks = tasks.map(task => task.sectionId === sectionId ? { ...task, sectionId: null } : task);
+      renderListSections();
+      renderCurrentTasks();
+      showSectionError();
+    } catch (_error) { showSectionError("Не вдалося видалити секцію"); }
+    return;
+  }
+  const other = index + (button.dataset.action === "up" ? -1 : 1);
+  if (other < 0 || other >= ordered.length) return;
+  [ordered[index], ordered[other]] = [ordered[other], ordered[index]];
+  const now = new Date().toISOString();
+  const changed = ordered.map((section, position) => ({ ...section, position, updatedAt: now }));
+  try {
+    await sectionDb.putMany(changed);
+    const byId = new Map(changed.map(section => [section.id, section]));
+    sections = sections.map(section => byId.get(section.id) || section);
+    renderListSections();
+    renderCurrentTasks();
+    showSectionError();
+  } catch (_error) { showSectionError("Не вдалося змінити порядок секцій"); }
+});
+
+
 function openListEditor() {
   const list = activeList();
   if (list?.kind !== "regular") return;
   clearTimeout(listEditorCloseTimer);
   cancelAnimationFrame(listEditorOpenFrame);
   els.listEditorName.value = displayListTitle(list);
+  renderListSections();
   els.listDeleteOpen.hidden = false;
   els.listDeleteConfirm.hidden = true;
   showListEditorError();
@@ -782,6 +897,7 @@ async function deleteActiveList() {
     await listDb.deleteAndMoveTasksToInbox(list.id, now);
     tasks = tasks.map(task => task.listId === list.id ? { ...task, listId: INBOX_LIST_ID, sectionId: null, updatedAt: now } : task);
     lists = lists.filter(item => item.id !== list.id);
+    sections = sections.filter(section => section.listId !== list.id);
     activeListId = INBOX_LIST_ID;
     selectedTaskIds = new Set();
     closeListEditor();
@@ -834,6 +950,7 @@ async function deleteSelectedLists() {
     await listDb.deleteManyAndMoveTasksToInbox([...ids], now);
     tasks = tasks.map(task => ids.has(task.listId) ? { ...task, listId: INBOX_LIST_ID, sectionId: null, updatedAt: now } : task);
     lists = lists.filter(list => !ids.has(list.id));
+    sections = sections.filter(section => !ids.has(section.listId));
     if (ids.has(activeListId)) activeListId = INBOX_LIST_ID;
     selectedListIds = new Set();
     closeSelectedListsDeleteDialog();
@@ -846,6 +963,7 @@ async function deleteSelectedLists() {
           await listDb.restoreDeleted({ lists: deletedLists, sections: deletedSections, tasks: deletedTasks });
           const restoredTasks = new Map(deletedTasks.map(task => [task.id, task]));
           lists = [...lists.filter(list => !ids.has(list.id)), ...deletedLists].sort(compareLists);
+           sections = [...sections, ...deletedSections];
           tasks = tasks.map(task => restoredTasks.get(task.id) || task);
           activeListId = previousActiveListId;
           renderListNavigation();
@@ -1386,7 +1504,7 @@ async function addTask() {
     ? origin === TOMORROW_LIST_ID ? nextLocalDate() : localDateValue() : els.date.value;
   const projectId = els.editor.dataset.pendingProjectId;
   const selectedProject = projects.find(project => project.id === projectId && project.status === "active");
-  const task = createTask({ listId: els.taskListSelect.value || INBOX_LIST_ID, projectId: selectedProject?.id || null,
+  const task = createTask({ listId: els.taskListSelect.value || INBOX_LIST_ID, sectionId: els.taskSectionSelect.value || null, projectId: selectedProject?.id || null,
     projectPosition: selectedProject ? 0 : null, title, description: els.description.value.trim(), dueDate: date || null,
     dueTime: date && els.time.value ? els.time.value : null, position: 0 });
   const scope = taskOrderScope(task);
@@ -1407,7 +1525,7 @@ async function addTask() {
   return true;
 }
 
-async function reorderSelectedTasks({ beforeType = "task", beforeId, groupId = null }) {
+async function reorderSelectedTasks({ beforeType = "task", beforeId, groupId = null, sectionId = null, movedIds = null }) {
   if (!ensureCurrentDay()) return false;
   const isToday = isDayList();
   if (isToday && todayLayout?.groups?.length) {
@@ -1450,6 +1568,23 @@ async function reorderSelectedTasks({ beforeType = "task", beforeId, groupId = n
     renderCurrentTasks();
     return true;
   }
+  if (movedIds && activeList()?.kind === "regular" && sections.some(section => section.listId === activeListId)) {
+    const previous = tasks;
+    const reordered = moveTaskBlockToSection(tasks, movedIds, activeListId, sectionId, beforeId);
+    const changed = reordered.filter((task, index) => task !== tasks[index]);
+    if (!changed.length) return false;
+    tasks = reordered.sort(compareTasks);
+    renderCurrentTasks();
+    try {
+      await taskDb.putMany(changed);
+      return true;
+    } catch (_error) {
+      tasks = previous;
+      renderCurrentTasks();
+      toast("Не вдалося зберегти порядок");
+      return false;
+    }
+  }
   const selected = tasks.filter(task => selectedTaskIds.has(task.id)).sort(compareTasks);
   if (!selected.length) return false;
   const previous = tasks;
@@ -1478,8 +1613,10 @@ async function saveOpenTask() {
   if (!task || !title) return false;
   const listId = lists.some(list => list.id === els.taskListSelect.value) ? els.taskListSelect.value : task.listId;
   const changedList = listId !== task.listId;
-  const updatedTask = { ...task, listId, sectionId: changedList ? null : task.sectionId, position: changedList ? 0 : task.position, title, description: els.description.value.trim(), dueDate: els.date.value || null, dueTime: els.date.value && els.time.value ? els.time.value : null, updatedAt: new Date().toISOString() };
-  const shiftedTasks = changedList
+  const sectionId = sections.some(section => section.id === els.taskSectionSelect.value && section.listId === listId) ? els.taskSectionSelect.value : null;
+  const changedScope = changedList || sectionId !== task.sectionId;
+  const updatedTask = { ...task, listId, sectionId, position: changedScope ? 0 : task.position, title, description: els.description.value.trim(), dueDate: els.date.value || null, dueTime: els.date.value && els.time.value ? els.time.value : null, updatedAt: new Date().toISOString() };
+  const shiftedTasks = changedScope
     ? tasks.filter(item => item.id !== task.id && taskOrderScope(item) === taskOrderScope(updatedTask)).map(item => ({ ...item, position: (Number.isFinite(item.position) ? item.position : 0) + 1 }))
     : [];
   await taskDb.putMany([updatedTask, ...shiftedTasks]);
@@ -2141,7 +2278,10 @@ els.timeDialOptions.addEventListener("click", event => {
 });
 els.input.addEventListener("input", () => { resizeTaskTitle(); updateDesktopSaveState(); });
 els.description.addEventListener("input", () => { resizeDescription(); updateDesktopSaveState(); });
-els.taskListTrigger.addEventListener("click", () => els.taskListOptions.hidden ? openTaskListDropdown() : closeTaskListDropdown());
+els.taskListTrigger.addEventListener("click", () => {
+  if (els.taskListOptions.hidden) { renderTaskListOptions(lists); openTaskListDropdown(); }
+  else closeTaskListDropdown();
+});
 els.taskListOptions.addEventListener("click", async event => {
   if (handleDropdownListCreation(event, els.taskListOptions)) return;
   const option = event.target.closest("[data-list-id]");
@@ -2152,6 +2292,37 @@ els.taskListOptions.addEventListener("click", async event => {
     setTaskEditorListUI(option.dataset.listId);
     updateDesktopSaveState();
   }
+  if (!els.taskSectionRow.hidden) openTaskSectionDropdown();
+});
+els.taskSectionTrigger.addEventListener("click", () => els.taskSectionOptions.hidden ? openTaskSectionDropdown() : closeTaskSectionDropdown());
+els.taskSectionOptions.addEventListener("click", async event => {
+  const option = event.target.closest("[data-section-id]");
+  if (!option) return;
+  const sectionId = option.dataset.sectionId || null;
+  const listId = els.taskListSelect.value;
+  if (sectionId && !sections.some(section => section.id === sectionId && section.listId === listId)) return;
+  if (els.editor.dataset.taskId) {
+    const task = tasks.find(item => item.id === els.editor.dataset.taskId);
+    if (!task || task.listId !== listId) return;
+    if (task.sectionId !== sectionId) {
+      const updatedAt = new Date().toISOString();
+      const moved = { ...task, sectionId, position: 0, updatedAt };
+      const shifted = tasks.filter(item => item.id !== task.id && taskOrderScope(item) === taskOrderScope(moved))
+        .map(item => ({ ...item, position: item.position + 1, updatedAt }));
+      try {
+        await taskDb.putMany([moved, ...shifted]);
+        const replacements = new Map([moved, ...shifted].map(item => [item.id, item]));
+        tasks = tasks.map(item => replacements.get(item.id) || item).sort(compareTasks);
+        renderCurrentTasks();
+      } catch (_error) { toast("Не вдалося змінити секцію"); return; }
+    }
+  }
+  setTaskEditorSectionUI(listId, sectionId);
+  closeTaskSectionDropdown({ returnFocus: true });
+  updateDesktopSaveState();
+});
+els.taskSectionOptions.addEventListener("keydown", event => {
+  if (event.key === "Escape") { event.preventDefault(); closeTaskSectionDropdown({ returnFocus: true }); }
 });
 els.taskListOptions.addEventListener("keydown", event => {
   if (handleDropdownListCreationKeydown(event, els.taskListOptions)) return;
@@ -2159,6 +2330,7 @@ els.taskListOptions.addEventListener("keydown", event => {
 });
 document.addEventListener("pointerdown", event => {
   if (!els.taskListOptions.hidden && !event.target.closest(".list-dropdown")) closeTaskListDropdown();
+  if (!els.taskSectionOptions.hidden && !event.target.closest("#task-section-row")) closeTaskSectionDropdown();
   if (!els.taskProjectOptions.hidden && !event.target.closest("#task-project-row")) closeTaskProjectDropdown();
   if (!els.selectedListOptions.hidden && !event.target.closest(".bulk-list-dropdown")) closeSelectedListDropdown();
 });
@@ -2170,6 +2342,19 @@ els.form.addEventListener("keydown", event => {
   }
 });
 els.form.addEventListener("submit", event => { event.preventDefault(); saveAndLeaveTaskEditor(); });
+els.list.addEventListener("click", async event => {
+  const button = event.target.closest(".list-section-toggle");
+  if (!button) return;
+  const section = sections.find(item => item.id === button.closest(".list-section")?.dataset.sectionId);
+  if (!section || section.listId !== activeListId) return;
+  button.disabled = true;
+  const updated = { ...section, collapsed: section.collapsed !== true, updatedAt: new Date().toISOString() };
+  try {
+    await sectionDb.put(updated);
+    sections = sections.map(item => item.id === section.id ? updated : item);
+    renderCurrentTasks();
+  } catch (_error) { button.disabled = false; toast("Не вдалося змінити стан секції"); }
+});
 els.list.addEventListener("click", async event => {
   const groupToggle = event.target.closest(".today-group-toggle");
   if (groupToggle && els.list.contains(groupToggle)) {
@@ -2381,9 +2566,12 @@ enableTaskGestures({
   onSelectOnly: selectTask,
   getSelectedIds: () => new Set(selectedTaskIds),
   onReorder: reorderSelectedTasks,
-  canDragRow: row => isDayList() && todayLayout?.groups?.length
+  canDragRow: row => activeList()?.kind === "regular" && sections.some(section => section.listId === activeListId)
+    ? row.parentElement === els.list || Boolean(row.parentElement?.classList.contains("list-section-tasks"))
+    : isDayList() && todayLayout?.groups?.length
     ? row.parentElement === els.list || Boolean(row.parentElement?.classList.contains("today-group-tasks"))
-    : row.parentElement === els.list
+    : row.parentElement === els.list,
+  sectionDragEnabled: () => activeList()?.kind === "regular" && sections.some(section => section.listId === activeListId)
 });
 enableTodayGroupReordering({ isSelected: id => selectedTodayGroupIds.has(id), onSelect: selectTodayGroup, onReorder: reorderSelectedTodayGroup });
 let appServiceWorkerRegistration = null;

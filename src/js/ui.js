@@ -97,6 +97,11 @@ const els = {
   taskListTrigger: document.querySelector("#task-list-trigger"),
   taskListValue: document.querySelector("#task-list-value"),
   taskListOptions: document.querySelector("#task-list-options"),
+  taskSectionRow: document.querySelector("#task-section-row"),
+  taskSectionSelect: document.querySelector("#task-section-select"),
+  taskSectionTrigger: document.querySelector("#task-section-trigger"),
+  taskSectionValue: document.querySelector("#task-section-value"),
+  taskSectionOptions: document.querySelector("#task-section-options"),
   desktopSaveTask: document.querySelector("#desktop-save-task"),
   detailToggle: document.querySelector("#detail-toggle"),
   editorBack: document.querySelector("#task-editor-back"),
@@ -495,7 +500,7 @@ function renderTaskDueDate(element, task) {
 }
 
 function editorState() {
-  return JSON.stringify({ title: els.input.value, description: els.description.value, dueDate: els.date.value, dueTime: els.time.value, listId: els.taskListSelect.value });
+  return JSON.stringify({ title: els.input.value, description: els.description.value, dueDate: els.date.value, dueTime: els.time.value, listId: els.taskListSelect.value, sectionId: els.taskSectionSelect.value });
 }
 
 function rememberEditorState() {
@@ -679,9 +684,15 @@ function hideDropdownListCreator(container, { returnFocus = true } = {}) {
 
 function renderTaskListOptions(lists) {
   const selectedListId = els.taskListSelect.value;
+  const selectedSectionId = els.taskSectionSelect.value;
   els.taskListOptions.replaceChildren(...lists.map(createListDropdownOption), createListDropdownCreator("task"));
+  for (const option of els.taskListOptions.querySelectorAll("[data-list-id]")) {
+    if (sections.some(section => section.listId === option.dataset.listId))
+      option.querySelector("span:nth-child(2)").textContent += "…";
+  }
   if (lists.some(list => list.id === selectedListId)) els.taskListSelect.value = selectedListId;
   setTaskEditorListUI(els.taskListSelect.value || lists[0]?.id);
+  setTaskEditorSectionUI(els.taskListSelect.value, selectedSectionId);
 }
 
 function renderSelectedListOptions(lists, currentListId) {
@@ -719,6 +730,46 @@ function setTaskEditorListUI(listId) {
     item.classList.toggle("is-selected", selected);
     item.setAttribute("aria-selected", String(selected));
   }
+  setTaskEditorSectionUI(listId, null);
+}
+
+function setTaskEditorSectionUI(listId, sectionId) {
+  const available = sections.filter(section => section.listId === listId)
+    .sort((a, b) => a.position - b.position || a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id));
+  els.taskSectionRow.hidden = available.length === 0;
+  els.taskSectionOptions.hidden = true;
+  els.taskSectionTrigger.setAttribute("aria-expanded", "false");
+  const chosen = available.find(section => section.id === sectionId);
+  els.taskSectionSelect.value = chosen?.id || "";
+  els.taskSectionValue.textContent = chosen?.title || "Без секції";
+  els.taskSectionOptions.replaceChildren(...[["", "Без секції"], ...available.map(section => [section.id, section.title])].map(([id, title]) => {
+    const option = document.createElement("button");
+    option.type = "button";
+    option.className = "list-dropdown-option";
+    option.dataset.sectionId = id;
+    option.setAttribute("role", "option");
+    option.classList.toggle("is-selected", id === els.taskSectionSelect.value);
+    option.setAttribute("aria-selected", String(id === els.taskSectionSelect.value));
+    const icon = document.createElement("span");
+    icon.className = "list-menu-icon";
+    icon.setAttribute("aria-hidden", "true");
+    const label = document.createElement("span");
+    label.textContent = title;
+    option.append(icon, label);
+    return option;
+  }));
+}
+
+function openTaskSectionDropdown() {
+  els.taskSectionOptions.hidden = false;
+  els.taskSectionTrigger.setAttribute("aria-expanded", "true");
+  requestAnimationFrame(() => els.taskSectionOptions.querySelector(".is-selected")?.focus({ preventScroll: true }));
+}
+
+function closeTaskSectionDropdown({ returnFocus = false } = {}) {
+  els.taskSectionOptions.hidden = true;
+  els.taskSectionTrigger.setAttribute("aria-expanded", "false");
+  if (returnFocus) els.taskSectionTrigger.focus({ preventScroll: true });
 }
 
 function closeTaskListDropdown({ returnFocus = false } = {}) {
@@ -728,6 +779,7 @@ function closeTaskListDropdown({ returnFocus = false } = {}) {
 }
 
 function openTaskListDropdown() {
+  closeTaskSectionDropdown();
   els.taskListOptions.hidden = false;
   els.taskListTrigger.setAttribute("aria-expanded", "true");
   requestAnimationFrame(() => els.taskListOptions.querySelector(".is-selected")?.focus({ preventScroll: true }));
@@ -834,7 +886,7 @@ els.toastAction.addEventListener("click", async () => {
   if (action) await action();
 });
 
-function renderTasks(tasks, selectedIds = new Set(), taskLists = [], taskProjects = [], contextList = null, layout = null, selectedGroupIds = new Set()) {
+function renderTasks(tasks, selectedIds = new Set(), taskLists = [], taskProjects = [], contextList = null, layout = null, selectedGroupIds = new Set(), listSections = []) {
   const active = tasks.filter(task => !isTaskCompleted(task));
   const groupSelection = selectedGroupIds.size > 0;
   const selectionMode = selectedIds.size > 0 || groupSelection;
@@ -875,7 +927,11 @@ function renderTasks(tasks, selectedIds = new Set(), taskLists = [], taskProject
     const taskListBadge = row.querySelector(".task-list");
     const showTaskList = contextList?.kind !== "regular" || taskList?.id !== contextList.id;
     taskListBadge.hidden = !showTaskList;
-    row.querySelector(".task-list-name").textContent = displayListTitle(taskList);
+    const taskSection = contextList?.kind === "today" && taskList?.kind === "regular"
+      ? listSections.find(section => section.id === task.sectionId && section.listId === taskList.id) : null;
+    const listLabel = `${displayListTitle(taskList)}${taskSection ? ` / ${taskSection.title}` : ""}`;
+    row.querySelector(".task-list-name").textContent = listLabel;
+    taskListBadge.title = listLabel;
     const taskListIcon = taskListBadge.querySelector(".inbox-icon");
     taskListIcon.className = taskList?.kind === "regular" ? "list-menu-icon" : "inbox-icon";
     row.querySelector(".task-meta-primary").hidden = !task.dueDate && !showTaskList;
@@ -930,9 +986,48 @@ function renderTasks(tasks, selectedIds = new Set(), taskLists = [], taskProject
     const placed = new Set(layout.items.map(item => item.id));
     els.list.replaceChildren(...active.filter(task => !placed.has(task.id)).map(task => rows.get(task.id)),
       ...layout.items.map(item => rows.get(item.id)).filter(Boolean));
+  } else if (contextList?.kind === "regular" && listSections.some(section => section.listId === contextList.id)) {
+    const currentSections = listSections.filter(section => section.listId === contextList.id)
+      .sort((a, b) => a.position - b.position || a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id));
+    const validIds = new Set(currentSections.map(section => section.id));
+    const rootRows = active.filter(task => !task.sectionId || !validIds.has(task.sectionId)).map(task => rows.get(task.id));
+    const sectionRows = currentSections.map(section => {
+      const wrapper = document.createElement("li");
+      wrapper.className = "list-section";
+      wrapper.dataset.sectionId = section.id;
+      const heading = document.createElement("h2");
+      heading.className = "list-section-heading";
+      const toggle = document.createElement("button");
+      toggle.type = "button";
+      toggle.className = "list-section-toggle";
+      toggle.setAttribute("aria-expanded", String(section.collapsed !== true));
+      toggle.setAttribute("aria-label", `${section.collapsed === true ? "Розгорнути" : "Згорнути"} секцію «${section.title}»`);
+      const label = document.createElement("span");
+      label.className = "list-section-label";
+      label.textContent = section.title;
+      const count = document.createElement("span");
+      count.className = "list-section-count";
+      const sectionTasks = active.filter(task => task.sectionId === section.id);
+      count.textContent = String(sectionTasks.length);
+      const chevron = document.createElement("span");
+      chevron.className = "list-section-chevron";
+      chevron.setAttribute("aria-hidden", "true");
+      toggle.append(label, count, chevron);
+      heading.append(toggle);
+      const members = document.createElement("ul");
+      members.className = "list-section-tasks";
+      members.id = `list-section-tasks-${section.id}`;
+      toggle.setAttribute("aria-controls", members.id);
+      members.hidden = section.collapsed === true;
+      members.append(...sectionTasks.map(task => rows.get(task.id)));
+      wrapper.append(heading, members);
+      return wrapper;
+    });
+    els.list.replaceChildren(...rootRows, ...sectionRows);
   } else els.list.replaceChildren(...rows.values());
-  els.list.hidden = active.length === 0 && !groupedToday;
-  els.empty.hidden = active.length > 0 || groupedToday;
+  const hasListSections = contextList?.kind === "regular" && listSections.some(section => section.listId === contextList.id);
+  els.list.hidden = active.length === 0 && !groupedToday && !hasListSections;
+  els.empty.hidden = active.length > 0 || groupedToday || hasListSections;
   const oneToFour = ![11, 12, 13, 14].includes(active.length % 100) && [1, 2, 3, 4].includes(active.length % 10);
   els.count.textContent = groupSelection ? `Вибрано груп: ${selectedGroupIds.size}` : selectionMode
     ? `Вибрано: ${selectedIds.size}`
@@ -1020,6 +1115,7 @@ function openTaskDetails(task) {
   els.taskProjectLink.dataset.projectId = project?.id || "";
   els.taskProjectValue.textContent = project?.title || "";
   setTaskEditorListUI(task.listId || INBOX_LIST_ID);
+  setTaskEditorSectionUI(task.listId || INBOX_LIST_ID, task.sectionId);
   els.input.value = task.title;
   els.description.value = task.description || "";
   const snapshot = Array.isArray(task.savedSteps) ? task.savedSteps : [];

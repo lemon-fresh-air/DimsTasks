@@ -228,7 +228,7 @@
         </div>
       </div>
     </div>
-    <p class="settings-version"><span>Версія 0.14 · 30 жовтня 2026</span><button id="check-app-update" type="button">Перевірити оновлення</button></p>
+    <p class="settings-version"><span>Версія 0.15.0 · 30 жовтня 2026</span><button id="check-app-update" type="button">Перевірити оновлення</button></p>
   </div>
 </section>
 <section id="completed-tasks-screen" class="completed-tasks-screen" aria-labelledby="completed-tasks-title" hidden>
@@ -260,6 +260,15 @@
       <p id="list-editor-error" class="form-error" role="alert" hidden></p>
       <button id="list-editor-save" class="primary-action" type="submit">Зберегти</button>
     </form>
+    <div class="list-sections-settings">
+      <h3>Секції</h3>
+      <ul id="list-sections"></ul>
+      <form id="section-create-form">
+        <label for="section-create-name">Нова секція</label>
+        <div class="section-create-row"><input id="section-create-name" maxlength="80" autocomplete="off" required><button type="submit">Додати</button></div>
+      </form>
+      <p id="section-error" class="form-error" role="alert" hidden></p>
+    </div>
     <div class="list-danger-zone">
       <button id="list-delete-open" class="danger-action" type="button"><span class="trash-icon" aria-hidden="true"></span><span>Видалити список</span></button>
       <div id="list-delete-confirm" class="delete-confirm" hidden>
@@ -352,6 +361,14 @@
           <input id="task-list-select" name="list" type="hidden">
           <button id="task-list-trigger" class="list-dropdown-trigger" type="button" aria-haspopup="listbox" aria-expanded="false" aria-controls="task-list-options"><span id="task-list-value"></span><span class="dropdown-chevron" aria-hidden="true"></span></button>
           <span id="task-list-options" class="list-dropdown-options" role="listbox" aria-label="Список завдання" hidden></span>
+        </span></span>
+      </div>
+      <div id="task-section-row" class="list-attribute" hidden>
+        <span class="list-menu-icon" aria-hidden="true"></span>
+        <span class="list-attribute-copy"><span>Секція</span><span class="list-dropdown">
+          <input id="task-section-select" type="hidden">
+          <button id="task-section-trigger" class="list-dropdown-trigger" type="button" aria-haspopup="listbox" aria-expanded="false" aria-controls="task-section-options"><span id="task-section-value">Без секції</span><span class="dropdown-chevron" aria-hidden="true"></span></button>
+          <span id="task-section-options" class="list-dropdown-options" role="listbox" aria-label="Секція завдання" hidden></span>
         </span></span>
       </div>
       <button id="task-convert-project" class="project-attribute" type="button" aria-label="Перетворити завдання на проєкт" hidden><span class="projects-icon" aria-hidden="true"></span><span class="task-convert-copy"><strong>Перетворити на проєкт</strong><small id="task-convert-steps-count" hidden></small></span></button>

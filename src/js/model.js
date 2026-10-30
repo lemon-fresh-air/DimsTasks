@@ -9,6 +9,7 @@ function createList(values = {}) {
 }
 function displayListTitle(list) {
   if (list?.kind === "inbox") return "Нові";
+  if (list?.id === "system-list-tomorrow") return "Завтра";
   if (list?.kind === "today") return "Сьогодні";
   return String(list?.title || "").trim();
 }
@@ -34,7 +35,7 @@ function reorderLists(records, selectedIds, beforeId) {
   return records.map(list => replacements.get(list.id) || list).sort(compareLists);
 }
 function createSection(values = {}) {
-  return { ...baseRecord(values), ...values, listId: values.listId, title: String(values.title || "").trim(), description: values.description || "", position: Number.isFinite(values.position) ? values.position : 0 };
+  return { ...baseRecord(values), ...values, listId: values.listId, title: String(values.title || "").trim(), description: values.description || "", position: Number.isFinite(values.position) ? values.position : 0, collapsed: values.collapsed === true };
 }
 function createProject(values = {}) {
   return { ...baseRecord(values), ...values, title: String(values.title || "").trim(), goal: values.goal || "", description: values.description || "", status: values.status === "completed" ? "completed" : "active", dueDate: values.dueDate || null, dueTime: values.dueDate && values.dueTime ? values.dueTime : null, showCountdown: values.showCountdown === true, lastListId: typeof values.lastListId === "string" ? values.lastListId : null, defaultListId: typeof values.defaultListId === "string" ? values.defaultListId : null, addNewTasksFirst: values.addNewTasksFirst === true, completedAt: values.completedAt || null, position: Number.isFinite(values.position) ? values.position : 0 };
@@ -545,6 +546,30 @@ function reorderTaskBlock(records, selectedIds, beforeId, scope) {
   const replacements = new Map(ordered.map((task, position) => [task.id,
     task.position === position ? task : { ...task, position, updatedAt: now }
   ]));
+  return records.map(task => replacements.get(task.id) || task);
+}
+function moveTaskBlockToSection(records, movedIds, listId, sectionId, beforeId = null) {
+  const selected = new Set(movedIds);
+  const moved = movedIds.map(id => records.find(task => task.id === id))
+    .filter(task => task && task.listId === listId);
+  if (!moved.length || moved.length !== selected.size) return records;
+  const target = records.filter(task => task.listId === listId && (task.sectionId || null) === sectionId && !selected.has(task.id))
+    .sort(compareTasks);
+  const index = beforeId === null ? target.length : target.findIndex(task => task.id === beforeId);
+  if (index < 0) return records;
+  target.splice(index, 0, ...moved);
+  const affected = new Set(moved.map(task => task.sectionId || null));
+  affected.add(sectionId);
+  const now = nowIso();
+  const replacements = new Map();
+  for (const sourceSectionId of affected) {
+    const ordered = sourceSectionId === sectionId ? target
+      : records.filter(task => task.listId === listId && (task.sectionId || null) === sourceSectionId && !selected.has(task.id)).sort(compareTasks);
+    ordered.forEach((task, position) => {
+      if (task.position !== position || (task.sectionId || null) !== sourceSectionId)
+        replacements.set(task.id, { ...task, sectionId: sourceSectionId, position, updatedAt: now });
+    });
+  }
   return records.map(task => replacements.get(task.id) || task);
 }
 function currentProjectTask(tasks, projectId) {

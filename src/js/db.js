@@ -271,6 +271,23 @@ const listDb = {
   })
 };
 
+const sectionDb = {
+  all: () => appDb.all("sections"),
+  put: section => appDb.put("sections", section),
+  putMany: sections => transact("sections", "readwrite", (_tx, stores) => {
+    for (const section of sections) stores.sections.put(section);
+  }),
+  deleteAndUnassign: (sectionId, updatedAt) => transact(["sections", "tasks"], "readwrite", (_tx, stores) => {
+    const request = stores.tasks.index("by-section").openCursor(IDBKeyRange.only(sectionId));
+    request.onsuccess = () => {
+      const cursor = request.result;
+      if (!cursor) { stores.sections.delete(sectionId); return; }
+      cursor.update({ ...cursor.value, sectionId: null, updatedAt });
+      cursor.continue();
+    };
+  })
+};
+
 const projectDb = {
   all: () => appDb.all("projects"),
   put: project => appDb.put("projects", project),

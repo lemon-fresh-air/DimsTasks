@@ -29,6 +29,18 @@ const data = {
   settings: [{ ...base("appearance"), theme: "dark", useSystemTheme: false }, { ...base("workflow"), returnOverdueToInbox: true }, { ...base("navigation"), startScreen: "projects" }]
 };
 
+test("section collapse survives backup and older sections default to expanded", async () => {
+  const current = structuredClone(data);
+  current.lists.push({ ...base("work"), title: "Робота", description: "", kind: "regular", position: 1 });
+  current.sections.push({ ...base("section"), listId: "work", title: "План", description: "", position: 0, collapsed: true });
+  const payload = { format: "local-first-pwa-backup", appId: "dims-tasks", formatVersion: BACKUP_FORMAT_VERSION, data: current };
+  assert.equal((await parseBackup(file(payload))).sections[0].collapsed, true);
+  current.sections[0].collapsed = "true";
+  await assert.rejects(parseBackup(file(payload)), /Некоректна секція/);
+  delete current.sections[0].collapsed;
+  assert.equal((await parseBackup(file({ ...payload, formatVersion: 19 }))).sections[0].collapsed, false);
+});
+
 test("calendar range survives backup and invalid modes are rejected", async () => {
   const current = structuredClone(data);
   current.settings.push({ ...base("calendar-range"), mode: "2-weeks" });

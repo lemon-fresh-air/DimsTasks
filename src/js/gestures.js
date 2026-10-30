@@ -175,7 +175,7 @@ function enableListReordering({ onReorder, isSelectionMode, isSelected, onLongPr
   container.addEventListener("pointercancel", event => finish(event, true));
 }
 
-function enableTaskGestures({ container = els.list, onDelete, isSelectionMode, isSelected, onLongPress, onSelectOnly, getSelectedIds, onReorder, requireSelectionForDrag = false, canDragRow = () => true }) {
+function enableTaskGestures({ container = els.list, onDelete, isSelectionMode, isSelected, onLongPress, onSelectOnly, getSelectedIds, onReorder, requireSelectionForDrag = false, canDragRow = () => true, sectionDragEnabled = () => false }) {
   let gesture = null;
   const maxReveal = 112;
   const deleteThreshold = 72;
@@ -246,7 +246,10 @@ function enableTaskGestures({ container = els.list, onDelete, isSelectionMode, i
     }
     if (!gesture.row || !gesture.dragContainer || !canDragRow(gesture.row)) return;
     const selectedIds = getSelectedIds();
-    const rows = [...gesture.dragContainer.children].filter(row => selectedIds.has(row.dataset.id) && canDragRow(row));
+    const sectionDrag = sectionDragEnabled();
+    const rows = sectionDrag
+      ? [...container.querySelectorAll(".swipe-row[data-id]")].filter(row => selectedIds.has(row.dataset.id) && canDragRow(row) && row.getClientRects().length)
+      : [...gesture.dragContainer.children].filter(row => selectedIds.has(row.dataset.id) && canDragRow(row));
     if (!rows.length) return;
     const sourceRect = gesture.row.getBoundingClientRect();
     const totalHeight = rows.reduce((sum, row) => sum + row.getBoundingClientRect().height, 0);
@@ -267,11 +270,12 @@ function enableTaskGestures({ container = els.list, onDelete, isSelectionMode, i
     }
     document.body.append(preview);
     gesture = {
-      ...gesture, dragging: true, selectedIds, rows, placeholder, preview, moved: false, lastBeforeType: null, lastBeforeId: null,
+      ...gesture, dragging: true, sectionDrag, selectedIds, rows, placeholder, preview, moved: false, lastBeforeType: null, lastBeforeId: null,
       offsetX: event.clientX - sourceRect.left, offsetY: event.clientY - sourceRect.top,
       currentX: sourceRect.left, currentY: sourceRect.top, targetX: sourceRect.left, targetY: sourceRect.top
     };
     gesture.dragContainer.classList.add("dragging");
+    if (sectionDrag) container.classList.add("dragging");
     positionPreview(event.clientX, event.clientY);
     gesture.followFrame = requestAnimationFrame(renderPreview);
     gesture.scrollFrame = requestAnimationFrame(autoScroll);
@@ -295,6 +299,29 @@ function enableTaskGestures({ container = els.list, onDelete, isSelectionMode, i
   }
 
   function updateInsertion(clientY) {
+    if (gesture.sectionDrag) {
+      const wrappers = [...container.querySelectorAll(":scope > .list-section")];
+      const targetWrapper = [...wrappers].reverse().find(wrapper => clientY >= wrapper.querySelector(".list-section-heading").getBoundingClientRect().top) || null;
+      const target = targetWrapper?.querySelector(".list-section-tasks") || container;
+      const candidates = [...target.children].filter(row => row.dataset.id && !gesture.selectedIds.has(row.dataset.id));
+      const before = candidates.find(row => clientY < row.getBoundingClientRect().top + row.getBoundingClientRect().height / 2) || null;
+      const beforeId = before?.dataset.id || null;
+      const sectionId = targetWrapper?.dataset.sectionId || null;
+      if (sectionId === gesture.dropSectionId && beforeId === gesture.lastBeforeId) return;
+      gesture.dropWrapper?.classList.remove("drag-over");
+      targetWrapper?.classList.add("drag-over");
+      gesture.dropWrapper = targetWrapper;
+      const previous = target.hidden ? null : captureRows(target);
+      if (before) before.before(gesture.placeholder);
+      else if (target === container && targetWrapper) targetWrapper.before(gesture.placeholder);
+      else if (target === container && wrappers.length) wrappers[0].before(gesture.placeholder);
+      else target.append(gesture.placeholder);
+      gesture.dropSectionId = sectionId;
+      gesture.lastBeforeId = beforeId;
+      gesture.moved = true;
+      if (previous) animateRows(previous, target);
+      return;
+    }
     const candidates = [...gesture.dragContainer.children].filter(row => row.dataset.groupId && gesture.dragContainer === container
       || row.dataset.id && canDragRow(row) && !gesture.selectedIds.has(row.dataset.id));
     const before = candidates.find(row => clientY < row.getBoundingClientRect().top + row.getBoundingClientRect().height / 2) || null;
@@ -380,9 +407,12 @@ function enableTaskGestures({ container = els.list, onDelete, isSelectionMode, i
       finished.preview.remove();
       finished.placeholder.remove();
       finished.rows.forEach(row => row.classList.remove("drag-source", "lifted"));
+       finished.dropWrapper?.classList.remove("drag-over");
       finished.dragContainer.classList.remove("dragging");
+       if (finished.sectionDrag) container.classList.remove("dragging");
       finished.row.dataset.swiped = "true";
-      if (finished.moved) onReorder({ beforeType: finished.lastBeforeType, beforeId: finished.lastBeforeId, groupId: finished.dragContainer.closest(".today-group")?.dataset.groupId || null });
+      if (finished.moved) onReorder({ beforeType: finished.lastBeforeType, beforeId: finished.lastBeforeId, groupId: finished.dragContainer.closest(".today-group")?.dataset.groupId || null,
+        sectionId: finished.sectionDrag ? finished.dropSectionId : null, movedIds: finished.sectionDrag ? finished.rows.map(row => row.dataset.id) : null });
       return;
     }
     const { row, card, dx, horizontal, scrolling, longPress, longPressTimer, scrollVelocity } = gesture;
@@ -419,7 +449,7 @@ function enableTaskGestures({ container = els.list, onDelete, isSelectionMode, i
 
   const cancelGesture = event => {
     if (!gesture || gesture.pointerId !== event.pointerId) return;
-    const { row, card, dragContainer, longPressTimer, dragging, preview, placeholder, rows = [], scrollFrame, followFrame } = gesture;
+    const { row, card, dragContainer, dropWrapper, sectionDrag, longPressTimer, dragging, preview, placeholder, rows = [], scrollFrame, followFrame } = gesture;
     row?.classList.remove("pressing");
     gesture = null;
     clearTimeout(longPressTimer);
@@ -429,7 +459,9 @@ function enableTaskGestures({ container = els.list, onDelete, isSelectionMode, i
       preview.remove();
       placeholder.remove();
       rows.forEach(item => item.classList.remove("drag-source", "lifted"));
+      dropWrapper?.classList.remove("drag-over");
       dragContainer.classList.remove("dragging");
+      if (sectionDrag) container.classList.remove("dragging");
       return;
     }
     row.classList.remove("swiping");
