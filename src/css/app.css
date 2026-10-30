@@ -481,8 +481,8 @@ body.task-editor-open { overflow:hidden; }
 .project-description-heading { display:flex; align-items:center; justify-content:space-between; gap:10px; }
 .project-description-heading button { border:0; background:transparent; color:var(--muted); font-size:.78rem; text-decoration:underline; }
 .rich-description-shell { min-width:0; width:100%; }
-.rich-toolbar { display:flex; flex-wrap:wrap; gap:3px; margin-bottom:7px; }
-.rich-toolbar button { min-width:37px; min-height:36px; padding:3px 6px; border:0; border-radius:8px; background:transparent; color:var(--muted); font:700 .9rem system-ui,sans-serif; }
+.rich-toolbar { display:flex; flex-wrap:wrap; gap:6px; margin-top:10px; }
+.rich-toolbar button { min-width:46px; min-height:48px; padding:6px 8px; border:0; border-radius:10px; background:var(--control); color:var(--text); font:700 1.05rem system-ui,sans-serif; }
 .rich-toolbar button:active,.rich-toolbar button:focus-visible { background:var(--control); color:var(--text); }
 .rich-description { min-height:100px; max-height:min(58dvh,620px); overflow:auto; outline:0; padding:7px 0; color:var(--text); font:400 1.04rem/1.5 system-ui,sans-serif; overflow-wrap:anywhere; }
 .rich-description:empty::before { content:attr(data-placeholder); color:var(--muted); pointer-events:none; }
