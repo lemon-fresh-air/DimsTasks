@@ -18,6 +18,21 @@ const { openTestApp } = require("./e2e-helper");
     });
     await page.click("#add-task-btn");
     await page.fill("#task-title", "Нотатка");
+    await page.locator("#task-description").click();
+    await page.keyboard.type("3) ");
+    assert.equal(await page.locator("#task-description ol").count(), 1,
+      await page.locator("#task-description").evaluate(node => node.outerHTML));
+    await page.keyboard.type("Перший");
+    await page.keyboard.press("Enter");
+    assert.equal(await page.locator("#task-description ol li").count(), 2);
+    assert.equal(await page.locator("#task-description ol").getAttribute("start"), "3");
+    await page.locator("#task-description").evaluate(editor => {
+      editor.replaceChildren(document.createTextNode("1) "));
+      const range = document.createRange(); range.selectNodeContents(editor); range.collapse(false);
+      const selection = window.getSelection(); selection.removeAllRanges(); selection.addRange(range);
+      editor.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertReplacementText", data: null }));
+    });
+    assert.equal(await page.locator("#task-description ol li").count(), 1);
     await page.locator("#task-description").evaluate(editor => {
       editor.value = "текст";
       const range = document.createRange(); range.selectNodeContents(editor);

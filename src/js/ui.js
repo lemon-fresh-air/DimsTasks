@@ -160,6 +160,7 @@ const els = {
   themeLabel: document.querySelector("#theme-label"),
   returnOverdueToggle: document.querySelector("#return-overdue-toggle"),
   startScreenSelect: document.querySelector("#start-screen-select"),
+  calendarRangeSelect: document.querySelector("#calendar-range-select"),
   backupExport: document.querySelector("#backup-export"),
   backupPrefix: document.querySelector("#backup-prefix"),
   backupDownloadLink: document.querySelector("#backup-download-link"),
@@ -264,11 +265,12 @@ function richMarkdownFragment(value) {
   const lines = String(value || "").replace(/\r\n?/g, "\n").split("\n");
   let list = null;
   for (const line of lines) {
-    const bullet = line.match(/^\s*([-*+] |\d+\. )(.*)$/);
+    const bullet = line.match(/^\s*([-*+] |\d+[.)] )(.*)$/);
     if (bullet) {
       const ordered = /^\d/.test(bullet[1]);
       if (!list || list.tagName !== (ordered ? "OL" : "UL")) {
         list = document.createElement(ordered ? "ol" : "ul"); root.append(list);
+        if (ordered) list.start = Number.parseInt(bullet[1], 10);
       }
       const item = document.createElement("li"); richInline(item, bullet[2]); list.append(item);
     } else if (!line.trim()) {
@@ -307,7 +309,7 @@ function richSerialize(node) {
     const tag = child.tagName.toLowerCase();
     if (tag === "ul" || tag === "ol") {
       parts.push([...child.children].filter(item => item.tagName === "LI")
-        .map((item, index) => `${tag === "ol" ? `${index + 1}.` : "-"} ${[...item.childNodes].map(richSerializeInline).join("")}`).join("\n"));
+        .map((item, index) => `${tag === "ol" ? `${(Number.parseInt(child.getAttribute("start"), 10) || 1) + index}.` : "-"} ${[...item.childNodes].map(richSerializeInline).join("")}`).join("\n"));
     } else if (child.classList.contains("rich-blank-line")) parts.push("");
     else if (tag === "p" || tag === "div") parts.push([...child.childNodes].map(richSerializeInline).join(""));
     else parts.push(richSerializeInline(child));
@@ -352,19 +354,47 @@ function installRichDescription(editor, titleInput) {
     document.execCommand("insertHTML", false, holder.innerHTML);
     editor.querySelectorAll("a").forEach(richEnrichVideo);
   });
-  editor.addEventListener("keydown", event => {
-    if (event.key !== " " || !window.getSelection()?.isCollapsed) return;
+  editor.addEventListener("input", event => {
     const selection = window.getSelection();
-    const block = selection.anchorNode?.parentElement?.closest("p,div");
-    if (!block || !editor.contains(block)) return;
+    if (!selection?.isCollapsed || !editor.contains(selection.anchorNode)) return;
+    const anchor = selection.anchorNode;
+    const block = (anchor.nodeType === Node.ELEMENT_NODE ? anchor : anchor.parentElement)?.closest("p,div");
+    if (!block || !editor.contains(block) || block.closest("li")) return;
+    if (!/\s$/.test(block.textContent)) return;
     const marker = block.textContent.trim();
-    if (!/^[-*+]$|^\d+\.$/.test(marker)) return;
-    if (block === editor && (editor.childNodes.length !== 1 || editor.textContent.trim() !== marker)) return;
-    event.preventDefault();
-    block.textContent = "";
-    document.execCommand(/^\d/.test(marker) ? "insertOrderedList" : "insertUnorderedList");
+    if (!/^[-*+]$|^\d+[.)]$/.test(marker)) return;
+    if (block === editor && editor.textContent.trim() !== marker) return;
+    const ordered = /^\d/.test(marker);
+    const list = document.createElement(ordered ? "ol" : "ul");
+    if (ordered) list.start = Number.parseInt(marker, 10);
+    const item = document.createElement("li");
+    item.append(document.createElement("br"));
+    list.append(item);
+    if (block === editor) editor.replaceChildren(list);
+    else block.replaceWith(list);
+    const range = document.createRange();
+    range.selectNodeContents(item);
+    range.collapse(true);
+    selection.removeAllRanges();
+    selection.addRange(range);
+    editor.dispatchEvent(new Event("input", { bubbles: true }));
   });
   const shell = editor.closest(".rich-description-shell");
+  const formatButtons = [...shell.querySelectorAll("[data-rich-command]")];
+  function updateFormatButtons() {
+    const selection = window.getSelection();
+    const inEditor = selection?.rangeCount && editor.contains(selection.anchorNode);
+    for (const button of formatButtons) {
+      const command = button.dataset.richCommand;
+      const active = inEditor && (command === "link"
+        ? Boolean(selection.anchorNode?.parentElement?.closest("a"))
+        : document.queryCommandState(command));
+      button.setAttribute("aria-pressed", String(Boolean(active)));
+    }
+  }
+  document.addEventListener("selectionchange", updateFormatButtons);
+  editor.addEventListener("input", updateFormatButtons);
+  editor.addEventListener("keyup", updateFormatButtons);
   shell.querySelectorAll("[data-rich-command]").forEach(button => {
     button.addEventListener("pointerdown", event => event.preventDefault());
     button.addEventListener("click", () => {
@@ -385,6 +415,7 @@ function installRichDescription(editor, titleInput) {
         }
       } else document.execCommand(button.dataset.richCommand);
       editor.dispatchEvent(new Event("input", { bubbles: true }));
+      updateFormatButtons();
     });
   });
   async function copyDescription(withTitle) {
@@ -953,7 +984,9 @@ function openNewTaskEditor(listId, originListId = listId) {
   els.detailToggle.hidden = true;
   els.taskProjectRow.hidden = true;
   els.taskProjectOptions.hidden = true;
-  els.taskAttachProject.hidden = true;
+  els.editor.dataset.pendingProjectId = "";
+  els.taskAttachProject.hidden = !projects.some(item => item.status === "active");
+  els.taskAttachProject.querySelector("span:last-child").textContent = "Додати до проєкту";
   els.taskConvertProject.hidden = true;
   els.taskDetachProject.hidden = true;
   delete els.taskProjectLink.dataset.projectId;
@@ -971,6 +1004,7 @@ function openNewTaskEditor(listId, originListId = listId) {
 function openTaskDetails(task) {
   els.editor.classList.add("detail-mode");
   els.editor.dataset.taskId = task.id;
+  els.editor.dataset.pendingProjectId = "";
   delete els.editor.dataset.originListId;
   els.form.reset();
   els.detailFields.hidden = false;

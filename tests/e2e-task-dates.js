@@ -65,6 +65,20 @@ function localDate(offset = 0) {
   await page.locator('[data-project-id="project-dates"]').click();
   assert.equal(await page.locator('#project-task-list [data-id="without-date"] .task-date').isHidden(), true, "project task cards must also hide an absent deadline");
 
+  await page.locator('#project-task-list [data-id="without-date"] .task-open').click();
+  await page.locator("#date-picker-open").click();
+  await page.locator('[data-date-shortcut="today"]').click();
+  await page.locator("#time-picker-open").click();
+  await page.locator("#time-display-hour").fill("14");
+  await page.locator("#time-display-minute").fill("20");
+  await page.locator("#time-display-minute").press("Enter");
+  await page.locator("#time-dialog-backdrop").waitFor({ state: "hidden" });
+  assert.equal(await page.locator("#date-picker-backdrop").isVisible(), true);
+  assert.equal(await page.locator("#time-picker-label").textContent(), "14:20");
+  await page.locator("#date-picker-save").click();
+  await page.locator("#task-editor-back").click();
+  assert.equal(await page.evaluate(async () => (await taskDb.all()).find(task => task.id === "without-date")?.dueTime), "14:20");
+
   assert.deepEqual(errors, []);
   await browser.close();
   console.log("E2E task date rendering passed");

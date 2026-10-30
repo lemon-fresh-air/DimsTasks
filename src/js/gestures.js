@@ -474,8 +474,7 @@ function enableTodayGroupReordering({ isSelected, onSelect, onReorder }) {
     gesture.followFrame = requestAnimationFrame(renderPreview);
   }
   container.addEventListener("pointerdown", event => {
-    const label = event.target.closest(".today-group-label");
-    const toggle = label?.closest(".today-group-toggle");
+    const toggle = event.target.closest(".today-group-toggle");
     if (!toggle || !event.isPrimary || event.button > 0) return;
     const group = toggle.closest(".today-group");
     gesture = { id: group.dataset.groupId, pointerId: event.pointerId, startX: event.clientX, startY: event.clientY,

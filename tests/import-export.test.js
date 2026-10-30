@@ -10,6 +10,7 @@ const context = vm.createContext({
   crypto: { randomUUID: () => "generated-id" },
   INBOX_LIST_ID: "inbox",
   DB_VERSION: 3,
+  CALENDAR_RANGE_MODES: ["month", "3-weeks", "2-weeks", "1-week"],
   STORE_NAMES: ["lists", "sections", "projects", "tasks", "settings"],
   appDb: {},
   Blob,
@@ -27,6 +28,18 @@ const data = {
   tasks: [{ ...base("late"), listId: "inbox", sectionId: null, projectId: null, title: "Пізно", description: "", status: "active", completedAt: null, dueDate: null, dueTime: null, position: 0, todayPosition: 2, projectPosition: null, returnedToInboxAt: "2026-01-02T00:00:00.000Z" }],
   settings: [{ ...base("appearance"), theme: "dark", useSystemTheme: false }, { ...base("workflow"), returnOverdueToInbox: true }, { ...base("navigation"), startScreen: "projects" }]
 };
+
+test("calendar range survives backup and invalid modes are rejected", async () => {
+  const current = structuredClone(data);
+  current.settings.push({ ...base("calendar-range"), mode: "2-weeks" });
+  const payload = { format: "local-first-pwa-backup", appId: "dims-tasks", formatVersion: BACKUP_FORMAT_VERSION, data: current };
+  const restored = await parseBackup(file(payload));
+  assert.equal(restored.settings.find(record => record.id === "calendar-range")?.mode, "2-weeks");
+  current.settings.at(-1).mode = "bad";
+  await assert.rejects(parseBackup(file(payload)), /Некоректне налаштування/);
+  const older = await parseBackup(file({ ...payload, formatVersion: 18, data }));
+  assert.equal(older.settings.some(record => record.id === "calendar-range"), false);
+});
 
 test("backup preserves saved steps and rejects malformed snapshots", async () => {
   const snapshot = [{ title: "Крок", description: "Увесь\nопис", status: "active", listId: "deleted-list", sectionId: "deleted-section" }];

@@ -9,6 +9,8 @@ const TASK_DEFAULTS_SETTINGS_ID = "task-defaults";
 const WORKFLOW_SETTINGS_ID = "workflow";
 const BACKUP_NAMING_SETTINGS_ID = "backup-naming";
 const NAVIGATION_SETTINGS_ID = "navigation";
+const CALENDAR_RANGE_SETTINGS_ID = "calendar-range";
+const CALENDAR_RANGE_MODES = ["month", "3-weeks", "2-weeks", "1-week"];
 const TODAY_LAYOUT_SETTINGS_ID = "today-layout";
 const START_SCREEN_IDS = ["today", "upcoming", "projects", "inbox", "overview"];
 
@@ -546,6 +548,17 @@ const settingsDb = {
   startScreen: async () => {
     const settings = await appDb.get("settings", NAVIGATION_SETTINGS_ID);
     return START_SCREEN_IDS.includes(settings?.startScreen) ? settings.startScreen : "inbox";
+  },
+  calendarRange: async () => {
+    const settings = await appDb.get("settings", CALENDAR_RANGE_SETTINGS_ID);
+    return CALENDAR_RANGE_MODES.includes(settings?.mode) ? settings.mode : "month";
+  },
+  setCalendarRange: async mode => {
+    const current = await appDb.get("settings", CALENDAR_RANGE_SETTINGS_ID);
+    const now = new Date().toISOString();
+    await appDb.put("settings", { id: CALENDAR_RANGE_SETTINGS_ID, entityVersion: 1,
+      mode: CALENDAR_RANGE_MODES.includes(mode) ? mode : "month",
+      createdAt: current?.createdAt || now, updatedAt: now });
   },
   setStartScreen: async startScreen => {
     const current = await appDb.get("settings", NAVIGATION_SETTINGS_ID);

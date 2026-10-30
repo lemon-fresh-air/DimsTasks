@@ -1,11 +1,13 @@
-const monthFormatter = new Intl.DateTimeFormat("uk-UA", { month: "long", year: "numeric" });
+const calendarMonthNames = ["січ", "лют", "бер", "квіт", "трав", "черв", "лип", "серп", "вер", "жов", "лист", "груд"];
+let calendarRangeMode = "month";
 let pendingDateValue = null;
 let pendingTimeValue = "";
 let draftTimeHour = 0;
 let draftTimeMinute = 0;
 let timePickerPhase = "hour";
 let timeDialogReturnFocus = null;
-let visibleCalendarMonth = null;
+let visibleCalendarEnd = null;
+let calendarAnchorDay = null;
 let datePickerReturnFocus = null;
 
 function dateFromValue(value) {
@@ -114,34 +116,61 @@ function saveTimeDialog() {
   closeTimeDialog();
 }
 
+function calendarRangeStart(end) {
+  if (calendarRangeMode !== "month") {
+    const days = { "1-week": 7, "2-weeks": 14, "3-weeks": 21 }[calendarRangeMode];
+    const start = new Date(end);
+    start.setDate(start.getDate() - days + 1);
+    return start;
+  }
+  const start = new Date(end.getFullYear(), end.getMonth() - 1, 1, 12);
+  start.setDate(Math.min(end.getDate(), new Date(end.getFullYear(), end.getMonth(), 0).getDate()));
+  return start;
+}
+
+function shiftCalendarRange(direction) {
+  if (calendarRangeMode === "month") {
+    const target = new Date(visibleCalendarEnd.getFullYear(), visibleCalendarEnd.getMonth() + direction, 1, 12);
+    target.setDate(Math.min(calendarAnchorDay, new Date(target.getFullYear(), target.getMonth() + 1, 0).getDate()));
+    visibleCalendarEnd = target;
+  } else {
+    const days = { "1-week": 7, "2-weeks": 14, "3-weeks": 21 }[calendarRangeMode];
+    visibleCalendarEnd.setDate(visibleCalendarEnd.getDate() + direction * days);
+  }
+  renderCalendar();
+}
+
+function showCalendarDate(value) {
+  visibleCalendarEnd = dateFromValue(value);
+  calendarAnchorDay = visibleCalendarEnd.getDate();
+  renderCalendar();
+}
+
+function calendarRangeLabel(start, end) {
+  const crossesYear = start.getFullYear() !== end.getFullYear();
+  const label = date => `${date.getDate()} ${calendarMonthNames[date.getMonth()]}${crossesYear ? ` ${date.getFullYear()}` : ""}`;
+  return `${label(start)} – ${label(end)}`;
+}
+
 function renderCalendar() {
-  if (!visibleCalendarMonth) return;
+  if (!visibleCalendarEnd) return;
   const todayValue = localDateValue();
-  const today = dateFromValue(todayValue);
-  const year = visibleCalendarMonth.getFullYear();
-  const month = visibleCalendarMonth.getMonth();
-  const isCurrentMonth = year === today.getFullYear() && month === today.getMonth();
-  els.calendarPrevious.disabled = isCurrentMonth;
-  els.calendarMonth.textContent = monthFormatter.format(visibleCalendarMonth);
-  const firstWeekday = (new Date(year, month, 1).getDay() + 6) % 7;
-  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const start = calendarRangeStart(visibleCalendarEnd);
+  els.calendarPrevious.disabled = false;
+  els.calendarMonth.textContent = calendarRangeLabel(start, visibleCalendarEnd);
+  const firstWeekday = (start.getDay() + 6) % 7;
   const cells = Array.from({ length: firstWeekday }, () => {
     const spacer = document.createElement("span");
     spacer.className = "calendar-spacer";
     return spacer;
   });
-  for (let day = 1; day <= daysInMonth; day += 1) {
-    const value = localDateValue(new Date(year, month, day, 12));
-    if (isCurrentMonth && value < todayValue) {
-      const hidden = document.createElement("span");
-      hidden.className = "calendar-spacer past-day";
-      cells.push(hidden);
-      continue;
-    }
+  for (const date = new Date(start); date <= visibleCalendarEnd; date.setDate(date.getDate() + 1)) {
+    const value = localDateValue(date);
     const button = document.createElement("button");
     button.type = "button";
     button.dataset.date = value;
-    button.textContent = day;
+    button.textContent = date.getDate();
+    button.classList.toggle("outside-month", date.getMonth() !== visibleCalendarEnd.getMonth() || date.getFullYear() !== visibleCalendarEnd.getFullYear());
     button.setAttribute("role", "gridcell");
     button.setAttribute("aria-label", fullDateFormatter.format(dateFromValue(value)));
     if (value === todayValue) { button.classList.add("today"); button.setAttribute("aria-current", "date"); }
@@ -154,10 +183,12 @@ function renderCalendar() {
 function openDatePicker(initialValue = els.date.value, initialTime = els.time.value) {
   datePickerReturnFocus = document.activeElement;
   const initial = initialValue || localDateValue();
-  const initialDate = dateFromValue(initial);
   const today = new Date();
-  visibleCalendarMonth = new Date(Math.max(initialDate.getTime(), today.getTime()));
-  visibleCalendarMonth.setDate(1);
+  const initialDate = dateFromValue(initial);
+  const currentEnd = dateFromValue(localDateValue());
+  visibleCalendarEnd = initialDate > currentEnd ? initialDate : currentEnd;
+  if (initialDate < calendarRangeStart(visibleCalendarEnd)) visibleCalendarEnd = initialDate;
+  calendarAnchorDay = visibleCalendarEnd.getDate();
   els.todayWeekday.textContent = weekdayFormatter.format(today);
   const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate() + 1);
   els.tomorrowWeekday.textContent = weekdayFormatter.format(tomorrow);

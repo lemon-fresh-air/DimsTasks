@@ -425,14 +425,14 @@ async function saveAttachedTasks() {
   if (!project || !attachSelectedIds.size) return;
   const selected = tasks.filter(task => attachSelectedIds.has(task.id) && task.status === "active" && !task.projectId && !task.savedSteps?.length);
   if (!selected.length) return;
-  const steps = projectSteps(project.id);
-  const start = steps.length ? Math.max(...steps.map(task => task.projectPosition ?? -1)) + 1 : 0;
   const now = new Date().toISOString();
-  const changed = selected.map((task, index) => ({ ...task, projectId: project.id, projectPosition: start + index, updatedAt: now }));
+  const bumped = tasks.filter(task => task.projectId === project.id && task.status === "active")
+    .map(task => ({ ...task, projectPosition: (task.projectPosition ?? 0) + selected.length, updatedAt: now }));
+  const changed = selected.map((task, index) => ({ ...task, projectId: project.id, projectPosition: index, updatedAt: now }));
   projectEls.attachSave.disabled = true;
   try {
-    await taskDb.putMany(changed);
-    const replacements = new Map(changed.map(task => [task.id, task]));
+    await taskDb.putMany([...changed, ...bumped]);
+    const replacements = new Map([...changed, ...bumped].map(task => [task.id, task]));
     tasks = tasks.map(task => replacements.get(task.id) || task);
     closeAttachDialog();
     renderProjects();

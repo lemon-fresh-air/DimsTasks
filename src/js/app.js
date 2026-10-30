@@ -355,12 +355,14 @@ async function initializeApp({ openStartScreen = false } = {}) {
   todayDefaultListId = await settingsDb.todayListId() || INBOX_LIST_ID;
   returnOverdueToInbox = await settingsDb.returnOverdueToInbox();
   startScreen = await settingsDb.startScreen();
+  calendarRangeMode = await settingsDb.calendarRange();
   const backupNaming = await settingsDb.backupNaming();
   els.backupPrefix.value = backupNaming.prefix;
   backupNextVersion = backupNaming.nextVersion;
   await loadBackupDirectory();
   els.returnOverdueToggle.checked = returnOverdueToInbox;
   els.startScreenSelect.value = startScreen;
+  els.calendarRangeSelect.value = calendarRangeMode;
   await loadAndNormalizeTaskOrder();
   await loadProjects();
   renderCurrentTasks();
@@ -1382,10 +1384,19 @@ async function addTask() {
   const origin = els.editor.dataset.originListId;
   const date = isDayList(origin) && els.editor.dataset.dateChosen !== "true"
     ? origin === TOMORROW_LIST_ID ? nextLocalDate() : localDateValue() : els.date.value;
-  const task = createTask({ listId: els.taskListSelect.value || INBOX_LIST_ID, title, description: els.description.value.trim(), dueDate: date || null, dueTime: date && els.time.value ? els.time.value : null, position: 0 });
+  const projectId = els.editor.dataset.pendingProjectId;
+  const selectedProject = projects.find(project => project.id === projectId && project.status === "active");
+  const task = createTask({ listId: els.taskListSelect.value || INBOX_LIST_ID, projectId: selectedProject?.id || null,
+    projectPosition: selectedProject ? 0 : null, title, description: els.description.value.trim(), dueDate: date || null,
+    dueTime: date && els.time.value ? els.time.value : null, position: 0 });
   const scope = taskOrderScope(task);
   const shifted = tasks.filter(item => taskOrderScope(item) === scope).map(item => ({ ...item, position: item.position + 1 }));
-  await taskDb.putMany([task, ...shifted]);
+  const bumpedSteps = selectedProject ? tasks.filter(item => item.projectId === projectId && item.status === "active")
+    .map(item => ({ ...item, projectPosition: (item.projectPosition ?? 0) + 1 })) : [];
+  const updates = new Map([...shifted, ...bumpedSteps].map(item => [item.id, item]));
+  for (const item of shifted) if (updates.has(item.id) && bumpedSteps.some(step => step.id === item.id))
+    updates.set(item.id, { ...updates.get(item.id), position: item.position });
+  await taskDb.putMany([task, ...updates.values()]);
   await refresh();
   if (isDayList(els.editor.dataset.originListId)) {
     todayDefaultListId = task.listId;
@@ -1914,6 +1925,16 @@ els.startScreenSelect.addEventListener("change", async () => {
     toast("Не вдалося зберегти стартовий екран");
   }
 });
+els.calendarRangeSelect.addEventListener("change", async () => {
+  const previous = calendarRangeMode;
+  calendarRangeMode = els.calendarRangeSelect.value;
+  try { await settingsDb.setCalendarRange(calendarRangeMode); }
+  catch (_error) {
+    calendarRangeMode = previous;
+    els.calendarRangeSelect.value = previous;
+    toast("Не вдалося зберегти період календаря");
+  }
+});
 els.editorBack.addEventListener("click", () => saveAndLeaveTaskEditor({ allowEmptyNew: true }));
 els.desktopSaveTask.addEventListener("click", () => saveAndLeaveTaskEditor({ allowEmptyNew: true }));
 els.selectionClose.addEventListener("click", clearTaskSelection);
@@ -2044,15 +2065,15 @@ document.querySelectorAll("[data-date-shortcut]").forEach(button => button.addEv
   const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate() + 1);
   const value = button.dataset.dateShortcut === "today" ? localDateValue()
     : button.dataset.dateShortcut === "tomorrow" ? localDateValue(tomorrow) : "";
-  if (value) { const date = dateFromValue(value); visibleCalendarMonth = new Date(date.getFullYear(), date.getMonth(), 1); }
+  if (value) showCalendarDate(value);
   setPendingDate(value);
 }));
 els.calendarGrid.addEventListener("click", event => {
   const button = event.target.closest("[data-date]");
   if (button) setPendingDate(button.dataset.date);
 });
-els.calendarPrevious.addEventListener("click", () => { visibleCalendarMonth.setMonth(visibleCalendarMonth.getMonth() - 1); renderCalendar(); });
-els.calendarNext.addEventListener("click", () => { visibleCalendarMonth.setMonth(visibleCalendarMonth.getMonth() + 1); renderCalendar(); });
+els.calendarPrevious.addEventListener("click", () => shiftCalendarRange(-1));
+els.calendarNext.addEventListener("click", () => shiftCalendarRange(1));
 async function savePendingDateSelection() {
   if (editingProjectDate) {
     editingProjectDate = false;
@@ -2093,7 +2114,7 @@ els.timeDialogSave.addEventListener("click", saveTimeDialog);
 els.timeDialogBackdrop.addEventListener("click", event => { if (event.target === els.timeDialogBackdrop) closeTimeDialog(); });
 els.timeDialog.addEventListener("keydown", event => {
   if (event.key === "Escape") { event.preventDefault(); closeTimeDialog(); }
-  if (event.key === "Enter" && matchMedia("(min-width: 760px)").matches) { event.preventDefault(); saveTimeDialog(); }
+  if (event.key === "Enter") { event.preventDefault(); saveTimeDialog(); }
 });
 function activateTimeInput(input, phase) {
   timePickerPhase = phase;
@@ -2273,9 +2294,9 @@ els.taskProjectOptions.addEventListener("click", async event => {
   try {
     if (!await saveOpenTask()) return;
     const current = tasks.find(item => item.id === task.id);
-    const steps = tasks.filter(item => item.projectId === projectId);
-    const position = steps.length ? Math.max(...steps.map(item => item.projectPosition ?? -1)) + 1 : 0;
-    await taskDb.put({ ...current, projectId, projectPosition: position, updatedAt: new Date().toISOString() });
+    const bumped = tasks.filter(item => item.projectId === projectId && item.status === "active")
+      .map(item => ({ ...item, projectPosition: (item.projectPosition ?? 0) + 1 }));
+    await taskDb.putMany([{ ...current, projectId, projectPosition: 0, updatedAt: new Date().toISOString() }, ...bumped]);
     await refresh();
     openTaskDetails(tasks.find(item => item.id === task.id));
     toast("Проєкт завдання змінено");
@@ -2313,15 +2334,23 @@ els.taskAttachDialog.addEventListener("keydown", event => {
 els.taskAttachConfirm.addEventListener("click", async () => {
   const task = tasks.find(item => item.id === els.editor.dataset.taskId);
   const projectId = els.taskAttachProjectSelect.value;
+  if (!task) {
+    const project = projects.find(item => item.id === projectId && item.status === "active");
+    if (!project) return;
+    els.editor.dataset.pendingProjectId = project.id;
+    els.taskAttachProject.querySelector("span:last-child").textContent = `Проєкт: ${project.title}`;
+    closeTaskAttachDialog();
+    return;
+  }
   if (!task || task.status !== "active" || task.projectId || task.savedSteps?.length || !projects.some(project => project.id === projectId && project.status === "active")) return;
   if (!els.input.value.trim()) { closeTaskAttachDialog(); els.input.focus(); return; }
   els.taskAttachConfirm.disabled = true;
   try {
     await saveOpenTask();
     const current = tasks.find(item => item.id === task.id);
-    const steps = tasks.filter(item => item.projectId === projectId);
-    const position = steps.length ? Math.max(...steps.map(item => item.projectPosition ?? -1)) + 1 : 0;
-    await taskDb.put({ ...current, projectId, projectPosition: position, updatedAt: new Date().toISOString() });
+    const bumped = tasks.filter(item => item.projectId === projectId && item.status === "active")
+      .map(item => ({ ...item, projectPosition: (item.projectPosition ?? 0) + 1 }));
+    await taskDb.putMany([{ ...current, projectId, projectPosition: 0, updatedAt: new Date().toISOString() }, ...bumped]);
     await refresh();
     closeTaskAttachDialog();
     openTaskDetails(tasks.find(item => item.id === task.id));
