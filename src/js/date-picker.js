@@ -6,8 +6,7 @@ let draftTimeHour = 0;
 let draftTimeMinute = 0;
 let timePickerPhase = "hour";
 let timeDialogReturnFocus = null;
-let visibleCalendarEnd = null;
-let calendarAnchorDay = null;
+let visibleCalendarStart = null;
 let datePickerReturnFocus = null;
 let calendarTransition = null;
 
@@ -101,32 +100,49 @@ function openTimeDialog() {
   renderTimeDial();
   els.timeDialogBackdrop.hidden = false;
   document.body.classList.add("time-dialog-open");
-  requestAnimationFrame(() => els.timeDialog.focus());
+  requestAnimationFrame(() => {
+    els.timeDisplayHour.focus({ preventScroll: true });
+    els.timeDisplayHour.select();
+  });
 }
 
-function closeTimeDialog({ restoreFocus = true } = {}) {
+async function closeTimeDialog({ restoreFocus = true, animate = false } = {}) {
+  if (animate && !matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    const closing = els.timeDialog.animate([
+      { opacity: 1, transform: "translateY(0) scale(1)" },
+      { opacity: 0, transform: "translateY(18px) scale(.97)" }
+    ], { duration: 200, easing: "cubic-bezier(.4,0,1,1)" });
+    await closing.finished.catch(() => {});
+  }
   els.timeDialogBackdrop.hidden = true;
   document.body.classList.remove("time-dialog-open");
   if (restoreFocus) timeDialogReturnFocus?.focus();
 }
 
-function saveTimeDialog() {
+async function saveTimeDialog() {
   normalizeDraftTimeInputs();
   pendingTimeValue = `${String(draftTimeHour).padStart(2, "0")}:${String(draftTimeMinute).padStart(2, "0")}`;
   setPendingDate(pendingDateValue);
-  closeTimeDialog();
+  await closeTimeDialog({ restoreFocus: false, animate: true });
+  await savePendingDateSelection();
 }
 
-function calendarRangeStart(end) {
-  if (calendarRangeMode !== "month") {
-    const days = { "1-week": 7, "2-weeks": 14, "3-weeks": 21 }[calendarRangeMode];
-    const start = new Date(end);
-    start.setDate(start.getDate() - days + 1);
-    return start;
-  }
-  const start = new Date(end.getFullYear(), end.getMonth() - 1, 1, 12);
-  start.setDate(Math.min(end.getDate(), new Date(end.getFullYear(), end.getMonth(), 0).getDate()));
+function calendarWeekStart(date) {
+  const start = new Date(date);
+  start.setDate(start.getDate() - (start.getDay() + 6) % 7);
   return start;
+}
+
+function calendarRangeEnd(start) {
+  const end = new Date(start);
+  if (calendarRangeMode === "month") {
+    const nextMonth = new Date(start.getFullYear(), start.getMonth() + 2, 0, 12);
+    end.setMonth(end.getMonth() + 1, 1);
+    end.setDate(Math.min(start.getDate(), nextMonth.getDate()));
+  }
+  else end.setDate(end.getDate() + ({ "1-week": 2, "2-weeks": 3, "3-weeks": 4 }[calendarRangeMode] || 2) * 7);
+  end.setDate(end.getDate() - 1);
+  return end;
 }
 
 function shiftCalendarRange(direction) {
@@ -138,13 +154,12 @@ function shiftCalendarRange(direction) {
   const previous = animate ? grid.cloneNode(true) : null;
   const oldHeight = grid.offsetHeight;
   if (calendarRangeMode === "month") {
-    const target = new Date(visibleCalendarEnd.getFullYear(), visibleCalendarEnd.getMonth() + direction, 1, 12);
-    target.setDate(Math.min(calendarAnchorDay, new Date(target.getFullYear(), target.getMonth() + 1, 0).getDate()));
-    visibleCalendarEnd = target;
-  } else {
-    const days = { "1-week": 7, "2-weeks": 14, "3-weeks": 21 }[calendarRangeMode];
-    visibleCalendarEnd.setDate(visibleCalendarEnd.getDate() + direction * days);
+    const target = new Date(visibleCalendarStart.getFullYear(), visibleCalendarStart.getMonth() + direction, 1, 12);
+    const lastDay = new Date(target.getFullYear(), target.getMonth() + 1, 0, 12).getDate();
+    target.setDate(Math.min(visibleCalendarStart.getDate(), lastDay));
+    visibleCalendarStart = target;
   }
+  else visibleCalendarStart.setDate(visibleCalendarStart.getDate() + direction * ({ "1-week": 2, "2-weeks": 3, "3-weeks": 4 }[calendarRangeMode] || 2) * 7);
   renderCalendar();
   if (!previous) return;
   previous.removeAttribute("id");
@@ -205,9 +220,46 @@ function enableCalendarSwipe() {
   }, true);
 }
 
+function enableCalendarLongPress() {
+  const grid = els.calendarGrid;
+  let press = null;
+  let suppressClick = false;
+  const cancel = () => {
+    if (press) clearTimeout(press.timer);
+    press = null;
+  };
+  grid.addEventListener("pointerdown", event => {
+    const button = event.target.closest("button[data-date]");
+    if (!button || !event.isPrimary || (event.pointerType === "mouse" && event.button !== 0)) return;
+    suppressClick = false;
+    cancel();
+    press = { id: event.pointerId, x: event.clientX, y: event.clientY,
+      timer: setTimeout(() => {
+        if (els.datePickerBackdrop.hidden) return;
+        suppressClick = true;
+        setPendingDate(button.dataset.date);
+        openTimeDialog();
+        press = null;
+      }, 550) };
+  });
+  window.addEventListener("pointermove", event => {
+    if (press?.id === event.pointerId && Math.hypot(event.clientX - press.x, event.clientY - press.y) > 12) cancel();
+  });
+  window.addEventListener("pointerup", event => { if (press?.id === event.pointerId) cancel(); });
+  window.addEventListener("pointercancel", event => { if (press?.id === event.pointerId) cancel(); });
+  grid.addEventListener("contextmenu", event => {
+    if (event.target.closest("button[data-date]")) event.preventDefault();
+  });
+  grid.addEventListener("click", event => {
+    if (!suppressClick) return;
+    event.preventDefault();
+    event.stopPropagation();
+    suppressClick = false;
+  }, true);
+}
+
 function showCalendarDate(value) {
-  visibleCalendarEnd = dateFromValue(value);
-  calendarAnchorDay = visibleCalendarEnd.getDate();
+  visibleCalendarStart = calendarWeekStart(dateFromValue(value));
   renderCalendar();
 }
 
@@ -218,24 +270,25 @@ function calendarRangeLabel(start, end) {
 }
 
 function renderCalendar() {
-  if (!visibleCalendarEnd) return;
+  if (!visibleCalendarStart) return;
   const todayValue = localDateValue();
-  const start = calendarRangeStart(visibleCalendarEnd);
+  const start = visibleCalendarStart;
+  const end = calendarRangeEnd(start);
   els.calendarPrevious.disabled = false;
-  els.calendarMonth.textContent = calendarRangeLabel(start, visibleCalendarEnd);
+  els.calendarMonth.textContent = calendarRangeLabel(start, end);
   const firstWeekday = (start.getDay() + 6) % 7;
   const cells = Array.from({ length: firstWeekday }, () => {
     const spacer = document.createElement("span");
     spacer.className = "calendar-spacer";
     return spacer;
   });
-  for (const date = new Date(start); date <= visibleCalendarEnd; date.setDate(date.getDate() + 1)) {
+  for (const date = new Date(start); date <= end; date.setDate(date.getDate() + 1)) {
     const value = localDateValue(date);
     const button = document.createElement("button");
     button.type = "button";
     button.dataset.date = value;
     button.textContent = date.getDate();
-    button.classList.toggle("outside-month", date.getMonth() !== visibleCalendarEnd.getMonth() || date.getFullYear() !== visibleCalendarEnd.getFullYear());
+    button.classList.toggle("outside-month", date.getMonth() !== start.getMonth() || date.getFullYear() !== start.getFullYear());
     button.setAttribute("role", "gridcell");
     button.setAttribute("aria-label", fullDateFormatter.format(dateFromValue(value)));
     if (value === todayValue) { button.classList.add("today"); button.setAttribute("aria-current", "date"); }
@@ -247,13 +300,8 @@ function renderCalendar() {
 
 function openDatePicker(initialValue = els.date.value, initialTime = els.time.value) {
   datePickerReturnFocus = document.activeElement;
-  const initial = initialValue || localDateValue();
   const today = new Date();
-  const initialDate = dateFromValue(initial);
-  const currentEnd = dateFromValue(localDateValue());
-  visibleCalendarEnd = initialDate > currentEnd ? initialDate : currentEnd;
-  if (initialDate < calendarRangeStart(visibleCalendarEnd)) visibleCalendarEnd = initialDate;
-  calendarAnchorDay = visibleCalendarEnd.getDate();
+  visibleCalendarStart = calendarWeekStart(dateFromValue(localDateValue()));
   els.todayWeekday.textContent = weekdayFormatter.format(today);
   const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate() + 1);
   els.tomorrowWeekday.textContent = weekdayFormatter.format(tomorrow);

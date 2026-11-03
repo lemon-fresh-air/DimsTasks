@@ -2401,6 +2401,7 @@ els.calendarGrid.addEventListener("click", event => {
 els.calendarPrevious.addEventListener("click", () => shiftCalendarRange(-1));
 els.calendarNext.addEventListener("click", () => shiftCalendarRange(1));
 enableCalendarSwipe();
+enableCalendarLongPress();
 async function savePendingDateSelection() {
   if (editingProjectDate) {
     editingProjectDate = false;

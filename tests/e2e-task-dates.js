@@ -67,17 +67,32 @@ function localDate(offset = 0) {
 
   await page.locator('#project-task-list [data-id="without-date"] .task-open').click();
   await page.locator("#date-picker-open").click();
-  await page.locator('[data-date-shortcut="today"]').click();
-  await page.locator("#time-picker-open").click();
+  await page.locator(`#calendar-grid button[data-date="${localDate()}"]`).click();
+  assert.equal(await page.locator("#time-dialog-backdrop").isHidden(), true, "short tap must only select a date");
+  const longPressedDay = page.locator(`#calendar-grid button[data-date="${localDate(1)}"]`);
+  await longPressedDay.dispatchEvent("pointerdown", { pointerId: 1, pointerType: "touch", isPrimary: true, clientX: 100, clientY: 100 });
+  await page.locator("#time-dialog-backdrop").waitFor({ state: "visible" });
+  await longPressedDay.dispatchEvent("pointerup", { pointerId: 1, pointerType: "touch", isPrimary: true, clientX: 100, clientY: 100 });
+  assert.equal(await page.evaluate(() => pendingDateValue), localDate(1), "long press must select its day");
+  assert.equal(await page.locator("#time-display-hour").evaluate(node => document.activeElement === node), true, "hour input must be ready for typing");
   await page.locator("#time-display-hour").fill("14");
   await page.locator("#time-display-minute").fill("20");
   await page.locator("#time-display-minute").press("Enter");
   await page.locator("#time-dialog-backdrop").waitFor({ state: "hidden" });
-  assert.equal(await page.locator("#date-picker-backdrop").isVisible(), true);
-  assert.equal(await page.locator("#time-picker-label").textContent(), "14:20");
-  await page.locator("#date-picker-save").click();
+  assert.equal(await page.locator("#date-picker-backdrop").isHidden(), true, "saving time must also close the date picker");
+  assert.equal(await page.locator("#task-date").inputValue(), localDate(1));
+  assert.equal(await page.locator("#task-time").inputValue(), "14:20");
   await page.locator("#task-editor-back").click();
+  assert.equal(await page.evaluate(async () => (await taskDb.all()).find(task => task.id === "without-date")?.dueDate), localDate(1));
   assert.equal(await page.evaluate(async () => (await taskDb.all()).find(task => task.id === "without-date")?.dueTime), "14:20");
+
+  await page.locator('#project-task-list [data-id="without-date"] .task-open').click();
+  await page.locator("#date-picker-open").click();
+  await page.locator("#time-picker-open").click();
+  assert.equal(await page.locator("#time-display-hour").evaluate(node => document.activeElement === node), true, "time button must also focus the hour");
+  await page.locator("#time-dialog-cancel").click();
+  assert.equal(await page.locator("#date-picker-backdrop").isVisible(), true, "cancel must return to date selection");
+  await page.locator("#date-picker-close").click();
 
   assert.deepEqual(errors, []);
   await browser.close();

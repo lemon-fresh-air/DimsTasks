@@ -603,13 +603,13 @@ body.task-editor-open { overflow:hidden; }
 #task-saved-steps li { padding:8px 0; overflow-wrap:anywhere; }
 #task-saved-steps li span { display:block; color:var(--muted); font-size:.85rem; margin-top:3px; }
 #task-saved-steps li p { white-space:pre-wrap; margin:6px 0 0; }
-.meta-chip { min-height:50px; display:inline-flex; align-items:center; gap:9px; flex:0 0 auto; padding:0 15px; border:1px solid var(--line); border-radius:15px; background:var(--control); color:var(--text); font-weight:700; }
+.meta-chip { min-height:50px; display:inline-flex; align-items:center; gap:9px; flex:0 0 auto; padding:0 15px; border:1px solid var(--line); border-radius:15px; background:var(--surface); color:var(--text); font-weight:700; }
 .date-chip { color:var(--date); cursor:pointer; }
 .date-chip[data-date-tone="overdue"] { color:var(--danger); }
 .date-chip[data-date-tone="tomorrow"] { color:var(--date-tomorrow); }
 .date-chip[data-date-tone="future"],.date-chip[data-date-tone="none"] { color:var(--date-future); }
 .task-attributes { display:flex; flex-wrap:wrap; align-items:end; gap:12px; margin:18px 0 0; }
-.list-attribute { min-width:0; min-height:58px; flex:1 1 280px; display:grid; grid-template-columns:30px minmax(0,1fr); align-items:center; gap:12px; padding:7px 12px; border:1px solid var(--line); border-radius:15px; background:var(--control); }
+.list-attribute { min-width:0; min-height:58px; flex:1 1 280px; display:grid; grid-template-columns:30px minmax(0,1fr); align-items:center; gap:12px; padding:7px 12px; border:1px solid var(--line); border-radius:15px; background:var(--surface); }
 .project-attribute { min-width:0; min-height:58px; flex:1 1 280px; display:grid; grid-template-columns:30px minmax(0,1fr) 18px; align-items:center; gap:12px; padding:7px 12px; border:1px solid var(--line); border-radius:15px; background:var(--control); color:var(--text); text-align:left; }
 .project-attribute[hidden] { display:none; }
 .project-attribute .projects-icon { width:20px; height:20px; color:var(--muted); }
@@ -692,6 +692,7 @@ body.date-picker-open { overflow:hidden; }
 .calendar-weekdays span { padding:7px 0; color:var(--muted); text-align:center; font-size:.72rem; font-weight:650; }
 .calendar-grid button,.calendar-spacer { aspect-ratio:1; min-width:0; }
 .calendar-grid button { display:grid; place-items:center; border:0; border-radius:50%; background:transparent; color:var(--text); font-size:.95rem; font-variant-numeric:tabular-nums; }
+.calendar-grid button { touch-action:pan-y; -webkit-touch-callout:none; }
 .calendar-grid button.outside-month { color:var(--muted); }
 .calendar-grid button.today { background:var(--accent); color:var(--on-accent); font-weight:760; }
 .calendar-grid button.selected:not(.today) { box-shadow:inset 0 0 0 2px var(--accent); color:var(--accent); font-weight:760; }
@@ -707,6 +708,7 @@ body.date-picker-open { overflow:hidden; }
 .time-panel #time-picker-clear { justify-self:end; min-height:36px; }
 .date-picker-save { min-height:48px; display:block; margin:14px 0 0 auto; padding:0 20px; border:0; border-radius:14px; background:var(--accent); color:var(--on-accent); font-weight:760; }
 .time-dialog-backdrop { position:fixed; z-index:60; inset:0; display:grid; place-items:center; padding:16px; background:var(--overlay); }
+.time-dialog-backdrop:not([hidden]) { animation:time-backdrop-in .22s ease-out; }
 .time-dialog { width:min(100%,390px); max-height:calc(100dvh - 32px); overflow-y:auto; padding:18px 18px 14px; border-radius:26px; background:var(--surface); color:var(--text); box-shadow:var(--shadow-sheet); outline:0; animation:time-dialog-in .2s var(--ease-swipe); }
 body.time-dialog-open { overflow:hidden; }
 .time-dialog header { min-height:44px; display:flex; align-items:center; justify-content:space-between; gap:12px; }
@@ -725,7 +727,9 @@ body.time-dialog-open { overflow:hidden; }
 .time-dialog footer { display:flex; justify-content:flex-end; gap:8px; margin-top:14px; }
 .time-dialog footer button { min-height:44px; border:0; border-radius:12px; padding:0 15px; background:transparent; color:var(--accent); font-weight:760; }
 .time-dialog footer #time-dialog-save { background:var(--accent); color:var(--on-accent); }
-@keyframes time-dialog-in { from { opacity:0; transform:translateY(14px) scale(.98); } }
+@keyframes time-backdrop-in { from { opacity:0; } }
+@keyframes time-dialog-in { from { opacity:0; transform:translateY(18px) scale(.97); } }
+@media (prefers-reduced-motion:reduce) { .time-dialog-backdrop:not([hidden]),.time-dialog { animation:none; } }
 @media (max-width:360px) { .time-dialog { padding-inline:10px; } }
 .project-complete-dialog-backdrop,.project-delete-dialog-backdrop { position:fixed; z-index:65; inset:0; display:grid; place-items:center; padding:16px; background:var(--overlay); }
 .project-complete-dialog-backdrop[hidden],.project-delete-dialog-backdrop[hidden] { display:none; }
