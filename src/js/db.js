@@ -555,12 +555,23 @@ const settingsDb = {
     const settings = await appDb.get("settings", WORKFLOW_SETTINGS_ID);
     return settings?.returnOverdueToInbox === true;
   },
+  projectPreview: async () => {
+    const settings = await appDb.get("settings", WORKFLOW_SETTINGS_ID);
+    return settings?.projectPreview === true;
+  },
+  setProjectPreview: async enabled => {
+    const current = await appDb.get("settings", WORKFLOW_SETTINGS_ID);
+    const now = new Date().toISOString();
+    await appDb.put("settings", { ...current, id: WORKFLOW_SETTINGS_ID, entityVersion: 1,
+      projectPreview: enabled === true, createdAt: current?.createdAt || now, updatedAt: now });
+  },
   setReturnOverdueToInbox: async enabled => {
     const current = await appDb.get("settings", WORKFLOW_SETTINGS_ID);
     const now = new Date().toISOString();
     await appDb.put("settings", {
       id: WORKFLOW_SETTINGS_ID,
       entityVersion: 1,
+      projectPreview: current?.projectPreview === true,
       returnOverdueToInbox: enabled === true,
       createdAt: current?.createdAt || now,
       updatedAt: now

@@ -4,6 +4,7 @@ let sections = [];
 let activeListId = INBOX_LIST_ID;
 let todayDefaultListId = INBOX_LIST_ID;
 let returnOverdueToInbox = false;
+let projectPreview = false;
 let startScreen = "inbox";
 let manualTheme = "light";
 let useSystemTheme = true;
@@ -365,6 +366,7 @@ async function initializeApp({ openStartScreen = false } = {}) {
   await loadAppearanceSettings();
   todayDefaultListId = await settingsDb.todayListId() || INBOX_LIST_ID;
   returnOverdueToInbox = await settingsDb.returnOverdueToInbox();
+  projectPreview = await settingsDb.projectPreview();
   startScreen = await settingsDb.startScreen();
   calendarRangeMode = await settingsDb.calendarRange();
   const backupNaming = await settingsDb.backupNaming();
@@ -372,6 +374,7 @@ async function initializeApp({ openStartScreen = false } = {}) {
   backupNextVersion = backupNaming.nextVersion;
   await loadBackupDirectory();
   els.returnOverdueToggle.checked = returnOverdueToInbox;
+  els.projectPreviewToggle.checked = projectPreview;
   els.startScreenSelect.value = startScreen;
   els.calendarRangeSelect.value = calendarRangeMode;
   await loadAndNormalizeTaskOrder();
@@ -2125,6 +2128,12 @@ els.returnOverdueToggle.addEventListener("change", async () => {
     toast("Не вдалося зберегти налаштування");
   }
 });
+els.projectPreviewToggle.addEventListener("change", async () => {
+  const previous = projectPreview;
+  projectPreview = els.projectPreviewToggle.checked;
+  try { await settingsDb.setProjectPreview(projectPreview); delete projectEls.steps.dataset.previewProjectId; }
+  catch (_error) { projectPreview = previous; els.projectPreviewToggle.checked = previous; toast("Не вдалося зберегти налаштування"); }
+});
 els.startScreenSelect.addEventListener("change", async () => {
   const previous = startScreen;
   startScreen = els.startScreenSelect.value;
@@ -2473,6 +2482,18 @@ els.taskListTrigger.addEventListener("click", () => {
   if (els.taskListOptions.hidden) { renderTaskListOptions(lists); openTaskListDropdown(); }
   else closeTaskListDropdown();
 });
+els.taskListLink.addEventListener("click", async () => {
+  const listId = els.taskListSelect.value;
+  if (!lists.some(list => list.id === listId)) return;
+  if (!els.input.value.trim()) { toast("Введіть назву завдання"); els.input.focus(); return; }
+  try {
+    const saved = els.editor.dataset.taskId ? await saveOpenTask() : await addTask();
+    if (!saved) { toast("Не вдалося зберегти завдання"); return; }
+  } catch (_error) { toast("Не вдалося зберегти завдання"); return; }
+  els.editor.dataset.taskId = "";
+  hideTaskEditor();
+  openList(listId);
+});
 els.taskListOptions.addEventListener("click", async event => {
   if (handleDropdownListCreation(event, els.taskListOptions)) return;
   const option = event.target.closest("[data-list-id]");
@@ -2533,10 +2554,16 @@ els.form.addEventListener("keydown", event => {
   }
 });
 els.form.addEventListener("submit", event => { event.preventDefault(); saveAndLeaveTaskEditor(); });
-let quickTaskGroupId = null;
+let quickTaskTarget = null;
+function openQuickTask(target) {
+  quickTaskTarget = target;
+  els.quickTaskForm.reset();
+  els.quickTaskBackdrop.hidden = false;
+  els.quickTaskTitle.focus();
+}
 function closeQuickTask() {
   els.quickTaskBackdrop.hidden = true;
-  quickTaskGroupId = null;
+  quickTaskTarget = null;
   els.quickTaskForm.reset();
 }
 els.quickTaskCancel.addEventListener("click", closeQuickTask);
@@ -2547,33 +2574,51 @@ els.quickTaskForm.addEventListener("keydown", event => {
 els.quickTaskForm.addEventListener("submit", async event => {
   event.preventDefault();
   const title = els.quickTaskTitle.value.trim();
-  const groupId = quickTaskGroupId;
+  const target = quickTaskTarget;
   if (!title) { els.quickTaskTitle.focus(); return; }
-  if (!ensureCurrentDay() || !isDayList() || !todayLayout?.groups.some(group => group.id === groupId)) {
+  if (!target) return;
+  if (target.kind === "group" && (!ensureCurrentDay() || !isDayList() || !todayLayout?.groups.some(group => group.id === target.id))) {
     closeQuickTask();
     toast("Група або дата змінилася. Спробуйте ще раз");
     return;
   }
+  if (target.kind === "list-section" && (activeListId !== target.listId || !sections.some(section => section.id === target.sectionId && section.listId === target.listId))) {
+    closeQuickTask(); toast("Секція змінилася. Спробуйте ще раз"); return;
+  }
+  if (target.kind === "project-section" && (activeProjectId !== target.projectId || !projects.some(project => project.id === target.projectId && project.projectSections?.some(section => section.id === target.sectionId)))) {
+    closeQuickTask(); toast("Секція змінилася. Спробуйте ще раз"); return;
+  }
   const submit = els.quickTaskForm.querySelector('[type="submit"]');
   submit.disabled = true;
-  const date = activePlanDate();
-  const task = createTask({ listId: validTodayDefaultListId(), title,
-    description: els.quickTaskDescription.value.trim(), dueDate: date, position: 0 });
-  const shifted = tasks.filter(item => taskOrderScope(item) === taskOrderScope(task))
-    .map(item => ({ ...item, position: item.position + 1 }));
   try {
-    await taskDb.putMany([task, ...shifted]);
-    await changeTodayLayout((layout, visible, currentDate) =>
-      assignTodayGroupTasks(layout, visible.concat(task), currentDate, groupId, [task.id]));
+    if (target.kind === "project-section") {
+      await addProjectStep(title, { sectionId: target.sectionId, description: els.quickTaskDescription.value.trim() });
+    } else {
+      const date = target.kind === "group" ? activePlanDate() : null;
+      const task = createTask({ listId: target.kind === "group" ? validTodayDefaultListId() : target.listId,
+        sectionId: target.kind === "list-section" ? target.sectionId : null, title,
+        description: els.quickTaskDescription.value.trim(), dueDate: date, position: 0 });
+      const shifted = tasks.filter(item => taskOrderScope(item) === taskOrderScope(task))
+        .map(item => ({ ...item, position: item.position + 1 }));
+      await taskDb.putMany([task, ...shifted]);
+      if (target.kind === "group") await changeTodayLayout((layout, visible, currentDate) =>
+        assignTodayGroupTasks(layout, visible.concat(task), currentDate, target.id, [task.id]));
+    }
     closeQuickTask();
     await refresh();
     toast("Завдання додано");
   } catch (_error) {
     await refresh();
-    toast("Не вдалося додати завдання до групи");
+    toast("Не вдалося додати завдання");
   } finally { submit.disabled = false; }
 });
 els.list.addEventListener("click", async event => {
+  const addToSection = event.target.closest(".list-section-add");
+  if (addToSection && els.list.contains(addToSection)) {
+    const sectionId = addToSection.closest(".list-section")?.dataset.sectionId;
+    if (sectionId) openQuickTask({ kind: "list-section", listId: activeListId, sectionId });
+    return;
+  }
   const button = event.target.closest(".list-section-toggle");
   if (!button) return;
   const section = sections.find(item => item.id === button.closest(".list-section")?.dataset.sectionId);
@@ -2591,10 +2636,7 @@ els.list.addEventListener("click", async event => {
   if (addToGroup && els.list.contains(addToGroup)) {
     const id = addToGroup.closest(".today-group")?.dataset.groupId;
     if (!todayLayout?.groups.some(group => group.id === id)) return;
-    quickTaskGroupId = id;
-    els.quickTaskForm.reset();
-    els.quickTaskBackdrop.hidden = false;
-    els.quickTaskTitle.focus();
+    openQuickTask({ kind: "group", id });
     return;
   }
   const groupToggle = event.target.closest(".today-group-toggle");

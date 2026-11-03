@@ -108,6 +108,7 @@ const els = {
   detailFields: document.querySelector(".detail-fields"),
   taskListSelect: document.querySelector("#task-list-select"),
   taskListTrigger: document.querySelector("#task-list-trigger"),
+  taskListLink: document.querySelector("#task-list-link"),
   taskListValue: document.querySelector("#task-list-value"),
   taskListOptions: document.querySelector("#task-list-options"),
   taskSectionRow: document.querySelector("#task-section-row"),
@@ -179,6 +180,7 @@ const els = {
   themeToggle: document.querySelector("#theme-toggle"),
   themeLabel: document.querySelector("#theme-label"),
   returnOverdueToggle: document.querySelector("#return-overdue-toggle"),
+  projectPreviewToggle: document.querySelector("#project-preview-toggle"),
   startScreenSelect: document.querySelector("#start-screen-select"),
   calendarRangeSelect: document.querySelector("#calendar-range-select"),
   backupExport: document.querySelector("#backup-export"),
@@ -1029,11 +1031,13 @@ function renderTasks(tasks, selectedIds = new Set(), taskLists = [], taskProject
       count.className = "list-section-count";
       const sectionTasks = active.filter(task => task.sectionId === section.id);
       count.textContent = String(sectionTasks.length);
-      const chevron = document.createElement("span");
-      chevron.className = "list-section-chevron";
-      chevron.setAttribute("aria-hidden", "true");
-      toggle.append(label, count, chevron);
-      heading.append(toggle);
+      toggle.append(label, count);
+      const add = document.createElement("button");
+      add.type = "button";
+      add.className = "today-group-add list-section-add";
+      add.setAttribute("aria-label", `Додати завдання до секції «${section.title}»`);
+      add.setAttribute("aria-haspopup", "dialog");
+      heading.append(toggle, add);
       const members = document.createElement("ul");
       members.className = "list-section-tasks";
       members.id = `list-section-tasks-${section.id}`;

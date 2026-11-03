@@ -94,6 +94,8 @@ const projectEls = {
   sectionName: document.querySelector("#project-section-name"),
   stepForm: document.querySelector("#project-step-form"),
   stepTitle: document.querySelector("#project-step-title"),
+  stepSectionRow: document.querySelector("#project-step-section-row"),
+  stepSection: document.querySelector("#project-step-section"),
   attachOpen: document.querySelector("#project-attach-open"),
   attachBackdrop: document.querySelector("#project-attach-backdrop"),
   attachDialog: document.querySelector("#project-attach-dialog"),
@@ -236,17 +238,28 @@ function renderProjectSections(project) {
   projectEls.sections.replaceChildren(...(project.projectSections || []).map((section, index, all) => {
     const row = document.createElement("li");
     row.dataset.sectionId = section.id;
-    const name = document.createElement("span");
-    name.textContent = section.title;
-    row.append(name);
-    for (const [action, label, disabled] of [["up", "Вище", index === 0], ["down", "Нижче", index === all.length - 1], ["rename", "Перейменувати", false], ["delete", "Видалити", false]]) {
+    const name = document.createElement("input");
+    name.className = "section-name";
+    name.value = section.title;
+    name.maxLength = 80;
+    name.setAttribute("aria-label", `Назва секції ${section.title}`);
+    const controls = document.createElement("div");
+    for (const [action, label, disabled] of [["up", "Вище", index === 0], ["down", "Нижче", index === all.length - 1], ["delete", "Видалити", false]]) {
       const button = document.createElement("button");
       button.type = "button";
       button.dataset.sectionAction = action;
-      button.textContent = label;
+      if (action === "delete") {
+        const icon = document.createElement("span");
+        icon.className = "trash-icon";
+        icon.setAttribute("aria-hidden", "true");
+        button.append(icon);
+      } else button.textContent = action === "up" ? "↑" : "↓";
+      button.setAttribute("aria-label", `${label}: ${section.title}`);
+      button.title = label;
       button.disabled = disabled;
-      row.append(button);
+      controls.append(button);
     }
+    row.append(name, controls);
     return row;
   }));
 }
@@ -259,16 +272,31 @@ function renderProjectSectionHeading(section, count) {
   heading.className = "list-section-heading";
   const button = document.createElement("button");
   button.type = "button";
+  button.className = "list-section-toggle";
   button.dataset.projectSectionToggle = section.id;
   button.setAttribute("aria-expanded", String(!section.collapsed));
   const current = currentProjectTask(tasks, activeProjectId, projects);
   row.classList.toggle("contains-current-step", section.collapsed && current?.projectSectionId === section.id);
-  button.textContent = `${section.collapsed ? "▸" : "▾"} ${section.title} · ${count}`;
+  button.setAttribute("aria-label", `${section.collapsed ? "Розгорнути" : "Згорнути"} секцію «${section.title}»`);
   if (row.classList.contains("contains-current-step")) button.setAttribute("aria-label", `${section.title} · ${count} · поточний крок`);
-  heading.append(button);
+  const label = document.createElement("span");
+  label.className = "list-section-label";
+  label.textContent = section.title;
+  const number = document.createElement("span");
+  number.className = "list-section-count";
+  number.textContent = String(count);
+  button.append(label, number);
+  const add = document.createElement("button");
+  add.type = "button";
+  add.className = "today-group-add list-section-add";
+  add.setAttribute("aria-label", `Додати крок до секції «${section.title}»`);
+  add.setAttribute("aria-haspopup", "dialog");
+  heading.append(button, add);
   const members = document.createElement("ul");
   members.className = "list-section-tasks";
   members.hidden = section.collapsed;
+  members.id = `project-section-tasks-${section.id}`;
+  button.setAttribute("aria-controls", members.id);
   row.append(heading, members);
   projectEls.taskList.append(row);
   return members;
@@ -334,11 +362,18 @@ function renderOpenProject() {
   }
   renderProjectCountdown();
   projectEls.progress.textContent = `${steps.length} завд. · ${completedCount} виконано`;
-  projectEls.tasksEmpty.hidden = steps.length > 0;
-  projectEls.tasksExpand.hidden = activeSteps.length <= 3 || selectedHere.size > 0 || Boolean(project.projectSections?.length);
+  projectEls.tasksEmpty.hidden = steps.length > 0 || Boolean(project.projectSections?.length);
+  projectEls.tasksExpand.hidden = !projectPreview || activeSteps.length <= 3 || selectedHere.size > 0 || Boolean(project.projectSections?.length);
+  if (!projectPreview) projectEls.steps.classList.add("is-expanded");
+  else if (!project.projectSections?.length && !selectedHere.size && projectEls.steps.dataset.previewProjectId !== project.id) projectEls.steps.classList.remove("is-expanded");
+  projectEls.steps.dataset.previewProjectId = project.id;
   projectEls.selectAll.setAttribute("aria-pressed", String(steps.length > 0 && steps.every(task => selectedHere.has(task.id))));
   projectEls.addNewFirst.checked = project.addNewTasksFirst === true;
   renderProjectSections(project);
+  const sectionId = projectEls.stepSection.value;
+  projectEls.stepSectionRow.hidden = !project.projectSections?.length;
+  projectEls.stepSection.replaceChildren(new Option("Без секції", ""), ...(project.projectSections || []).map(section => new Option(section.title, section.id)));
+  projectEls.stepSection.value = project.projectSections?.some(section => section.id === sectionId) ? sectionId : "";
   projectEls.attachOpen.hidden = project.status === "completed";
   projectEls.complete.textContent = project.status === "completed" ? "Повернути в активні" : "Завершити проєкт";
   projectEls.convertTask.hidden = project.status === "completed";
@@ -610,7 +645,7 @@ async function addProject(title) {
   openProject(project.id);
 }
 
-async function addProjectStep(title) {
+async function addProjectStep(title, { sectionId = projectEls.stepSection.value || null, description = "" } = {}) {
   const project = projects.find(item => item.id === activeProjectId);
   const value = title.trim();
   if (!project || !value) return;
@@ -621,9 +656,11 @@ async function addProjectStep(title) {
   const addFirst = project.addNewTasksFirst === true;
   const task = createTask({
     title: value,
+    description,
     listId,
     position: addFirst ? 0 : (listTasks.length ? Math.max(...listTasks.map(item => item.position || 0)) + 1 : 0),
     projectId: project.id,
+    projectSectionId: sectionId,
     projectPosition: addFirst ? 0 : (steps.length ? Math.max(...steps.map(item => item.projectPosition ?? -1)) + 1 : 0)
   });
   const replacements = new Map();
@@ -1001,6 +1038,24 @@ projectEls.sectionCreate.addEventListener("submit", async event => {
   try { await projectDb.put(updated); projects = projects.map(item => item.id === updated.id ? updated : item); projectEls.sectionName.value = ""; renderOpenProject(); }
   catch (_error) { toast("Не вдалося додати секцію"); }
 });
+projectEls.sections.addEventListener("change", async event => {
+  if (!event.target.matches(".section-name")) return;
+  const project = projects.find(item => item.id === activeProjectId);
+  const id = event.target.closest("[data-section-id]")?.dataset.sectionId;
+  if (!project || !id) return;
+  const title = event.target.value.trim();
+  const current = project.projectSections.find(section => section.id === id);
+  if (!current) return;
+  if (!title || project.projectSections.some(section => section.id !== id && section.title.toLocaleLowerCase("uk") === title.toLocaleLowerCase("uk"))) {
+    event.target.value = current.title;
+    toast(title ? "Секція з такою назвою вже є" : "Введіть назву секції");
+    return;
+  }
+  if (title === current.title) return;
+  const updated = createProject({ ...project, projectSections: project.projectSections.map(section => section.id === id ? { ...section, title } : section), updatedAt: new Date().toISOString() });
+  try { await projectDb.put(updated); projects = projects.map(item => item.id === updated.id ? updated : item); renderOpenProject(); }
+  catch (_error) { event.target.value = current.title; toast("Не вдалося перейменувати секцію"); }
+});
 projectEls.sections.addEventListener("click", async event => {
   const button = event.target.closest("[data-section-action]");
   const project = projects.find(item => item.id === activeProjectId);
@@ -1010,12 +1065,7 @@ projectEls.sections.addEventListener("click", async event => {
   const index = sections.findIndex(section => section.id === id);
   if (index < 0) return;
   const action = button.dataset.sectionAction;
-  if (action === "rename") {
-    const title = prompt("Нова назва секції", sections[index].title)?.trim();
-    if (!title) return;
-    if (sections.some((section, position) => position !== index && section.title.toLocaleLowerCase("uk") === title.toLocaleLowerCase("uk"))) { toast("Секція з такою назвою вже є"); return; }
-    sections[index].title = title.slice(0, 80);
-  } else if (action === "delete") {
+  if (action === "delete") {
     if (!confirm(`Видалити секцію «${sections[index].title}»? Кроки залишаться в проєкті.`)) return;
     sections.splice(index, 1);
   } else {
@@ -1035,6 +1085,12 @@ projectEls.sections.addEventListener("click", async event => {
   } catch (_error) { toast("Не вдалося змінити секцію"); }
 });
 projectEls.taskList.addEventListener("click", async event => {
+  const add = event.target.closest(".list-section-add");
+  if (add) {
+    const sectionId = add.closest("[data-section-id]")?.dataset.sectionId;
+    if (sectionId) openQuickTask({ kind: "project-section", projectId: activeProjectId, sectionId });
+    return;
+  }
   const id = event.target.closest("[data-project-section-toggle]")?.dataset.projectSectionToggle;
   const project = projects.find(item => item.id === activeProjectId);
   if (!id || !project) return;

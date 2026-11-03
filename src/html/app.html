@@ -198,6 +198,11 @@
           <span aria-hidden="true"></span>
         </label>
       </div>
+      <div class="settings-row overdue-setting">
+        <span class="projects-icon" aria-hidden="true"></span>
+        <span class="settings-copy"><strong>Показувати лише перші 3 кроки проєкту</strong><small>Решту розгортати стрілкою на КП</small></span>
+        <label class="theme-switch"><input id="project-preview-toggle" type="checkbox" role="switch" aria-label="Показувати лише перші 3 кроки проєкту"><span aria-hidden="true"></span></label>
+      </div>
       <label class="settings-row start-screen-setting" for="start-screen-select">
         <span class="overview-icon" aria-hidden="true"></span>
         <span class="settings-copy"><strong>Стартовий екран</strong><small>Відкривати після запуску</small></span>
@@ -246,7 +251,7 @@
         </div>
       </div>
     </div>
-    <p class="settings-version"><span>Версія 0.20 · 3 листопада 2026</span><button id="check-app-update" type="button">Перевірити оновлення</button></p>
+    <p class="settings-version"><span>Версія 0.21 · 3 листопада 2026</span><button id="check-app-update" type="button">Перевірити оновлення</button></p>
   </div>
 </section>
 <section id="completed-tasks-screen" class="completed-tasks-screen" aria-labelledby="completed-tasks-title" hidden>
@@ -314,7 +319,7 @@
     <section id="project-steps" class="project-steps" aria-label="Завдання проєкту"><div class="project-steps-heading"><button id="project-tasks-expand" class="project-tasks-expand" type="button" aria-label="Розгорнути всі завдання" aria-expanded="false"><span aria-hidden="true"></span></button></div>
       <ul id="project-task-list"></ul>
       <p id="project-tasks-empty" class="project-tasks-empty" hidden>Додайте перше завдання, щоб почати рух проєктом.</p>
-      <form id="project-step-form" class="project-step-form"><label class="sr-only" for="project-step-title">Нове завдання</label><input id="project-step-title" maxlength="160" autocomplete="off" placeholder="Додати нове завдання"><button type="submit" aria-label="Додати нове завдання">＋</button></form>
+      <form id="project-step-form" class="project-step-form"><label class="sr-only" for="project-step-title">Нове завдання</label><input id="project-step-title" maxlength="160" autocomplete="off" placeholder="Додати нове завдання"><button type="submit" aria-label="Додати нове завдання">＋</button><label id="project-step-section-row" class="project-step-section" hidden>Секція<select id="project-step-section"></select></label></form>
       <button id="project-attach-open" class="project-attach-trigger" type="button">Прикріпити існуюче завдання</button>
       <label class="project-step-placement"><input id="project-add-new-first" type="checkbox"><span>Нові завдання — на початок</span></label>
     </section>
@@ -383,7 +388,7 @@
         <span id="task-project-options" class="list-dropdown-options project-dropdown-options" role="listbox" aria-label="Активні проєкти" hidden></span>
       </div>
       <div class="list-attribute">
-        <span class="list-menu-icon" aria-hidden="true"></span>
+        <button id="task-list-link" class="task-list-link" type="button" aria-label="Відкрити список"><span class="list-menu-icon" aria-hidden="true"></span></button>
         <span class="list-attribute-copy"><span>Список</span><span class="list-dropdown">
           <input id="task-list-select" name="list" type="hidden">
           <button id="task-list-trigger" class="list-dropdown-trigger" type="button" aria-haspopup="listbox" aria-expanded="false" aria-controls="task-list-options"><span id="task-list-value"></span><span class="dropdown-chevron" aria-hidden="true"></span></button>
