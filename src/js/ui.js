@@ -988,7 +988,6 @@ function renderTasks(tasks, selectedIds = new Set(), taskLists = [], taskProject
       add.className = "today-group-add";
       add.setAttribute("aria-label", `Додати завдання до групи «${groupTitle}»`);
       add.setAttribute("aria-haspopup", "dialog");
-      add.textContent = "+";
       heading.append(toggle, add);
       const members = document.createElement("ul");
       members.className = "today-group-tasks";
@@ -1079,6 +1078,7 @@ function hideTaskEditor() {
 
 function resizeDescription() {
   els.description.style.height = "";
+  els.description.classList.remove("is-truncated");
   const preview = !els.editor.classList.contains("description-edit-mode");
   if (preview) els.description.scrollTop = 0;
   els.description.classList.toggle("is-truncated", preview && els.description.scrollHeight > els.description.clientHeight + 1);

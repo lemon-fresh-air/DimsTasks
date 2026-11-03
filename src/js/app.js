@@ -1320,14 +1320,27 @@ function toggleAllVisibleTasks() {
   renderCurrentTasks();
 }
 
+async function deletedTaskGroupLayouts(deletedIds) {
+  const localDay = localDateValue();
+  const ids = new Set(deletedIds);
+  const layouts = [];
+  for (const date of [localDay, nextLocalDate()]) {
+    const layout = await settingsDb.todayLayout(date);
+    if (layout?.groups.some(group => group.taskIds.some(id => ids.has(id)))) layouts.push({ date, layout });
+  }
+  return { localDay, layouts };
+}
+
+async function restoreDeletedTaskGroupLayouts(snapshot) {
+  if (localDateValue() !== snapshot.localDay) return;
+  for (const { date, layout } of snapshot.layouts) await settingsDb.saveTodayLayout(layout, date);
+}
+
 async function deleteSelectedTasks() {
   const deletedTasks = tasks.filter(task => selectedTaskIds.has(task.id));
   if (!deletedTasks.length) return;
   const deletedIds = deletedTasks.map(task => task.id);
-  const groupDate = isDayList() ? activePlanDate() : localDateValue();
-  const storedGroupLayout = await settingsDb.todayLayout(groupDate);
-  const previousGroupLayout = storedGroupLayout?.groups.some(group =>
-    group.taskIds.some(id => deletedIds.includes(id))) ? storedGroupLayout : null;
+  const groupSnapshot = await deletedTaskGroupLayouts(deletedIds);
   tasks = tasks.filter(task => !selectedTaskIds.has(task.id));
   selectedTaskIds = new Set();
   renderCurrentTasks();
@@ -1338,8 +1351,7 @@ async function deleteSelectedTasks() {
       duration: 3000,
       action: async () => {
         await taskDb.putMany(deletedTasks);
-        if (previousGroupLayout && groupDate === localDateValue())
-          await settingsDb.saveTodayLayout(previousGroupLayout, groupDate);
+        await restoreDeletedTaskGroupLayouts(groupSnapshot);
         await refresh();
         toast("Завдання відновлено");
       }
@@ -1804,10 +1816,7 @@ async function saveAndLeaveTaskEditor({ allowEmptyNew = false } = {}) {
 async function deleteTask(id) {
   const task = tasks.find(item => item.id === id);
   if (!task) return;
-  const groupDate = isDayList() ? activePlanDate() : localDateValue();
-  const storedGroupLayout = await settingsDb.todayLayout(groupDate);
-  const previousGroupLayout = storedGroupLayout?.groups.some(group => group.taskIds.includes(id))
-    ? storedGroupLayout : null;
+  const groupSnapshot = await deletedTaskGroupLayouts([id]);
   tasks = tasks.filter(item => item.id !== id);
   selectedTaskIds.delete(id);
   renderCurrentTasks();
@@ -1817,8 +1826,7 @@ async function deleteTask(id) {
       duration: 3000,
       action: async () => {
         await taskDb.put(task);
-        if (previousGroupLayout && groupDate === localDateValue())
-          await settingsDb.saveTodayLayout(previousGroupLayout, groupDate);
+        await restoreDeletedTaskGroupLayouts(groupSnapshot);
         await refresh();
         toast("Завдання відновлено");
       }
