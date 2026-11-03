@@ -29,6 +29,7 @@ let backupDirectoryHandle = null;
 let completedWeekOffset = 0;
 let completedDetailId = null;
 let skipCompletedPopstate = false;
+let pendingTaskRestore = null;
 
 function completedWeekBounds(offset = completedWeekOffset) {
   const end = new Date();
@@ -1320,27 +1321,72 @@ function toggleAllVisibleTasks() {
   renderCurrentTasks();
 }
 
-async function deletedTaskGroupLayouts(deletedIds) {
-  const localDay = localDateValue();
-  const ids = new Set(deletedIds);
-  const layouts = [];
-  for (const date of [localDay, nextLocalDate()]) {
-    const layout = await settingsDb.todayLayout(date);
-    if (layout?.groups.some(group => group.taskIds.some(id => ids.has(id)))) layouts.push({ date, layout });
-  }
-  return { localDay, layouts };
+function deletedTaskGroupSnapshot(deletedTasks) {
+  if (!isDayList() || todayLayout?.date !== activePlanDate()) return null;
+  const ids = new Set(deletedTasks.map(task => task.id));
+  const groups = todayLayout.groups.filter(group => group.taskIds.some(id => ids.has(id)))
+    .map(group => ({ ...group, taskIds: [...group.taskIds] }));
+  return groups.length ? { date: activePlanDate(), groups, items: todayLayout.items.map(item => ({ ...item })) } : null;
 }
 
-async function restoreDeletedTaskGroupLayouts(snapshot) {
-  if (localDateValue() !== snapshot.localDay) return;
-  for (const { date, layout } of snapshot.layouts) await settingsDb.saveTodayLayout(layout, date);
+async function restoreDeletedTasks(deletedTasks, snapshot, toGroup) {
+  await taskDb.putMany(deletedTasks);
+  if (snapshot) {
+    const ids = new Set(deletedTasks.map(task => task.id));
+    const stored = await settingsDb.todayLayout(snapshot.date);
+    const current = stored && isValidDayPlanShape(stored) ? stored : { date: snapshot.date, groups: [], items: [] };
+    const groups = current.groups.map(group => ({ ...group, taskIds: group.taskIds.filter(id => !ids.has(id)) }));
+    const items = current.items.filter(item => item.type !== "task" || !ids.has(item.id));
+    if (toGroup) for (const original of snapshot.groups) {
+      const restoredIds = original.taskIds.filter(id => ids.has(id));
+      const existing = groups.find(group => group.id === original.id);
+      if (existing) existing.taskIds.push(...restoredIds);
+      else {
+        groups.push({ ...original, taskIds: restoredIds });
+        const position = snapshot.items.findIndex(item => item.type === "group" && item.id === original.id);
+        items.splice(Math.min(Math.max(position, 0), items.length), 0, { type: "group", id: original.id });
+      }
+    }
+    for (const task of deletedTasks) if (!toGroup || !snapshot.groups.some(group => group.taskIds.includes(task.id))) {
+      items.push({ type: "task", id: task.id });
+    }
+    const restored = [...tasks, ...deletedTasks];
+    const visible = visibleProjectTasks(restored, projects).filter(task => isTaskDueToday(task, snapshot.date));
+    const plan = normalizeDayPlan({ date: snapshot.date, groups, items }, visible, snapshot.date);
+    await settingsDb.saveTodayLayout(plan, snapshot.date);
+  }
+  await refresh();
+  toast("Завдання відновлено");
 }
+
+function offerDeletedTaskRestore(deletedTasks, snapshot) {
+  if (!snapshot) return restoreDeletedTasks(deletedTasks, null, false);
+  pendingTaskRestore = { deletedTasks, snapshot };
+  els.taskRestoreGroupTitle.textContent = deletedTasks.length === 1
+    ? "Повернути завдання в групу?" : "Повернути завдання в групи?";
+  els.taskRestoreGroupBackdrop.hidden = false;
+  document.body.classList.add("project-delete-dialog-open");
+  els.taskRestoreGroupDialog.focus();
+}
+
+async function resolveDeletedTaskRestore(toGroup) {
+  const pending = pendingTaskRestore;
+  if (!pending) return;
+  pendingTaskRestore = null;
+  els.taskRestoreGroupBackdrop.hidden = true;
+  document.body.classList.remove("project-delete-dialog-open");
+  try { await restoreDeletedTasks(pending.deletedTasks, pending.snapshot, toGroup); }
+  catch (_error) { toast("Не вдалося відновити завдання"); }
+}
+
+els.taskRestoreWithoutGroup.addEventListener("click", () => resolveDeletedTaskRestore(false));
+els.taskRestoreToGroup.addEventListener("click", () => resolveDeletedTaskRestore(true));
 
 async function deleteSelectedTasks() {
   const deletedTasks = tasks.filter(task => selectedTaskIds.has(task.id));
   if (!deletedTasks.length) return;
+  const groupSnapshot = deletedTaskGroupSnapshot(deletedTasks);
   const deletedIds = deletedTasks.map(task => task.id);
-  const groupSnapshot = await deletedTaskGroupLayouts(deletedIds);
   tasks = tasks.filter(task => !selectedTaskIds.has(task.id));
   selectedTaskIds = new Set();
   renderCurrentTasks();
@@ -1349,12 +1395,7 @@ async function deleteSelectedTasks() {
     const message = deletedTasks.length === 1 ? "Завдання видалено" : `Видалено завдань: ${deletedTasks.length}`;
     toast(message, {
       duration: 3000,
-      action: async () => {
-        await taskDb.putMany(deletedTasks);
-        await restoreDeletedTaskGroupLayouts(groupSnapshot);
-        await refresh();
-        toast("Завдання відновлено");
-      }
+      action: () => offerDeletedTaskRestore(deletedTasks, groupSnapshot)
     });
   } catch (_error) {
     tasks.push(...deletedTasks);
@@ -1816,7 +1857,7 @@ async function saveAndLeaveTaskEditor({ allowEmptyNew = false } = {}) {
 async function deleteTask(id) {
   const task = tasks.find(item => item.id === id);
   if (!task) return;
-  const groupSnapshot = await deletedTaskGroupLayouts([id]);
+  const groupSnapshot = deletedTaskGroupSnapshot([task]);
   tasks = tasks.filter(item => item.id !== id);
   selectedTaskIds.delete(id);
   renderCurrentTasks();
@@ -1824,12 +1865,7 @@ async function deleteTask(id) {
     await taskDb.delete(id);
     toast("Завдання видалено", {
       duration: 3000,
-      action: async () => {
-        await taskDb.put(task);
-        await restoreDeletedTaskGroupLayouts(groupSnapshot);
-        await refresh();
-        toast("Завдання відновлено");
-      }
+      action: () => offerDeletedTaskRestore([task], groupSnapshot)
     });
   } catch (_error) {
     tasks.push(task);
@@ -2149,6 +2185,14 @@ document.addEventListener("pointerdown", event => {
 const descriptionEditOverlay = document.querySelector("#description-edit-overlay");
 const descriptionSaveConfirm = document.querySelector("#description-save-confirm");
 let descriptionEditSnapshot = null;
+function syncDescriptionViewport() {
+  if (!els.editor.classList.contains("description-edit-mode")) return;
+  const viewport = window.visualViewport;
+  els.form.style.setProperty("--description-viewport-top", `${viewport?.offsetTop || 0}px`);
+  els.form.style.setProperty("--description-viewport-height", `${viewport?.height || window.innerHeight}px`);
+}
+window.visualViewport?.addEventListener("resize", syncDescriptionViewport);
+window.visualViewport?.addEventListener("scroll", syncDescriptionViewport);
 function closeDescriptionEdit({ discard = false } = {}) {
   if (discard && descriptionEditSnapshot) {
     els.input.value = descriptionEditSnapshot.title;
@@ -2160,6 +2204,8 @@ function closeDescriptionEdit({ discard = false } = {}) {
   descriptionSaveConfirm.hidden = true;
   descriptionEditOverlay.hidden = true;
   els.editor.classList.remove("description-edit-mode");
+  els.form.style.removeProperty("--description-viewport-top");
+  els.form.style.removeProperty("--description-viewport-height");
   els.editor.querySelector(".description-edit-snapshot")?.remove();
   resizeDescription();
   els.form.removeAttribute("role");
@@ -2193,6 +2239,7 @@ els.description.addEventListener("focus", () => {
   background.setAttribute("aria-hidden", "true");
   descriptionEditOverlay.before(background);
   els.editor.classList.add("description-edit-mode");
+  syncDescriptionViewport();
   els.form.setAttribute("role", "dialog");
   els.form.setAttribute("aria-modal", "true");
   els.form.setAttribute("aria-label", "Редагувати опис завдання");
