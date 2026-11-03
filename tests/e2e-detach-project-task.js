@@ -26,31 +26,35 @@ const { openTestApp } = require("./e2e-helper");
     const projectId = await page.evaluate(() => activeProjectId);
     const originalInboxPosition = await page.evaluate(async () => (await taskDb.all()).find(task => task.title === "Наявне в Нові").position);
     await page.locator(`#project-task-list [data-id="${stepId}"] .task-open`).click();
-    assert.equal(await page.locator("#task-detach-project").isVisible(), true);
+    assert.equal(await page.locator("#task-actions-trigger").isVisible(), true);
     await page.click("#task-list-trigger");
     await page.locator(`#task-list-options [data-list-id="${greenListId}"]`).click();
     await page.waitForFunction(id => tasks.find(task => task.id === id)?.listId === document.querySelector("#task-list-select").value, stepId);
     assert.equal(await page.locator("#task-list-value").textContent(), "Зелений список");
 
     await page.fill("#task-title", "   ");
+    await page.click("#task-actions-trigger");
     await page.click("#task-detach-project");
     await page.click("#task-detach-confirm");
     assert.equal(await page.locator("#toast .toast-message").textContent(), "Введіть назву завдання");
     await page.fill("#task-title", "Самостійний крок");
     await page.fill("#task-description", "Введений опис");
+    await page.click("#description-edit-back");
     await page.evaluate(() => {
       window.originalPutMany = taskDb.putMany;
       taskDb.putMany = async () => { throw new Error("test write failure"); };
     });
+    await page.click("#task-actions-trigger");
     await page.click("#task-detach-project");
     await page.click("#task-detach-confirm");
     assert.equal(await page.locator("#task-editor").isVisible(), true);
     assert.equal(await page.locator("#task-description").evaluate(node => node.value), "Введений опис");
     const failedRecord = await page.evaluate(async id => (await taskDb.all()).find(task => task.id === id), stepId);
     assert.equal(failedRecord.projectId, projectId);
-    assert.notEqual(failedRecord.title, "Самостійний крок");
+    assert.equal(failedRecord.title, "Самостійний крок");
     await page.evaluate(() => { taskDb.putMany = window.originalPutMany; });
 
+    await page.click("#task-actions-trigger");
     await page.click("#task-detach-project");
     await page.click("#task-detach-confirm");
     await page.waitForFunction(id => {
@@ -61,6 +65,7 @@ const { openTestApp } = require("./e2e-helper");
     await page.waitForFunction(id => document.querySelector("#task-editor").dataset.taskId === id
       && !document.querySelector("#task-detach-project").hidden, stepId);
     assert.equal((await page.evaluate(async id => (await taskDb.all()).find(task => task.id === id)?.projectId, stepId)), projectId);
+    await page.click("#task-actions-trigger");
     await page.click("#task-detach-project");
     await page.click("#task-detach-confirm");
     await page.waitForFunction(id => document.querySelector("#task-editor").dataset.taskId === id

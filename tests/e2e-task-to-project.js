@@ -10,14 +10,16 @@ const { openTestApp } = require("./e2e-helper");
     await page.click("#task-editor-back");
     await page.locator("#task-editor").waitFor({ state: "hidden" });
     await page.locator(".task-open").first().click();
-    assert.equal(await page.locator("#task-convert-project").isVisible(), true);
+    assert.equal(await page.locator("#task-actions-trigger").isVisible(), true);
     await page.fill("#task-title", "   ");
+    await page.click("#task-actions-trigger");
     await page.click("#task-convert-project");
     assert.equal(await page.locator("#task-editor").isVisible(), true);
     assert.equal(await page.locator("#toast .toast-message").textContent(), "Введіть назву завдання");
 
     await page.fill("#task-title", "Нова назва проєкту");
     await page.fill("#task-description", "Новий опис");
+    await page.click("#description-edit-back");
     await page.evaluate(() => {
       const existing = createProject({ title: "Колізія", position: 0 });
       window.testCollisionProject = existing;
@@ -29,16 +31,18 @@ const { openTestApp } = require("./e2e-helper");
       projects.push(window.testCollisionProject);
       renderProjects();
     });
+    await page.click("#task-actions-trigger");
     await page.click("#task-convert-project");
     await page.locator("#toast .toast-message").filter({ hasText: "Не вдалося створити проєкт" }).waitFor();
     assert.equal(await page.locator("#task-editor").isVisible(), true);
     const afterFailure = await page.evaluate(async () => ({ tasks: await taskDb.all(), projects: await projectDb.all() }));
     assert.equal(afterFailure.tasks.length, 1);
-    assert.equal(afterFailure.tasks[0].title, "Початкове завдання");
+    assert.equal(afterFailure.tasks[0].title, "Нова назва проєкту");
     assert.equal(afterFailure.projects.length, 1);
     assert.equal(await page.locator("#task-title").inputValue(), "Нова назва проєкту");
     await page.evaluate(() => { projectFromTask = window.testOriginalProjectFromTask; });
 
+    await page.click("#task-actions-trigger");
     await page.click("#task-convert-project");
     await page.locator("#task-editor").waitFor({ state: "hidden" });
     await page.locator("#project-screen").waitFor({ state: "visible" });

@@ -17,7 +17,9 @@ const { openTestApp } = require("./e2e-helper");
     await page.locator(`#project-task-list [data-id="${currentId}"] .task-open`).click();
     await page.fill("#task-title", "Новий самостійний проєкт");
     await page.fill("#task-description", "Опис із редактора");
+    await page.click("#description-edit-back");
 
+    await page.click("#task-actions-trigger");
     await page.click("#task-detach-project");
     await page.locator('#task-detach-dialog input[value="project"]').check();
     await page.click("#task-detach-cancel");
@@ -28,6 +30,7 @@ const { openTestApp } = require("./e2e-helper");
       window.originalProjectFromTask = projectFromTask;
       projectFromTask = (...args) => ({ ...window.originalProjectFromTask(...args), id: activeProjectId });
     });
+    await page.click("#task-actions-trigger");
     await page.click("#task-detach-project");
     await page.locator('#task-detach-dialog input[value="project"]').check();
     await page.click("#task-detach-confirm");
@@ -37,6 +40,7 @@ const { openTestApp } = require("./e2e-helper");
     assert.equal((await page.evaluate(async id => (await taskDb.all()).find(task => task.id === id)?.projectId, currentId)), sourceId);
     await page.evaluate(() => { projectFromTask = window.originalProjectFromTask; });
 
+    await page.click("#task-actions-trigger");
     await page.click("#task-detach-project");
     await page.locator('#task-detach-dialog input[value="project"]').check();
     await page.click("#task-detach-confirm");
@@ -48,6 +52,7 @@ const { openTestApp } = require("./e2e-helper");
     assert.equal((await page.evaluate(async id => (await taskDb.all()).find(task => task.id === id)?.projectId, currentId)), sourceId);
     assert.equal(await page.locator("#task-title").inputValue(), "Новий самостійний проєкт");
 
+    await page.click("#task-actions-trigger");
     await page.click("#task-detach-project");
     await page.locator('#task-detach-dialog input[value="project"]').check();
     await page.click("#task-detach-confirm");

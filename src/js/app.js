@@ -2084,6 +2084,101 @@ els.calendarRangeSelect.addEventListener("change", async () => {
   }
 });
 els.editorBack.addEventListener("click", () => saveAndLeaveTaskEditor({ allowEmptyNew: true }));
+function closeTaskActionsMenu({ returnFocus = false } = {}) {
+  els.taskActionsMenu.hidden = true;
+  els.taskActionsTrigger.setAttribute("aria-expanded", "false");
+  if (returnFocus) els.taskActionsTrigger.focus();
+}
+els.taskActionsTrigger.addEventListener("click", event => {
+  const opening = els.taskActionsMenu.hidden;
+  els.taskActionsMenu.hidden = !opening;
+  els.taskActionsTrigger.setAttribute("aria-expanded", String(opening));
+  if (opening && event.detail === 0) els.taskActionsMenu.querySelector('button:not([hidden])')?.focus();
+});
+els.taskActionsMenu.addEventListener("click", event => {
+  if (event.target.closest("button")) closeTaskActionsMenu();
+});
+els.taskActionsMenu.addEventListener("keydown", event => {
+  if (event.key === "Escape") { event.preventDefault(); closeTaskActionsMenu({ returnFocus: true }); return; }
+  if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) return;
+  const options = [...els.taskActionsMenu.querySelectorAll('button:not([hidden])')];
+  const current = options.indexOf(document.activeElement);
+  const next = event.key === "Home" ? 0 : event.key === "End" ? options.length - 1
+    : (current + (event.key === "ArrowDown" ? 1 : -1) + options.length) % options.length;
+  event.preventDefault();
+  options[next]?.focus();
+});
+document.addEventListener("pointerdown", event => {
+  if (!els.taskActionsMenu.hidden && !event.target.closest("#task-actions-menu,#task-actions-trigger")) closeTaskActionsMenu();
+});
+const descriptionEditOverlay = document.querySelector("#description-edit-overlay");
+const descriptionSaveConfirm = document.querySelector("#description-save-confirm");
+let descriptionEditSnapshot = null;
+function closeDescriptionEdit({ discard = false } = {}) {
+  if (discard && descriptionEditSnapshot) {
+    els.input.value = descriptionEditSnapshot.title;
+    els.description.value = descriptionEditSnapshot.description;
+    resizeTaskTitle();
+    updateDesktopSaveState();
+  }
+  descriptionEditSnapshot = null;
+  descriptionSaveConfirm.hidden = true;
+  descriptionEditOverlay.hidden = true;
+  els.editor.classList.remove("description-edit-mode");
+  els.editor.querySelector(".description-edit-snapshot")?.remove();
+  resizeDescription();
+  els.form.removeAttribute("role");
+  els.form.removeAttribute("aria-modal");
+  els.form.removeAttribute("aria-label");
+  document.activeElement?.blur();
+}
+async function saveDescriptionEdit() {
+  if (!els.input.value.trim()) { els.input.focus(); toast("Введіть назву завдання"); return; }
+  if (!els.editor.dataset.taskId) {
+    closeDescriptionEdit();
+    await saveAndLeaveTaskEditor();
+    return;
+  }
+  try {
+    if (!await saveOpenTask()) return;
+    closeDescriptionEdit();
+    toast("Зміни збережено");
+  } catch (_error) { toast("Не вдалося зберегти завдання"); }
+}
+els.description.addEventListener("focus", () => {
+  if (els.editor.hidden || els.editor.classList.contains("description-edit-mode")) return;
+  descriptionEditSnapshot = { title: els.input.value, description: els.description.value };
+  const background = els.form.cloneNode(true);
+  background.classList.add("description-edit-snapshot");
+  background.removeAttribute("id");
+  background.querySelector("#task-title").value = els.input.value;
+  background.querySelector("#task-description").style.height = "";
+  background.querySelectorAll("[id]").forEach(element => element.removeAttribute("id"));
+  background.inert = true;
+  background.setAttribute("aria-hidden", "true");
+  descriptionEditOverlay.before(background);
+  els.editor.classList.add("description-edit-mode");
+  els.form.setAttribute("role", "dialog");
+  els.form.setAttribute("aria-modal", "true");
+  els.form.setAttribute("aria-label", "Редагувати опис завдання");
+  descriptionEditOverlay.hidden = false;
+  requestAnimationFrame(() => { resizeTaskTitle(); resizeDescription(); });
+});
+document.querySelector("#description-edit-back").addEventListener("click", saveDescriptionEdit);
+document.querySelector("#description-edit-save").addEventListener("click", saveDescriptionEdit);
+descriptionEditOverlay.addEventListener("click", () => {
+  descriptionSaveConfirm.hidden = false;
+  document.querySelector("#description-save-no").focus();
+});
+document.querySelector("#description-save-no").addEventListener("click", () => closeDescriptionEdit({ discard: true }));
+document.querySelector("#description-save-yes").addEventListener("click", saveDescriptionEdit);
+descriptionSaveConfirm.addEventListener("click", event => { if (event.target === descriptionSaveConfirm) descriptionSaveConfirm.hidden = true; });
+els.editor.addEventListener("keydown", event => {
+  if (event.key !== "Escape" || !els.editor.classList.contains("description-edit-mode")) return;
+  event.preventDefault();
+  if (descriptionSaveConfirm.hidden) { descriptionSaveConfirm.hidden = false; document.querySelector("#description-save-no").focus(); }
+  else descriptionSaveConfirm.hidden = true;
+});
 els.desktopSaveTask.addEventListener("click", () => saveAndLeaveTaskEditor({ allowEmptyNew: true }));
 els.taskProjectSectionSelect.addEventListener("change", updateDesktopSaveState);
 els.selectionClose.addEventListener("click", clearTaskSelection);
@@ -2416,6 +2511,7 @@ els.list.addEventListener("click", async event => {
 });
 
 els.detailToggle.addEventListener("click", async () => {
+  if (els.editor.classList.contains("description-edit-mode")) closeDescriptionEdit();
   const task = tasks.find(item => item.id === els.editor.dataset.taskId);
   if (!task) return;
   const changes = { title: els.input.value.trim() || task.title, description: els.description.value.trim(), dueDate: els.date.value || null, dueTime: els.date.value && els.time.value ? els.time.value : null };

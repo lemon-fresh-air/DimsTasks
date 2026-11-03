@@ -59,6 +59,8 @@ const els = {
   taskConvertProject: document.querySelector("#task-convert-project"),
   taskConvertStepsCount: document.querySelector("#task-convert-steps-count"),
   taskDetachProject: document.querySelector("#task-detach-project"),
+  taskActionsTrigger: document.querySelector("#task-actions-trigger"),
+  taskActionsMenu: document.querySelector("#task-actions-menu"),
   taskDetachDialogBackdrop: document.querySelector("#task-detach-dialog-backdrop"),
   taskDetachDialog: document.querySelector("#task-detach-dialog"),
   taskDetachCancel: document.querySelector("#task-detach-cancel"),
@@ -1045,6 +1047,12 @@ function showTaskEditor() {
   els.editor.scrollTop = 0;
 }
 
+function syncTaskActionsMenu() {
+  els.taskActionsMenu.hidden = true;
+  els.taskActionsTrigger.setAttribute("aria-expanded", "false");
+  els.taskActionsTrigger.hidden = [els.taskAttachProject, els.taskConvertProject, els.taskDetachProject].every(button => button.hidden);
+}
+
 function hideTaskEditor() {
   els.shell.hidden = false;
   document.body.classList.remove("task-editor-open");
@@ -1058,9 +1066,10 @@ function hideTaskEditor() {
 }
 
 function resizeDescription() {
-  els.description.style.height = "auto";
-  const maxHeight = Math.min(window.innerHeight * 0.58, 620);
-  els.description.style.height = `${Math.min(els.description.scrollHeight, maxHeight)}px`;
+  els.description.style.height = "";
+  const preview = !els.editor.classList.contains("description-edit-mode");
+  if (preview) els.description.scrollTop = 0;
+  els.description.classList.toggle("is-truncated", preview && els.description.scrollHeight > els.description.clientHeight + 1);
 }
 
 function resizeTaskTitle() {
@@ -1086,6 +1095,7 @@ function openNewTaskEditor(listId, originListId = listId) {
   els.taskAttachProject.querySelector("span:last-child").textContent = "Додати до проєкту";
   els.taskConvertProject.hidden = true;
   els.taskDetachProject.hidden = true;
+  syncTaskActionsMenu();
   delete els.taskProjectLink.dataset.projectId;
   setTaskEditorListUI(listId);
   els.date.value = originListId === TODAY_LIST_ID ? localDateValue() : originListId === TOMORROW_LIST_ID ? nextLocalDate() : "";
@@ -1117,6 +1127,7 @@ function openTaskDetails(task) {
   els.taskAttachProject.hidden = task.status !== "active" || Boolean(task.projectId) || Boolean(task.savedSteps?.length) || !projects.some(item => item.status === "active");
   els.taskConvertProject.hidden = task.status !== "active" || Boolean(task.projectId);
   els.taskDetachProject.hidden = task.status !== "active" || !project;
+  syncTaskActionsMenu();
   els.taskProjectLink.dataset.projectId = project?.id || "";
   els.taskProjectValue.textContent = project?.title || "";
   setTaskEditorListUI(task.listId || INBOX_LIST_ID);
