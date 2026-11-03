@@ -24,7 +24,7 @@ const { openTestApp } = require("./e2e-helper");
     await page.click("#group-selected");
     await page.click('[data-color="#3A7BD5"]');
     await page.locator(".today-group").waitFor();
-    assert.match(await page.locator(".today-group-heading").first().innerText(), /Синя · 1/);
+    assert.equal(await page.locator(".today-group-label").first().textContent(), "Синя · 1");
     assert.deepEqual(await page.locator("#task-list > li").evaluateAll(items => items.map(item => item.className.includes("today-group") ? "group" : item.dataset.id)), ["group", "group-ui-b", "group-ui-c", "group-ui-d"]);
     assert.equal(await page.locator("#today-order-hint").isVisible(), false);
     const groupToggle = page.locator(".today-group-toggle").first();
@@ -48,7 +48,7 @@ const { openTestApp } = require("./e2e-helper");
     await page.waitForFunction(async () => (await appDb.get("settings", dayPlanId(localDateValue()))).groups[0].taskIds.length === 3);
     let layout = await page.evaluate(() => appDb.get("settings", dayPlanId(localDateValue())));
     assert.deepEqual(layout.groups[0].taskIds, ["group-ui-a", "group-ui-b", "group-ui-c"]);
-    assert.equal(await page.locator(".today-group-heading").first().innerText(), "Синя · 3");
+    assert.equal(await page.locator(".today-group-label").first().textContent(), "Синя · 3");
 
     await page.evaluate(() => selectTask("group-ui-b"));
     await page.locator('.today-group-tasks .swipe-row[data-id="group-ui-c"]').click();

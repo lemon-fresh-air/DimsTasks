@@ -71,6 +71,18 @@
     <button id="day-change-confirm" type="button">Оновити</button>
   </section>
 </div>
+<div id="quick-task-backdrop" class="project-delete-dialog-backdrop" hidden>
+  <section class="quick-task-dialog" role="dialog" aria-modal="true" aria-labelledby="quick-task-heading">
+    <form id="quick-task-form">
+      <h2 id="quick-task-heading">Нове завдання</h2>
+      <label for="quick-task-title">Назва</label>
+      <input id="quick-task-title" type="text" autocomplete="off" required>
+      <label for="quick-task-description">Опис</label>
+      <textarea id="quick-task-description" rows="3"></textarea>
+      <div class="quick-task-actions"><button id="quick-task-cancel" type="button">Скасувати</button><button type="submit">Додати</button></div>
+    </form>
+  </section>
+</div>
 <div id="today-group-rename-backdrop" class="project-delete-dialog-backdrop" hidden>
   <section id="today-group-rename-dialog" class="today-group-dialog" role="dialog" aria-modal="true" aria-labelledby="today-group-rename-title" tabindex="-1">
     <h2 id="today-group-rename-title">Перейменувати групу</h2>
@@ -228,7 +240,7 @@
         </div>
       </div>
     </div>
-    <p class="settings-version"><span>Версія 0.17.0 · 3 листопада 2026</span><button id="check-app-update" type="button">Перевірити оновлення</button></p>
+    <p class="settings-version"><span>Версія 0.18 · 3 листопада 2026</span><button id="check-app-update" type="button">Перевірити оновлення</button></p>
   </div>
 </section>
 <section id="completed-tasks-screen" class="completed-tasks-screen" aria-labelledby="completed-tasks-title" hidden>
@@ -337,6 +349,7 @@
       <button id="task-attach-project" class="project-attribute" type="button" role="menuitem" hidden><span class="projects-icon" aria-hidden="true"></span><span>Додати до проєкту</span></button>
       <button id="task-convert-project" class="project-attribute" type="button" role="menuitem" aria-label="Перетворити завдання на проєкт" hidden><span class="projects-icon" aria-hidden="true"></span><span class="task-convert-copy"><strong>Перетворити на проєкт</strong><small id="task-convert-steps-count" hidden></small></span></button>
       <button id="task-detach-project" class="project-attribute" type="button" role="menuitem" aria-label="Змінити зв’язок завдання з проєктом" hidden><span class="projects-icon project-detach-icon" aria-hidden="true"></span><span>Від’єднати від проєкту</span></button>
+      <button id="task-delete" class="project-attribute task-delete-action" type="button" role="menuitem" hidden><span class="trash-icon" aria-hidden="true"></span><span>Видалити</span></button>
     </div>
   </header>
   <div id="description-edit-overlay" class="description-edit-overlay" hidden></div>

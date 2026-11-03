@@ -40,6 +40,11 @@ const els = {
   todayGroupDialog: document.querySelector("#today-group-dialog"),
   todayGroupOptions: document.querySelector("#today-group-options"),
   todayGroupCancel: document.querySelector("#today-group-cancel"),
+  quickTaskBackdrop: document.querySelector("#quick-task-backdrop"),
+  quickTaskForm: document.querySelector("#quick-task-form"),
+  quickTaskTitle: document.querySelector("#quick-task-title"),
+  quickTaskDescription: document.querySelector("#quick-task-description"),
+  quickTaskCancel: document.querySelector("#quick-task-cancel"),
   form: document.querySelector("#task-form"),
   input: document.querySelector("#task-title"),
   description: document.querySelector("#task-description"),
@@ -61,6 +66,7 @@ const els = {
   taskDetachProject: document.querySelector("#task-detach-project"),
   taskActionsTrigger: document.querySelector("#task-actions-trigger"),
   taskActionsMenu: document.querySelector("#task-actions-menu"),
+  taskDelete: document.querySelector("#task-delete"),
   taskDetachDialogBackdrop: document.querySelector("#task-detach-dialog-backdrop"),
   taskDetachDialog: document.querySelector("#task-detach-dialog"),
   taskDetachCancel: document.querySelector("#task-detach-cancel"),
@@ -972,12 +978,18 @@ function renderTasks(tasks, selectedIds = new Set(), taskLists = [], taskProject
       const count = document.createElement("span");
       count.className = "today-group-count";
       count.textContent = group.taskIds.filter(id => rows.has(id)).length;
-      label.append(`${groupTitle} · `, count);
-      const chevron = document.createElement("span");
-      chevron.className = "today-group-chevron";
-      chevron.setAttribute("aria-hidden", "true");
-      toggle.append(label, chevron);
-      heading.append(toggle);
+      const name = document.createElement("span");
+      name.className = "today-group-name";
+      name.textContent = groupTitle;
+      label.append(name, " · ", count);
+      toggle.append(label);
+      const add = document.createElement("button");
+      add.type = "button";
+      add.className = "today-group-add";
+      add.setAttribute("aria-label", `Додати завдання до групи «${groupTitle}»`);
+      add.setAttribute("aria-haspopup", "dialog");
+      add.textContent = "+";
+      heading.append(toggle, add);
       const members = document.createElement("ul");
       members.className = "today-group-tasks";
       members.id = `today-group-tasks-${group.id}`;
@@ -1050,7 +1062,7 @@ function showTaskEditor() {
 function syncTaskActionsMenu() {
   els.taskActionsMenu.hidden = true;
   els.taskActionsTrigger.setAttribute("aria-expanded", "false");
-  els.taskActionsTrigger.hidden = [els.taskAttachProject, els.taskConvertProject, els.taskDetachProject].every(button => button.hidden);
+  els.taskActionsTrigger.hidden = [els.taskAttachProject, els.taskConvertProject, els.taskDetachProject, els.taskDelete].every(button => button.hidden);
 }
 
 function hideTaskEditor() {
@@ -1095,6 +1107,7 @@ function openNewTaskEditor(listId, originListId = listId) {
   els.taskAttachProject.querySelector("span:last-child").textContent = "Додати до проєкту";
   els.taskConvertProject.hidden = true;
   els.taskDetachProject.hidden = true;
+  els.taskDelete.hidden = true;
   syncTaskActionsMenu();
   delete els.taskProjectLink.dataset.projectId;
   setTaskEditorListUI(listId);
@@ -1127,6 +1140,7 @@ function openTaskDetails(task) {
   els.taskAttachProject.hidden = task.status !== "active" || Boolean(task.projectId) || Boolean(task.savedSteps?.length) || !projects.some(item => item.status === "active");
   els.taskConvertProject.hidden = task.status !== "active" || Boolean(task.projectId);
   els.taskDetachProject.hidden = task.status !== "active" || !project;
+  els.taskDelete.hidden = false;
   syncTaskActionsMenu();
   els.taskProjectLink.dataset.projectId = project?.id || "";
   els.taskProjectValue.textContent = project?.title || "";

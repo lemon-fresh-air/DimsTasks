@@ -241,14 +241,22 @@ function startCompletionFeedback(toggle) {
 }
 
 function captureTaskPositions() {
-  return new Map([...els.list.children].map(row => [row.dataset.id, row.getBoundingClientRect().top]));
+  return new Map([...els.list.querySelectorAll(".today-group, .swipe-row")].map(row => {
+    const group = row.classList.contains("today-group") ? null : row.closest(".today-group");
+    const top = row.getBoundingClientRect().top - (group?.getBoundingClientRect().top || 0);
+    return [row.classList.contains("today-group") ? `group:${row.dataset.groupId}` : `task:${row.dataset.id}`, top];
+  }));
 }
 
 function animateTaskReflow(previousPositions) {
-  for (const row of els.list.children) {
-    const previousTop = previousPositions.get(row.dataset.id);
+  for (const row of els.list.querySelectorAll(".today-group, .swipe-row")) {
+    const group = row.classList.contains("today-group") ? null : row.closest(".today-group");
+    const key = group ? `task:${row.dataset.id}` : row.classList.contains("today-group")
+      ? `group:${row.dataset.groupId}` : `task:${row.dataset.id}`;
+    const previousTop = previousPositions.get(key);
     if (previousTop === undefined || !row.animate) continue;
-    const distance = previousTop - row.getBoundingClientRect().top;
+    const top = row.getBoundingClientRect().top - (group?.getBoundingClientRect().top || 0);
+    const distance = previousTop - top;
     if (Math.abs(distance) < 1) continue;
     row.animate([
       { transform: `translateY(${distance}px)` },
@@ -1316,6 +1324,10 @@ async function deleteSelectedTasks() {
   const deletedTasks = tasks.filter(task => selectedTaskIds.has(task.id));
   if (!deletedTasks.length) return;
   const deletedIds = deletedTasks.map(task => task.id);
+  const groupDate = isDayList() ? activePlanDate() : localDateValue();
+  const storedGroupLayout = await settingsDb.todayLayout(groupDate);
+  const previousGroupLayout = storedGroupLayout?.groups.some(group =>
+    group.taskIds.some(id => deletedIds.includes(id))) ? storedGroupLayout : null;
   tasks = tasks.filter(task => !selectedTaskIds.has(task.id));
   selectedTaskIds = new Set();
   renderCurrentTasks();
@@ -1326,6 +1338,8 @@ async function deleteSelectedTasks() {
       duration: 3000,
       action: async () => {
         await taskDb.putMany(deletedTasks);
+        if (previousGroupLayout && groupDate === localDateValue())
+          await settingsDb.saveTodayLayout(previousGroupLayout, groupDate);
         await refresh();
         toast("Завдання відновлено");
       }
@@ -1790,6 +1804,10 @@ async function saveAndLeaveTaskEditor({ allowEmptyNew = false } = {}) {
 async function deleteTask(id) {
   const task = tasks.find(item => item.id === id);
   if (!task) return;
+  const groupDate = isDayList() ? activePlanDate() : localDateValue();
+  const storedGroupLayout = await settingsDb.todayLayout(groupDate);
+  const previousGroupLayout = storedGroupLayout?.groups.some(group => group.taskIds.includes(id))
+    ? storedGroupLayout : null;
   tasks = tasks.filter(item => item.id !== id);
   selectedTaskIds.delete(id);
   renderCurrentTasks();
@@ -1799,6 +1817,8 @@ async function deleteTask(id) {
       duration: 3000,
       action: async () => {
         await taskDb.put(task);
+        if (previousGroupLayout && groupDate === localDateValue())
+          await settingsDb.saveTodayLayout(previousGroupLayout, groupDate);
         await refresh();
         toast("Завдання відновлено");
       }
@@ -2097,6 +2117,13 @@ els.taskActionsTrigger.addEventListener("click", event => {
 });
 els.taskActionsMenu.addEventListener("click", event => {
   if (event.target.closest("button")) closeTaskActionsMenu();
+});
+els.taskDelete.addEventListener("click", async () => {
+  const id = els.editor.dataset.taskId;
+  if (!id) return;
+  els.editor.dataset.taskId = "";
+  hideTaskEditor();
+  await deleteTask(id);
 });
 els.taskActionsMenu.addEventListener("keydown", event => {
   if (event.key === "Escape") { event.preventDefault(); closeTaskActionsMenu({ returnFocus: true }); return; }
@@ -2450,6 +2477,46 @@ els.form.addEventListener("keydown", event => {
   }
 });
 els.form.addEventListener("submit", event => { event.preventDefault(); saveAndLeaveTaskEditor(); });
+let quickTaskGroupId = null;
+function closeQuickTask() {
+  els.quickTaskBackdrop.hidden = true;
+  quickTaskGroupId = null;
+  els.quickTaskForm.reset();
+}
+els.quickTaskCancel.addEventListener("click", closeQuickTask);
+els.quickTaskBackdrop.addEventListener("click", event => { if (event.target === els.quickTaskBackdrop) closeQuickTask(); });
+els.quickTaskForm.addEventListener("keydown", event => {
+  if (event.key === "Escape") { event.preventDefault(); closeQuickTask(); }
+});
+els.quickTaskForm.addEventListener("submit", async event => {
+  event.preventDefault();
+  const title = els.quickTaskTitle.value.trim();
+  const groupId = quickTaskGroupId;
+  if (!title) { els.quickTaskTitle.focus(); return; }
+  if (!ensureCurrentDay() || !isDayList() || !todayLayout?.groups.some(group => group.id === groupId)) {
+    closeQuickTask();
+    toast("Група або дата змінилася. Спробуйте ще раз");
+    return;
+  }
+  const submit = els.quickTaskForm.querySelector('[type="submit"]');
+  submit.disabled = true;
+  const date = activePlanDate();
+  const task = createTask({ listId: validTodayDefaultListId(), title,
+    description: els.quickTaskDescription.value.trim(), dueDate: date, position: 0 });
+  const shifted = tasks.filter(item => taskOrderScope(item) === taskOrderScope(task))
+    .map(item => ({ ...item, position: item.position + 1 }));
+  try {
+    await taskDb.putMany([task, ...shifted]);
+    await changeTodayLayout((layout, visible, currentDate) =>
+      assignTodayGroupTasks(layout, visible.concat(task), currentDate, groupId, [task.id]));
+    closeQuickTask();
+    await refresh();
+    toast("Завдання додано");
+  } catch (_error) {
+    await refresh();
+    toast("Не вдалося додати завдання до групи");
+  } finally { submit.disabled = false; }
+});
 els.list.addEventListener("click", async event => {
   const button = event.target.closest(".list-section-toggle");
   if (!button) return;
@@ -2464,6 +2531,16 @@ els.list.addEventListener("click", async event => {
   } catch (_error) { button.disabled = false; toast("Не вдалося змінити стан секції"); }
 });
 els.list.addEventListener("click", async event => {
+  const addToGroup = event.target.closest(".today-group-add");
+  if (addToGroup && els.list.contains(addToGroup)) {
+    const id = addToGroup.closest(".today-group")?.dataset.groupId;
+    if (!todayLayout?.groups.some(group => group.id === id)) return;
+    quickTaskGroupId = id;
+    els.quickTaskForm.reset();
+    els.quickTaskBackdrop.hidden = false;
+    els.quickTaskTitle.focus();
+    return;
+  }
   const groupToggle = event.target.closest(".today-group-toggle");
   if (groupToggle && els.list.contains(groupToggle)) {
     const wrapper = groupToggle.closest(".today-group");
