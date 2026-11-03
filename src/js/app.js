@@ -156,9 +156,9 @@ function activeList() {
 function visibleTasks() {
   if (isDayList()) {
     const date = activePlanDate();
-    return visibleProjectTasks(tasks).filter(task => isTaskDueToday(task, date)).sort(compareDayTasks);
+    return visibleProjectTasks(tasks, projects).filter(task => isTaskDueToday(task, date)).sort(compareDayTasks);
   }
-  return visibleListTasks(tasks, activeListId).sort(compareTasks);
+  return visibleListTasks(tasks, activeListId, projects).sort(compareTasks);
 }
 
 function renderCurrentTasks() {
@@ -292,7 +292,7 @@ async function loadAndNormalizeTaskOrder() {
 }
 
 function visibleTodayLayoutTasks(date) {
-  return visibleProjectTasks(tasks).filter(task => isTaskDueToday(task, date))
+  return visibleProjectTasks(tasks, projects).filter(task => isTaskDueToday(task, date))
     .map(task => ({ ...task, todayPosition: null }));
 }
 
@@ -1615,7 +1615,9 @@ async function saveOpenTask() {
   const changedList = listId !== task.listId;
   const sectionId = sections.some(section => section.id === els.taskSectionSelect.value && section.listId === listId) ? els.taskSectionSelect.value : null;
   const changedScope = changedList || sectionId !== task.sectionId;
-  const updatedTask = { ...task, listId, sectionId, position: changedScope ? 0 : task.position, title, description: els.description.value.trim(), dueDate: els.date.value || null, dueTime: els.date.value && els.time.value ? els.time.value : null, updatedAt: new Date().toISOString() };
+  const project = projects.find(item => item.id === task.projectId);
+  const projectSectionId = project?.projectSections?.some(section => section.id === els.taskProjectSectionSelect.value) ? els.taskProjectSectionSelect.value : null;
+  const updatedTask = { ...task, listId, sectionId, projectSectionId, position: changedScope ? 0 : task.position, title, description: els.description.value.trim(), dueDate: els.date.value || null, dueTime: els.date.value && els.time.value ? els.time.value : null, updatedAt: new Date().toISOString() };
   const shiftedTasks = changedScope
     ? tasks.filter(item => item.id !== task.id && taskOrderScope(item) === taskOrderScope(updatedTask)).map(item => ({ ...item, position: (Number.isFinite(item.position) ? item.position : 0) + 1 }))
     : [];
@@ -1693,6 +1695,7 @@ async function detachOpenTaskFromProject(task, editedTask) {
 async function convertOpenStepToProject(task, editedTask) {
   const project = projectFromTask(editedTask, projects);
   els.taskDetachProject.disabled = true;
+  let converted = false;
   try {
     await projectDb.convertStep(task.id, task.projectId, project);
     tasks = tasks.filter(item => item.id !== task.id);
@@ -1702,6 +1705,7 @@ async function convertOpenStepToProject(task, editedTask) {
     hideTaskEditor();
     openProjects();
     openProject(project.id);
+    converted = true;
     toast("Новий проєкт створено", {
       duration: 3000,
       action: async () => {
@@ -1722,6 +1726,9 @@ async function convertOpenStepToProject(task, editedTask) {
   } catch (_error) {
     toast("Не вдалося створити проєкт. Крок залишився на місці");
   } finally {
+    mobileNavApplying = false;
+    if (converted) recordMobileNavigation(true);
+    else replaceMobileNavigation();
     els.taskDetachProject.disabled = false;
   }
 }
@@ -1757,6 +1764,10 @@ function confirmTaskDetachChoice() {
   const editedTask = { ...task, title, description: els.description.value.trim(),
     dueDate: els.date.value || null, dueTime: els.date.value && els.time.value ? els.time.value : null };
   const choice = els.taskDetachDialog.querySelector('input[name="task-detach-choice"]:checked').value;
+  if (choice === "project") {
+    mobileNavApplying = true;
+    clearTimeout(mobileNavTimer);
+  }
   closeTaskDetachDialog();
   if (choice === "project") convertOpenStepToProject(task, editedTask);
   else detachOpenTaskFromProject(task, editedTask);
@@ -1809,7 +1820,7 @@ async function completeTask(task, changes = {}, toggle) {
   const groupDate = activeListId === TODAY_LIST_ID ? activePlanDate() : null;
   const previousGroupLayout = groupDate && todayLayout?.date === groupDate ? todayLayout : null;
   const groupSuccessor = previousGroupLayout
-    ? carryTodayProjectGroup(previousGroupLayout, tasks, completedTask, groupDate) : null;
+    ? carryTodayProjectGroup(previousGroupLayout, tasks, completedTask, groupDate, projects) : null;
   await taskDb.put(completedTask);
   if (groupSuccessor) await settingsDb.saveTodayLayout(groupSuccessor, groupDate);
   await refresh({ animateTaskReflow: Boolean(toggle?.closest(".swipe-row")) });
@@ -2074,6 +2085,7 @@ els.calendarRangeSelect.addEventListener("change", async () => {
 });
 els.editorBack.addEventListener("click", () => saveAndLeaveTaskEditor({ allowEmptyNew: true }));
 els.desktopSaveTask.addEventListener("click", () => saveAndLeaveTaskEditor({ allowEmptyNew: true }));
+els.taskProjectSectionSelect.addEventListener("change", updateDesktopSaveState);
 els.selectionClose.addEventListener("click", clearTaskSelection);
 els.selectAllTasks.addEventListener("click", toggleAllVisibleTasks);
 els.groupSelected.addEventListener("click", openTodayGroupDialog);
@@ -2211,6 +2223,7 @@ els.calendarGrid.addEventListener("click", event => {
 });
 els.calendarPrevious.addEventListener("click", () => shiftCalendarRange(-1));
 els.calendarNext.addEventListener("click", () => shiftCalendarRange(1));
+enableCalendarSwipe();
 async function savePendingDateSelection() {
   if (editingProjectDate) {
     editingProjectDate = false;
@@ -2481,7 +2494,7 @@ els.taskProjectOptions.addEventListener("click", async event => {
     const current = tasks.find(item => item.id === task.id);
     const bumped = tasks.filter(item => item.projectId === projectId && item.status === "active")
       .map(item => ({ ...item, projectPosition: (item.projectPosition ?? 0) + 1 }));
-    await taskDb.putMany([{ ...current, projectId, projectPosition: 0, updatedAt: new Date().toISOString() }, ...bumped]);
+    await taskDb.putMany([{ ...current, projectId, projectSectionId: null, projectPosition: 0, updatedAt: new Date().toISOString() }, ...bumped]);
     await refresh();
     openTaskDetails(tasks.find(item => item.id === task.id));
     toast("Проєкт завдання змінено");
@@ -2535,7 +2548,7 @@ els.taskAttachConfirm.addEventListener("click", async () => {
     const current = tasks.find(item => item.id === task.id);
     const bumped = tasks.filter(item => item.projectId === projectId && item.status === "active")
       .map(item => ({ ...item, projectPosition: (item.projectPosition ?? 0) + 1 }));
-    await taskDb.putMany([{ ...current, projectId, projectPosition: 0, updatedAt: new Date().toISOString() }, ...bumped]);
+    await taskDb.putMany([{ ...current, projectId, projectSectionId: null, projectPosition: 0, updatedAt: new Date().toISOString() }, ...bumped]);
     await refresh();
     closeTaskAttachDialog();
     openTaskDetails(tasks.find(item => item.id === task.id));
@@ -2692,6 +2705,13 @@ function recordMobileNavigation(alwaysPush = false) {
   mobileNavEntries.push(view);
   mobileNavIndex++;
   history.pushState(mobileNavigationEntry(mobileNavIndex, view), "");
+}
+
+function replaceMobileNavigation() {
+  if (!mobileNavSession || !mobileNavigationEnabled()) return;
+  const view = mobileNavigationState();
+  mobileNavEntries[mobileNavIndex] = view;
+  history.replaceState(mobileNavigationEntry(mobileNavIndex, view), "");
 }
 
 function scheduleMobileNavigationRecord() {

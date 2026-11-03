@@ -1,6 +1,6 @@
 const BACKUP_FORMAT = "local-first-pwa-backup";
 const APP_ID = "dims-tasks";
-const BACKUP_FORMAT_VERSION = 20;
+const BACKUP_FORMAT_VERSION = 21;
 const BACKUP_MAX_BYTES = 50 * 1024 * 1024;
 
 function backupCounts(data) { return Object.fromEntries(STORE_NAMES.map(name => [name, data[name].length])); }
@@ -14,6 +14,12 @@ function validDate(value) {
 function validTime(value) { return value === null || typeof value === "string" && /^([01]\d|2[0-3]):[0-5]\d$/.test(value); }
 function validOptionalId(value) { return value === null || typeof value === "string" && value.length > 0; }
 function validPosition(value) { return Number.isSafeInteger(value) && value >= 0; }
+function validProjectSections(value) {
+  return Array.isArray(value) && new Set(value.map(section => section?.id)).size === value.length
+    && value.every(section => section && typeof section.id === "string" && section.id
+      && typeof section.title === "string" && section.title.trim() && section.title.length <= 80
+      && typeof section.collapsed === "boolean");
+}
 function backupLocalDate(now = new Date()) {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
 }
@@ -31,7 +37,7 @@ function normalizeBackupTodayLayout(data, date = backupLocalDate()) {
   const settings = [];
   for (const record of byId.values()) {
     if (!record.id.startsWith("day-plan:")) { settings.push(record); continue; }
-    const visible = visibleProjectTasks(data.tasks).filter(task => isTaskDueToday(task, record.date))
+    const visible = visibleProjectTasks(data.tasks, data.projects).filter(task => isTaskDueToday(task, record.date))
       .map(task => ({ ...task, todayPosition: null }));
     const plan = normalizeDayPlan(record, visible, record.date);
     if (plan) settings.push({ ...record, ...plan });
@@ -88,8 +94,8 @@ function validateBackupData(data, { strict = true } = {}) {
       if (!validIso(record.createdAt) || !validIso(record.updatedAt) || !Number.isSafeInteger(record.entityVersion) || record.entityVersion < 1 || name !== "settings" && (!record.customFields || typeof record.customFields !== "object" || Array.isArray(record.customFields))) throw new Error(`Некоректні спільні поля в «${name}»: ${record.id}`);
       if (name === "lists" && (typeof record.title !== "string" || typeof record.description !== "string" || !["inbox", "regular"].includes(record.kind) || !validPosition(record.position))) throw new Error(`Некоректний список: ${record.id}`);
       if (name === "sections" && (typeof record.listId !== "string" || typeof record.title !== "string" || typeof record.description !== "string" || !validPosition(record.position) || record.collapsed !== undefined && typeof record.collapsed !== "boolean")) throw new Error(`Некоректна секція: ${record.id}`);
-      if (name === "projects" && (typeof record.title !== "string" || typeof record.goal !== "string" || typeof record.description !== "string" || !["active", "completed"].includes(record.status) || !validDate(record.dueDate) || !validTime(record.dueTime) || record.dueTime && !record.dueDate || typeof record.showCountdown !== "boolean" || !validOptionalId(record.lastListId) || !validOptionalId(record.defaultListId) || typeof record.addNewTasksFirst !== "boolean" || record.completedAt !== null && !validIso(record.completedAt) || !validPosition(record.position))) throw new Error(`Некоректний проєкт: ${record.id}`);
-      if (name === "tasks" && (typeof record.listId !== "string" || !validOptionalId(record.sectionId) || !validOptionalId(record.projectId) || typeof record.title !== "string" || typeof record.description !== "string" || !["active", "completed", "archived"].includes(record.status) || record.completedAt !== null && !validIso(record.completedAt) || !validDate(record.dueDate) || !validTime(record.dueTime) || record.dueTime && !record.dueDate || !validPosition(record.position) || record.todayPosition !== null && !validPosition(record.todayPosition) || record.projectPosition !== null && !validPosition(record.projectPosition) || record.returnedToInboxAt !== null && !validIso(record.returnedToInboxAt) || !validSavedSteps(record.savedSteps ?? []) || record.projectId !== null && record.savedSteps?.length)) throw new Error(`Некоректне завдання: ${record.id}`);
+       if (name === "projects" && (typeof record.title !== "string" || typeof record.goal !== "string" || typeof record.description !== "string" || !["active", "completed"].includes(record.status) || !validDate(record.dueDate) || !validTime(record.dueTime) || record.dueTime && !record.dueDate || typeof record.showCountdown !== "boolean" || !validOptionalId(record.lastListId) || !validOptionalId(record.defaultListId) || typeof record.addNewTasksFirst !== "boolean" || !validProjectSections(record.projectSections ?? []) || record.completedAt !== null && !validIso(record.completedAt) || !validPosition(record.position))) throw new Error(`Некоректний проєкт: ${record.id}`);
+       if (name === "tasks" && (typeof record.listId !== "string" || !validOptionalId(record.sectionId) || !validOptionalId(record.projectId) || !validOptionalId(record.projectSectionId ?? null) || typeof record.title !== "string" || typeof record.description !== "string" || !["active", "completed", "archived"].includes(record.status) || record.completedAt !== null && !validIso(record.completedAt) || !validDate(record.dueDate) || !validTime(record.dueTime) || record.dueTime && !record.dueDate || !validPosition(record.position) || record.todayPosition !== null && !validPosition(record.todayPosition) || record.projectPosition !== null && !validPosition(record.projectPosition) || record.returnedToInboxAt !== null && !validIso(record.returnedToInboxAt) || !validSavedSteps(record.savedSteps ?? []) || record.projectId !== null && record.savedSteps?.length)) throw new Error(`Некоректне завдання: ${record.id}`);
       if (name === "settings" && (record.id === "appearance" && (!["light", "dark"].includes(record.theme) || typeof record.useSystemTheme !== "boolean") || record.id === "task-defaults" && typeof record.todayListId !== "string" || record.id === "workflow" && typeof record.returnOverdueToInbox !== "boolean" || record.id === "backup-naming" && (typeof record.prefix !== "string" || !record.prefix.trim() || !Number.isSafeInteger(record.nextVersion) || record.nextVersion < 1) || record.id === "navigation" && !["today", "upcoming", "projects", "inbox", "overview"].includes(record.startScreen) || record.id === "calendar-range" && !CALENDAR_RANGE_MODES.includes(record.mode))) throw new Error(`Некоректне налаштування: ${record.id}`);
       if (name === "settings" && record.id.startsWith("day-plan:") && (!validDate(record.date) || !isValidDayPlanShape(record))) throw new Error("Некоректний денний план");
       if (name === "settings" && record.id === "today-layout") throw new Error("Застарілий формат денного плану");
@@ -102,7 +108,8 @@ function validateBackupData(data, { strict = true } = {}) {
   const inbox = data.lists.find(item => item.id === INBOX_LIST_ID);
   if (!inbox || inbox.kind !== "inbox" || data.lists.filter(item => item.kind === "inbox").length !== 1) throw new Error("Копія не містить коректного списку «Нові»");
   for (const section of data.sections) if (!listIds.has(section.listId) || section.listId === INBOX_LIST_ID) throw new Error(`Секція без списку: ${section.id}`);
-  for (const task of data.tasks) if (!listIds.has(task.listId) || task.projectId && !projectIds.has(task.projectId) || task.sectionId && sections.get(task.sectionId)?.listId !== task.listId || task.projectId === null && task.projectPosition !== null) throw new Error(`Порушений зв’язок завдання: ${task.id}`);
+  const projectsById = new Map(data.projects.map(item => [item.id, item]));
+  for (const task of data.tasks) if (!listIds.has(task.listId) || task.projectId && !projectIds.has(task.projectId) || task.sectionId && sections.get(task.sectionId)?.listId !== task.listId || task.projectId === null && task.projectPosition !== null || task.projectSectionId && !projectsById.get(task.projectId)?.projectSections?.some(section => section.id === task.projectSectionId)) throw new Error(`Порушений зв’язок завдання: ${task.id}`);
   return data;
 }
 

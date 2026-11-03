@@ -98,6 +98,8 @@ const els = {
   taskListValue: document.querySelector("#task-list-value"),
   taskListOptions: document.querySelector("#task-list-options"),
   taskSectionRow: document.querySelector("#task-section-row"),
+  taskProjectSectionRow: document.querySelector("#task-project-section-row"),
+  taskProjectSectionSelect: document.querySelector("#task-project-section-select"),
   taskSectionSelect: document.querySelector("#task-section-select"),
   taskSectionTrigger: document.querySelector("#task-section-trigger"),
   taskSectionValue: document.querySelector("#task-section-value"),
@@ -500,7 +502,7 @@ function renderTaskDueDate(element, task) {
 }
 
 function editorState() {
-  return JSON.stringify({ title: els.input.value, description: els.description.value, dueDate: els.date.value, dueTime: els.time.value, listId: els.taskListSelect.value, sectionId: els.taskSectionSelect.value });
+  return JSON.stringify({ title: els.input.value, description: els.description.value, dueDate: els.date.value, dueTime: els.time.value, listId: els.taskListSelect.value, sectionId: els.taskSectionSelect.value, projectSectionId: els.taskProjectSectionSelect.value });
 }
 
 function rememberEditorState() {
@@ -538,14 +540,14 @@ function taskCountsByList(tasks) {
   const counts = new Map();
   let todayCount = 0;
   const today = localDateValue();
-  for (const task of visibleProjectTasks(tasks)) {
+  for (const task of visibleProjectTasks(tasks, projects)) {
     if (isTaskCompleted(task)) continue;
     const listId = task.listId || INBOX_LIST_ID;
     counts.set(listId, (counts.get(listId) || 0) + 1);
     if (isTaskDueToday(task, today)) todayCount += 1;
   }
   counts.set(TODAY_LIST_ID, todayCount);
-  counts.set(TOMORROW_LIST_ID, visibleProjectTasks(tasks).filter(task => isTaskDueToday(task, nextLocalDate())).length);
+  counts.set(TOMORROW_LIST_ID, visibleProjectTasks(tasks, projects).filter(task => isTaskDueToday(task, nextLocalDate())).length);
   return counts;
 }
 
@@ -1105,6 +1107,9 @@ function openTaskDetails(task) {
   els.detailFields.hidden = false;
   els.detailToggle.hidden = false;
   const project = projects.find(item => item.id === task.projectId);
+  els.taskProjectSectionRow.hidden = !project || !project.projectSections?.length;
+  els.taskProjectSectionSelect.replaceChildren(new Option("Без секції", ""), ...(project?.projectSections || []).map(section => new Option(section.title, section.id)));
+  els.taskProjectSectionSelect.value = project?.projectSections?.some(section => section.id === task.projectSectionId) ? task.projectSectionId : "";
   els.taskProjectRow.hidden = !project;
   els.taskProjectOptions.hidden = true;
   els.taskProjectTrigger.setAttribute("aria-expanded", "false");

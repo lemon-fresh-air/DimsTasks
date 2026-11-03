@@ -376,7 +376,7 @@ body.main-menu-open,body.settings-open,body.list-editor-open { overflow:hidden; 
 .project-create-form input,.project-step-form input { min-width:0; min-height:46px; border:1px solid var(--line); border-radius:12px; outline:0; padding:0 13px; background:var(--control); color:var(--text); font:650 1rem/1.2 system-ui,sans-serif; }
 .project-create-form button,.project-step-form button { min-height:46px; border:0; border-radius:12px; padding:0 14px; background:var(--accent); color:var(--on-accent); font-weight:740; }
 .project-create-form button:last-child { background:var(--control); color:var(--muted); }
-.project-grid { display:grid; gap:12px; }
+.project-grid { display:grid; gap:12px; margin-inline:-20px; }
 .project-card { width:100%; display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:center; gap:5px 14px; border:1px solid var(--line); border-radius:18px; padding:14px 16px; background:var(--surface); color:var(--text); text-align:left; box-shadow:0 4px 18px rgba(32,46,60,.06); touch-action:none; user-select:none; }
 .projects-overview.selection-mode .project-card.selected { background:var(--selected); box-shadow:inset 4px 0 0 var(--accent); }
 .projects-overview.selection-mode .completed-projects { display:none; }
@@ -439,6 +439,16 @@ body.project-screen-open,body.project-editor-open,body.project-tasks-open { over
 .project-tasks-expand:not([hidden]) { margin-bottom:10px; }
 .project-tasks-expand span { width:16px; height:16px; border-top:2px solid currentColor; border-right:2px solid currentColor; transform:rotate(135deg) translate(-2px,1px); }
 #project-task-list { display:grid; gap:9px; margin:0; padding:0; list-style:none; }
+.project-section-heading { margin-top:12px; border-top:1px solid var(--line); }
+.project-section-heading > .list-section-heading > button { width:100%; min-height:44px; border:0; background:transparent; color:var(--text); text-align:left; font-weight:700; }
+.current-project-step .task-card { padding-right:34px; }
+.current-project-step .task-card::after { content:""; position:absolute; top:8px; right:9px; width:18px; height:18px; background:var(--date); -webkit-mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='black' stroke-width='2' stroke-linecap='round'%3E%3Cpath d='M10 2v16M3.1 6l13.8 8M3.1 14l13.8-8'/%3E%3C/svg%3E") center/contain no-repeat; mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='black' stroke-width='2' stroke-linecap='round'%3E%3Cpath d='M10 2v16M3.1 6l13.8 8M3.1 14l13.8-8'/%3E%3C/svg%3E") center/contain no-repeat; }
+.project-section-settings { display:grid; gap:12px; margin-top:24px; }
+.project-section-settings ul { display:grid; gap:8px; margin:0; padding:0; list-style:none; }
+.project-section-settings li { display:flex; flex-wrap:wrap; align-items:center; gap:6px; padding:8px; border-radius:12px; background:var(--control); }
+.project-section-settings li span { flex:1 1 100%; font-weight:650; }
+.project-section-settings li button { min-height:36px; padding:4px 8px; border:0; border-radius:8px; background:var(--surface); color:var(--text); }
+.project-section-settings li button:disabled { opacity:.4; }
 #project-steps:not(.is-expanded) #project-task-list .swipe-row:not(.completed):nth-child(4) { max-height:36px; -webkit-mask-image:linear-gradient(to bottom,#000,transparent); mask-image:linear-gradient(to bottom,#000,transparent); }
 #project-steps:not(.is-expanded) #project-task-list .swipe-row:not(.completed):nth-child(n+5) { display:none; }
 #project-steps:not(.is-completed-expanded) #project-task-list .swipe-row.completed { display:none; }
@@ -615,7 +625,7 @@ body.date-picker-open { overflow:hidden; }
 .sun-icon { width:22px; height:22px; display:inline-block; font-size:0; background:currentColor; -webkit-mask:url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%3E%3Ccircle%20cx%3D%2212%22%20cy%3D%2212%22%20r%3D%224%22%2F%3E%3Cpath%20d%3D%22M12%202v2m0%2016v2M2%2012h2m16%200h2M4.9%204.9l1.4%201.4m11.4%2011.4%201.4%201.4M19.1%204.9l-1.4%201.4M6.3%2017.7l-1.4%201.4%22%2F%3E%3C%2Fsvg%3E") center/contain no-repeat; mask:url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%3E%3Ccircle%20cx%3D%2212%22%20cy%3D%2212%22%20r%3D%224%22%2F%3E%3Cpath%20d%3D%22M12%202v2m0%2016v2M2%2012h2m16%200h2M4.9%204.9l1.4%201.4m11.4%2011.4%201.4%201.4M19.1%204.9l-1.4%201.4M6.3%2017.7l-1.4%201.4%22%2F%3E%3C%2Fsvg%3E") center/contain no-repeat; }
 .no-date-icon { height:20px; border:2px solid currentColor; border-radius:50%; position:relative; }
 .no-date-icon::after { content:""; position:absolute; left:2px; right:2px; top:7px; border-top:2px solid currentColor; transform:rotate(-45deg); }
-.calendar-panel { padding:8px 12px 14px; }
+.calendar-panel { position:relative; padding:8px 12px 14px; touch-action:pan-y; user-select:none; }
 .calendar-toolbar { min-height:48px; display:grid; grid-template-columns:44px 1fr 44px; align-items:center; }
 .calendar-toolbar h3 { margin:0; text-align:center; font-size:1rem; text-transform:capitalize; }
 .calendar-toolbar button { width:40px; height:40px; border:0; border-radius:12px; background:transparent; color:var(--text); font-size:1.9rem; }
@@ -680,6 +690,10 @@ body.time-dialog-open { overflow:hidden; }
 #task-detach-confirm { background:var(--accent); color:var(--on-accent); }
 #project-create-from-steps-dialog label { display:block; margin-bottom:8px; color:var(--muted); font-weight:650; }
 #project-create-from-steps-name { width:100%; min-height:48px; padding:0 12px; border:1px solid var(--line); border-radius:12px; background:var(--control); color:var(--text); font:inherit; }
+#project-create-existing-select { width:100%; min-height:48px; margin-bottom:10px; padding:0 12px; border:1px solid var(--line); border-radius:12px; background:var(--control); color:var(--text); font:inherit; }
+#project-create-from-steps-dialog .project-create-choice { display:flex; align-items:center; gap:10px; min-height:44px; margin-bottom:4px; color:var(--text); cursor:pointer; }
+#project-create-from-steps-dialog .project-create-choice input { width:20px; height:20px; margin:0; accent-color:var(--accent); }
+#project-create-existing-fields[hidden],#project-create-new-fields[hidden] { display:none; }
 #project-create-from-steps-confirm { background:var(--accent); color:var(--on-accent); }
 #task-attach-dialog label { display:block; margin-bottom:8px; color:var(--muted); font-weight:650; }
 #task-attach-project-select { width:100%; min-height:48px; padding:0 12px; border:1px solid var(--line); border-radius:12px; background:var(--control); color:var(--text); font:inherit; }

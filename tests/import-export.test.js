@@ -41,6 +41,22 @@ test("section collapse survives backup and older sections default to expanded", 
   assert.equal((await parseBackup(file({ ...payload, formatVersion: 19 }))).sections[0].collapsed, false);
 });
 
+test("project sections survive backup and broken step references are rejected", async () => {
+  const current = structuredClone(data);
+  current.projects.push({ ...base("project"), title: "Проєкт", goal: "", description: "", status: "active", dueDate: null, dueTime: null, showCountdown: false, lastListId: null, defaultListId: null, addNewTasksFirst: false, projectSections: [{ id: "phase", title: "Етап", collapsed: true }], completedAt: null, position: 0 });
+  current.tasks[0].projectId = "project";
+  current.tasks[0].projectSectionId = "phase";
+  current.tasks[0].projectPosition = 0;
+  const payload = { format: "local-first-pwa-backup", appId: "dims-tasks", formatVersion: BACKUP_FORMAT_VERSION, data: current };
+  assert.equal((await parseBackup(file(payload))).tasks[0].projectSectionId, "phase");
+  current.tasks[0].projectSectionId = "missing";
+  await assert.rejects(parseBackup(file(payload)), /Порушений зв’язок завдання/);
+  current.tasks[0].projectSectionId = "phase";
+  const old = await parseBackup(file({ ...payload, formatVersion: 20, data: { ...current, projects: current.projects.map(({ projectSections, ...project }) => project), tasks: current.tasks.map(({ projectSectionId, ...task }) => task) } }));
+  assert.equal(old.projects[0].projectSections.length, 0);
+  assert.equal(old.tasks[0].projectSectionId, null);
+});
+
 test("calendar range survives backup and invalid modes are rejected", async () => {
   const current = structuredClone(data);
   current.settings.push({ ...base("calendar-range"), mode: "2-weeks" });

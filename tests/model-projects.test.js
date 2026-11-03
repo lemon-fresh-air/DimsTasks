@@ -6,8 +6,8 @@ const vm = require("node:vm");
 
 const source = fs.readFileSync(path.join(__dirname, "..", "src", "js", "model.js"), "utf8");
 const context = vm.createContext({ crypto: { randomUUID: () => "generated-id" }, INBOX_LIST_ID: "inbox" });
-vm.runInContext(`${source}\nthis.model = { createTask, createProject, projectFromTask, projectFromSelectedSteps, taskFromProject, projectToTaskChanges, validSavedSteps, restoredProjectSteps, detachProjectTask, compareProjects, nextProjectPosition, reorderProjects, reorderProjectBlock, projectCountdown, currentProjectTask, compareProjectTasks, visibleProjectTasks, visibleListTasks, reorderProjectSteps, reorderProjectStepBlock, normalizeTaskOrder };`, context);
-const { createTask, createProject, projectFromTask, projectFromSelectedSteps, taskFromProject, projectToTaskChanges, validSavedSteps, restoredProjectSteps, detachProjectTask, compareProjects, nextProjectPosition, reorderProjects, reorderProjectBlock, projectCountdown, currentProjectTask, compareProjectTasks, visibleProjectTasks, visibleListTasks, reorderProjectSteps, reorderProjectStepBlock, normalizeTaskOrder } = context.model;
+vm.runInContext(`${source}\nthis.model = { createTask, createProject, projectFromTask, projectFromSelectedSteps, taskFromProject, projectToTaskChanges, validSavedSteps, restoredProjectSteps, detachProjectTask, compareProjects, nextProjectPosition, reorderProjects, reorderProjectBlock, projectCountdown, currentProjectTask, currentProjectStepGroupColor, compareProjectTasks, visibleProjectTasks, visibleListTasks, reorderProjectSteps, reorderProjectStepBlock, normalizeTaskOrder };`, context);
+const { createTask, createProject, projectFromTask, projectFromSelectedSteps, taskFromProject, projectToTaskChanges, validSavedSteps, restoredProjectSteps, detachProjectTask, compareProjects, nextProjectPosition, reorderProjects, reorderProjectBlock, projectCountdown, currentProjectTask, currentProjectStepGroupColor, compareProjectTasks, visibleProjectTasks, visibleListTasks, reorderProjectSteps, reorderProjectStepBlock, normalizeTaskOrder } = context.model;
 
 test("saved project steps preserve order, descriptions, status and restore scopes", () => {
   const project = createProject({ id: "project", title: "Проєкт", description: "Опис проєкту" });
@@ -27,6 +27,41 @@ test("saved project steps preserve order, descriptions, status and restore scope
   assert.notEqual(restored[0].id, first.id);
 });
 function now() { return "2026-10-30T00:00:00.000Z"; }
+
+test("project section membership is independent of list section and resets when detached", () => {
+  const task = createTask({ id: "step", title: "Крок", listId: "work", sectionId: "list-section", projectId: "project", projectSectionId: "phase" });
+  assert.equal(task.sectionId, "list-section");
+  assert.equal(task.projectSectionId, "phase");
+  assert.equal(createTask({ ...task, projectId: null }).projectSectionId, null);
+  assert.deepEqual(Array.from(createProject({ title: "Проєкт" }).projectSections), []);
+});
+
+test("current project step follows visible section order before stored project position", () => {
+  const project = createProject({ id: "project", title: "Проєкт", projectSections: [
+    { id: "first", title: "Перший етап", collapsed: false },
+    { id: "second", title: "Другий етап", collapsed: false }
+  ] });
+  const steps = [
+    createTask({ id: "second-step", title: "Пізніше на екрані", projectId: project.id, projectSectionId: "second", projectPosition: 0 }),
+    createTask({ id: "first-step", title: "Раніше на екрані", projectId: project.id, projectSectionId: "first", projectPosition: 5 }),
+    createTask({ id: "root-step", title: "Без секції", projectId: project.id, projectPosition: 9, status: "completed" })
+  ];
+  assert.equal(currentProjectTask(steps, project.id, [project]).id, "first-step");
+  assert.deepEqual(Array.from(visibleProjectTasks(steps, [project]), task => task.id), ["first-step"]);
+  const updated = steps.map(task => task.id === "root-step" ? { ...task, status: "active", completedAt: null } : task);
+  assert.equal(currentProjectTask(updated, project.id, [project]).id, "root-step");
+  const reordered = createProject({ ...project, projectSections: [...project.projectSections].reverse() });
+  assert.equal(currentProjectTask(steps, project.id, [reordered]).id, "second-step");
+});
+
+test("current step stripe uses its Today or Tomorrow group, otherwise the app accent", () => {
+  const task = createTask({ id: "step", title: "Крок", projectId: "project", dueDate: "2026-11-03" });
+  const today = { date: "2026-11-03", groups: [{ color: "#123456", taskIds: ["step"] }] };
+  const tomorrow = { date: "2026-11-04", groups: [{ color: "#abcdef", taskIds: ["step"] }] };
+  assert.equal(currentProjectStepGroupColor(task, [today, tomorrow]), "#123456");
+  assert.equal(currentProjectStepGroupColor({ ...task, dueDate: "2026-11-04" }, [today, tomorrow]), "#abcdef");
+  assert.equal(currentProjectStepGroupColor(task, [{ ...today, groups: [] }, tomorrow]), null);
+});
 
 test("invalid snapshots are rejected and archived steps are omitted", () => {
   assert.equal(validSavedSteps([{ title: "", description: "", status: "active", listId: "inbox", sectionId: null }]), false);

@@ -291,6 +291,10 @@ const sectionDb = {
 const projectDb = {
   all: () => appDb.all("projects"),
   put: project => appDb.put("projects", project),
+  putWithTasks: (project, changed) => transact(["projects", "tasks"], "readwrite", (_tx, stores) => {
+    stores.projects.put(project);
+    for (const task of changed) stores.tasks.put(task);
+  }),
   createFromSteps: (sourceProjectId, project, steps) => transact(["projects", "tasks"], "readwrite", (tx, stores) => {
     const sourceRequest = stores.projects.get(sourceProjectId);
     sourceRequest.onsuccess = () => {
@@ -382,7 +386,7 @@ const projectDb = {
       if (ids.has(task.projectId) && task.status === "active") {
         cursor.update(completeTasks
           ? { ...task, status: "completed", completedAt: updatedAt, updatedAt }
-          : { ...task, projectId: null, projectPosition: null, updatedAt });
+          : { ...task, projectId: null, projectSectionId: null, projectPosition: null, updatedAt });
       }
       cursor.continue();
     };
@@ -394,7 +398,7 @@ const projectDb = {
       const cursor = request.result;
       if (!cursor) return;
       if (ids.has(cursor.value.projectId)) {
-        if (detachTasks) cursor.update({ ...cursor.value, projectId: null, projectPosition: null, updatedAt });
+        if (detachTasks) cursor.update({ ...cursor.value, projectId: null, projectSectionId: null, projectPosition: null, updatedAt });
         else cursor.delete();
       }
       cursor.continue();
@@ -409,7 +413,7 @@ const projectDb = {
         stores.projects.delete(projectId);
         return;
       }
-      cursor.update({ ...cursor.value, projectId: null, projectPosition: null, updatedAt });
+      cursor.update({ ...cursor.value, projectId: null, projectSectionId: null, projectPosition: null, updatedAt });
       cursor.continue();
     };
   })

@@ -9,6 +9,7 @@ let timeDialogReturnFocus = null;
 let visibleCalendarEnd = null;
 let calendarAnchorDay = null;
 let datePickerReturnFocus = null;
+let calendarTransition = null;
 
 function dateFromValue(value) {
   return value ? new Date(`${value}T12:00:00`) : null;
@@ -129,6 +130,13 @@ function calendarRangeStart(end) {
 }
 
 function shiftCalendarRange(direction) {
+  calendarTransition?.();
+  calendarTransition = null;
+  const grid = els.calendarGrid;
+  const panel = grid.closest(".calendar-panel");
+  const animate = !matchMedia("(prefers-reduced-motion: reduce)").matches && !els.datePickerBackdrop.hidden;
+  const previous = animate ? grid.cloneNode(true) : null;
+  const oldHeight = grid.offsetHeight;
   if (calendarRangeMode === "month") {
     const target = new Date(visibleCalendarEnd.getFullYear(), visibleCalendarEnd.getMonth() + direction, 1, 12);
     target.setDate(Math.min(calendarAnchorDay, new Date(target.getFullYear(), target.getMonth() + 1, 0).getDate()));
@@ -138,6 +146,63 @@ function shiftCalendarRange(direction) {
     visibleCalendarEnd.setDate(visibleCalendarEnd.getDate() + direction * days);
   }
   renderCalendar();
+  if (!previous) return;
+  previous.removeAttribute("id");
+  previous.setAttribute("aria-hidden", "true");
+  previous.style.cssText = `position:absolute;top:${grid.offsetTop}px;left:${grid.offsetLeft}px;width:${grid.offsetWidth}px;height:${oldHeight}px;pointer-events:none;`;
+  panel.append(previous);
+  const distance = grid.offsetWidth * .28 * direction;
+  const options = { duration: 270, easing: "cubic-bezier(.22,1,.36,1)" };
+  const outgoing = previous.animate([
+    { transform: "translateX(0)", opacity: 1 },
+    { transform: `translateX(${-distance}px)`, opacity: 0 }
+  ], options);
+  const incoming = grid.animate([
+    { transform: `translateX(${distance}px)`, opacity: 0 },
+    { transform: "translateX(0)", opacity: 1 }
+  ], options);
+  const cleanup = () => {
+    outgoing.cancel();
+    incoming.cancel();
+    previous.remove();
+    if (calendarTransition === cleanup) calendarTransition = null;
+  };
+  calendarTransition = cleanup;
+  incoming.addEventListener("finish", cleanup, { once: true });
+}
+
+function enableCalendarSwipe() {
+  const panel = els.calendarGrid.closest(".calendar-panel");
+  let gesture = null;
+  let suppressClick = false;
+
+  panel.addEventListener("pointerdown", event => {
+    suppressClick = false;
+    if (!event.isPrimary || (event.pointerType === "mouse" && event.button !== 0)
+      || event.target.closest(".calendar-toolbar button")) return;
+    gesture = { id: event.pointerId, x: event.clientX, y: event.clientY };
+  });
+
+  window.addEventListener("pointerup", event => {
+    if (!gesture || event.pointerId !== gesture.id) return;
+    const dx = event.clientX - gesture.x;
+    const dy = event.clientY - gesture.y;
+    gesture = null;
+    if (els.datePickerBackdrop.hidden || Math.abs(dx) < 48 || Math.abs(dx) < Math.abs(dy) * 1.2) return;
+    suppressClick = true;
+    shiftCalendarRange(dx > 0 ? -1 : 1);
+  });
+
+  window.addEventListener("pointercancel", event => {
+    if (gesture?.id === event.pointerId) gesture = null;
+  });
+
+  panel.addEventListener("click", event => {
+    if (!suppressClick) return;
+    event.preventDefault();
+    event.stopPropagation();
+    suppressClick = false;
+  }, true);
 }
 
 function showCalendarDate(value) {

@@ -8,6 +8,7 @@ const { openTestApp } = require("./e2e-helper");
     await page.click("#project-add");
     await page.fill("#project-create-title", "Старий проєкт");
     await page.click("#project-create-form button[type=submit]");
+    await page.waitForSelector("#project-screen:not([hidden])");
     const firstProjectId = await page.evaluate(() => activeProjectId);
     await page.fill("#project-step-title", "Крок у списку");
     await page.click("#project-step-form button");

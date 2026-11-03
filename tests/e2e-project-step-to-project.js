@@ -62,7 +62,7 @@ const { openTestApp } = require("./e2e-helper");
     assert.equal(state.tasks.filter(task => task.projectId === created.id).length, 0);
     assert.equal(state.tasks.filter(task => task.projectId === sourceId).length, 1);
     assert.equal(state.projects.find(project => project.id === sourceId).title, "Початковий проєкт");
-    assert.equal(await page.evaluate(id => currentProjectTask(tasks, id)?.title, sourceId), "Перший крок");
+    assert.equal(await page.evaluate(id => currentProjectTask(tasks, id)?.title, sourceId), "Поточний крок");
 
     await page.reload({ waitUntil: "networkidle" });
     await page.click("#nav-projects");
