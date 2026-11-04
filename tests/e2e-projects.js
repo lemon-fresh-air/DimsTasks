@@ -51,20 +51,21 @@ async function waitForServer() {
   await page.fill("#project-create-title", "Запуск MVP");
   await page.click("#project-create-form button[type=submit]");
   await page.click("#project-edit-open");
-  await page.fill("#project-goal", "Перевірити послідовний потік");
+  await page.click("#project-description-open");
   await page.fill("#project-description", "Опис проєкту");
+  await page.click("#project-description-done");
   await page.click("#project-date-picker-open");
   await page.click('[data-date="2026-10-31"]');
   await page.click("#time-picker-open");
   await page.fill("#time-display-hour", "18");
   await page.fill("#time-display-minute", "30");
   await page.click("#time-dialog-save");
-  await page.click("#date-picker-save");
   await page.check("#project-show-countdown");
-  assert.equal(await page.locator("#project-countdown").isVisible(), true);
+  await page.click("#date-picker-save");
+  assert.equal(await page.locator("#project-countdown").isVisible(), false);
   assert.equal(await page.locator("#project-countdown").textContent(), await page.evaluate(() => projectCountdown("2026-10-31", localDateValue()).text));
   assert.equal(await page.locator("#project-save-status").textContent(), "Є незбережені зміни");
-  await page.click("#project-save");
+  await page.click("#project-edit-close");
   await page.waitForFunction(() => document.querySelector("#project-editor").hidden);
   assert.equal(await page.locator(".project-summary").count(), 0);
   await page.click("#project-back");
@@ -125,10 +126,9 @@ async function waitForServer() {
   assert.doesNotMatch(await page.locator(".project-card").innerText(), /Поточний крок:/);
   await page.click(".project-card");
   await page.click("#project-edit-open");
-  assert.equal(await page.inputValue("#project-goal"), "Перевірити послідовний потік");
   assert.equal(await page.inputValue("#project-due-time"), "18:30");
   assert.equal(await page.isChecked("#project-show-countdown"), true);
-  assert.equal(await page.locator("#project-countdown").isVisible(), true);
+  assert.equal(await page.locator("#project-countdown").isVisible(), false);
   await page.click("#project-edit-close");
 
   let rows = page.locator("#project-task-list .swipe-row");
@@ -163,6 +163,7 @@ async function waitForServer() {
   await page.waitForFunction(() => document.querySelector("#project-task-list .task-text")?.textContent === "Другий крок — уточнено");
 
   await page.click("#project-edit-open");
+  await page.click("#project-actions-trigger");
   await page.click("#project-complete");
   await page.click("#project-complete-yes");
   await page.click("#project-edit-close");
@@ -172,6 +173,7 @@ async function waitForServer() {
   await page.locator("#completed-projects summary").click();
   await page.click("#completed-project-list .project-card");
   await page.click("#project-edit-open");
+  await page.click("#project-actions-trigger");
   await page.click("#project-delete");
   await page.click("#project-delete-yes");
   await page.waitForFunction(() => document.querySelectorAll(".project-card").length === 0);

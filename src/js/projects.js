@@ -74,7 +74,6 @@ const projectEls = {
   editor: document.querySelector("#project-editor"),
   heading: document.querySelector("#project-screen-title"),
   title: document.querySelector("#project-title"),
-  goal: document.querySelector("#project-goal"),
   description: document.querySelector("#project-description"),
   dueDate: document.querySelector("#project-due-date"),
   dueTime: document.querySelector("#project-due-time"),
@@ -89,7 +88,6 @@ const projectEls = {
   tasksExpand: document.querySelector("#project-tasks-expand"),
   tasksEmpty: document.querySelector("#project-tasks-empty"),
   taskList: document.querySelector("#project-task-list"),
-  sections: document.querySelector("#project-sections"),
   sectionCreate: document.querySelector("#project-section-create"),
   sectionName: document.querySelector("#project-section-name"),
   stepForm: document.querySelector("#project-step-form"),
@@ -106,7 +104,13 @@ const projectEls = {
   attachSave: document.querySelector("#project-attach-save"),
   addNewFirst: document.querySelector("#project-add-new-first"),
   mainComplete: document.querySelector("#project-main-complete"),
-  save: document.querySelector("#project-save"),
+  actionsTrigger: document.querySelector("#project-actions-trigger"),
+  actionsMenu: document.querySelector("#project-actions-menu"),
+  sectionsOpen: document.querySelector("#project-assign-section"),
+  sectionsDialog: document.querySelector("#project-sections-dialog"),
+  sectionActionDialog: document.querySelector("#project-section-action-dialog"),
+  descriptionOpen: document.querySelector("#project-description-open"),
+  descriptionDialog: document.querySelector("#project-description-dialog"),
   complete: document.querySelector("#project-complete"),
   delete: document.querySelector("#project-delete")
 };
@@ -234,36 +238,6 @@ function renderProjectTask(task, target = projectEls.taskList) {
   target.append(row);
 }
 
-function renderProjectSections(project) {
-  projectEls.sections.replaceChildren(...(project.projectSections || []).map((section, index, all) => {
-    const row = document.createElement("li");
-    row.dataset.sectionId = section.id;
-    const name = document.createElement("input");
-    name.className = "section-name";
-    name.value = section.title;
-    name.maxLength = 80;
-    name.setAttribute("aria-label", `Назва секції ${section.title}`);
-    const controls = document.createElement("div");
-    for (const [action, label, disabled] of [["up", "Вище", index === 0], ["down", "Нижче", index === all.length - 1], ["delete", "Видалити", false]]) {
-      const button = document.createElement("button");
-      button.type = "button";
-      button.dataset.sectionAction = action;
-      if (action === "delete") {
-        const icon = document.createElement("span");
-        icon.className = "trash-icon";
-        icon.setAttribute("aria-hidden", "true");
-        button.append(icon);
-      } else button.textContent = action === "up" ? "↑" : "↓";
-      button.setAttribute("aria-label", `${label}: ${section.title}`);
-      button.title = label;
-      button.disabled = disabled;
-      controls.append(button);
-    }
-    row.append(name, controls);
-    return row;
-  }));
-}
-
 function renderProjectSectionHeading(section, count) {
   const row = document.createElement("li");
   row.className = "list-section project-section-heading";
@@ -348,7 +322,6 @@ function renderOpenProject() {
   if (completedSteps.some(task => selectedHere.has(task.id))) projectEls.steps.classList.add("is-completed-expanded");
   projectEls.heading.textContent = project.title;
   if (document.activeElement !== projectEls.title) projectEls.title.value = project.title;
-  if (document.activeElement !== projectEls.goal) projectEls.goal.value = project.goal || "";
   if (document.activeElement !== projectEls.description) projectEls.description.value = project.description || "";
   if (document.activeElement !== projectEls.dueDate) projectEls.dueDate.value = project.dueDate || "";
   if (document.activeElement !== projectEls.dueTime) projectEls.dueTime.value = project.dueTime || "";
@@ -356,7 +329,7 @@ function renderOpenProject() {
   applyDateTone(projectEls.datePickerOpen, project.dueDate, project.dueTime);
   projectEls.showCountdown.checked = project.showCountdown === true;
   if (document.activeElement !== projectEls.defaultList) {
-    projectEls.defaultList.replaceChildren(new Option("За замовчуванням (останній вибраний)", ""),
+    projectEls.defaultList.replaceChildren(new Option("Останній вибраний", ""),
       ...lists.map(list => new Option(displayListTitle(list), list.id)));
     projectEls.defaultList.value = lists.some(list => list.id === project.defaultListId) ? project.defaultListId : "";
   }
@@ -369,7 +342,6 @@ function renderOpenProject() {
   projectEls.steps.dataset.previewProjectId = project.id;
   projectEls.selectAll.setAttribute("aria-pressed", String(steps.length > 0 && steps.every(task => selectedHere.has(task.id))));
   projectEls.addNewFirst.checked = project.addNewTasksFirst === true;
-  renderProjectSections(project);
   const sectionId = projectEls.stepSection.value;
   projectEls.stepSectionRow.hidden = !project.projectSections?.length;
   projectEls.stepSection.replaceChildren(new Option("Без секції", ""), ...(project.projectSections || []).map(section => new Option(section.title, section.id)));
@@ -399,12 +371,16 @@ function renderOpenProject() {
   projectEls.selectionCount.textContent = `Вибрано: ${selectedHere.size}`;
   projectEls.createFromSteps.hidden = project.status !== "active";
   projectEls.listOptions.replaceChildren(...lists.map(createListDropdownOption));
+  projectEls.sectionsOpen.hidden = project.status !== "active";
+  syncProjectSectionSelection();
 }
 
 function openProject(projectId, { showOverdue = true } = {}) {
   const project = projects.find(item => item.id === projectId);
   if (!project) return;
+  selectedListSectionIds.clear();
   activeProjectId = projectId;
+  selectedProjectSectionIds.clear();
   selectedTaskIds = new Set();
   projectEls.steps.classList.remove("is-completed-expanded");
   projectEls.screen.hidden = false;
@@ -545,14 +521,218 @@ async function saveAttachedTasks() {
   }
 }
 
+const selectedProjectSectionIds = new Set();
+let sectionDialogScope = null;
+let projectSectionBusy = false;
+function syncProjectSectionSelection() {
+  const project = projects.find(item => item.id === activeProjectId);
+  const sections = project?.projectSections || [];
+  const valid = new Set(sections.map(section => section.id));
+  for (const id of selectedProjectSectionIds) if (!valid.has(id)) selectedProjectSectionIds.delete(id);
+  const active = selectedProjectSectionIds.size > 0 && !projectEls.screen.hidden;
+  document.querySelector("#project-section-selection-toolbar").hidden = !active;
+  document.querySelector("#project-section-selection-count").textContent = `Секцій: ${selectedProjectSectionIds.size}`;
+  document.querySelector("#project-section-rename").disabled = selectedProjectSectionIds.size !== 1 || projectSectionBusy;
+  for (const id of ["project-section-delete", "project-section-dissolve"]) document.getElementById(id).disabled = projectSectionBusy;
+  projectEls.screen.querySelector(".project-screen-header").hidden = active || selectedTaskIds.size > 0;
+  if (active) projectEls.selectionToolbar.hidden = true;
+  for (const row of projectEls.taskList.querySelectorAll(".project-section-heading")) {
+    const selected = selectedProjectSectionIds.has(row.dataset.sectionId);
+    const section = sections.find(section => section.id === row.dataset.sectionId);
+    const button = row.querySelector("[data-project-section-toggle]");
+    row.classList.toggle("section-selected", selected);
+    button.setAttribute("aria-pressed", String(selected));
+    const members = row.querySelector(".list-section-tasks");
+    const containsSelectedTask = [...members.querySelectorAll("[data-id]")].some(task => selectedTaskIds.has(task.dataset.id));
+    members.hidden = selected || (section?.collapsed && !containsSelectedTask);
+    button.setAttribute("aria-expanded", String(!members.hidden));
+  }
+}
+function clearProjectSectionSelection() {
+  selectedProjectSectionIds.clear();
+  syncProjectSectionSelection();
+}
+function selectProjectSection(id, only = false) {
+  if (projectSectionBusy) return;
+  if (only) selectedProjectSectionIds.clear();
+  selectedProjectSectionIds.add(id);
+  selectedTaskIds.clear();
+  projectEls.taskList.querySelectorAll(".swipe-row.selected").forEach(row => row.classList.remove("selected"));
+  projectEls.taskList.classList.remove("selection-mode");
+  projectEls.listOptions.hidden = true;
+  syncProjectSectionSelection();
+}
+async function changeProjectSections(transform) {
+  if (projectSectionBusy) return false;
+  projectSectionBusy = true;
+  syncProjectSectionSelection();
+  try {
+    if (!projectEls.editor.hidden && !await saveProjectFields()) throw new Error(projectEls.saveStatus.textContent || "Не вдалося зберегти проєкт");
+    const current = projects.find(item => item.id === activeProjectId);
+    if (!current) return false;
+    const plan = transform(current);
+    await projectDb.putWithTasks(plan.project, plan.tasks || [], plan.deletedTaskIds || []);
+    const replacements = new Map((plan.tasks || []).map(task => [task.id, task]));
+    const deleted = new Set(plan.deletedTaskIds || []);
+    tasks = tasks.filter(task => !deleted.has(task.id)).map(task => replacements.get(task.id) || task);
+    projects = projects.map(project => project.id === current.id ? plan.project : project);
+    renderProjects();
+    renderCurrentTasks();
+    renderOpenProject();
+    syncProjectEditorSummary();
+    return true;
+  } catch (error) {
+    if (projectEls.sectionActionDialog.open) {
+      const field = document.querySelector("#project-section-action-error");
+      field.textContent = error.message || "Не вдалося змінити секції";
+      field.hidden = false;
+    } else if (projectEls.sectionsDialog.open) {
+      const field = document.querySelector("#project-section-picker-error");
+      field.textContent = error.message || "Не вдалося змінити секцію";
+      field.hidden = false;
+    } else toast("Не вдалося змінити секції");
+    return false;
+  } finally { projectSectionBusy = false; syncProjectSectionSelection(); }
+}
+function sectionUiContext() {
+  if (projectEls.screen.hidden) return { kind: "list", id: activeListId, record: activeList(), sections: orderedListSections(), selectedIds: selectedListSectionIds,
+    taskRecords: tasks.filter(task => task.listId === activeListId), parent: "списку" };
+  const project = projects.find(item => item.id === activeProjectId);
+  return { kind: "project", id: activeProjectId, record: project, sections: project?.projectSections || [], selectedIds: selectedProjectSectionIds,
+    taskRecords: tasks.filter(task => task.projectId === activeProjectId), parent: "проєкті" };
+}
+function openProjectSectionAction(action) {
+  const context = sectionUiContext();
+  const selected = context.selectedIds;
+  if (projectSectionBusy || !selected.size || (action === "rename" && selected.size !== 1)) return;
+  if (!context.record || (context.kind === "list" && context.record.kind !== "regular")) return;
+  sectionDialogScope = { kind: context.kind, id: context.id };
+  const name = document.querySelector("#project-section-rename-input");
+  const renaming = action === "rename";
+  projectEls.sectionActionDialog.dataset.action = action;
+  document.querySelector("#project-section-action-title").textContent = renaming ? "Перейменувати секцію" : action === "delete" ? "Видалити секції?" : "Розпустити секції?";
+  document.querySelector("#project-section-rename-label").hidden = !renaming;
+  name.required = renaming;
+  name.value = renaming ? context.sections.find(section => selected.has(section.id))?.title || "" : "";
+  const count = context.taskRecords.filter(task => selected.has(context.kind === "list" ? task.sectionId : task.projectSectionId)).length;
+  document.querySelector("#project-section-action-description").textContent = renaming ? "" : action === "delete"
+    ? `Буде видалено секцій: ${selected.size}, завдань у них: ${count}. Включно із завершеними.`
+    : `Буде прибрано секцій: ${selected.size}. Усі їхні завдання залишаться в цьому ${context.parent} без секції.`;
+  const confirm = document.querySelector("#project-section-action-confirm");
+  confirm.textContent = renaming ? "Зберегти" : action === "delete" ? "Видалити" : "Розпустити";
+  confirm.classList.toggle("danger-action", action === "delete");
+  document.querySelector("#project-section-action-error").hidden = true;
+  syncProjectDialogViewport();
+  projectEls.sectionActionDialog.showModal();
+  (renaming ? name : document.querySelector("#project-section-action-cancel")).focus();
+  if (renaming) name.select();
+  scheduleMobileNavigationRecord();
+}
+function restoreProjectSectionAction(state) {
+  const selected = state.scope?.kind === "list" ? selectedListSectionIds : selectedProjectSectionIds;
+  selected.clear();
+  for (const id of state.ids) selected.add(id);
+  if (state.scope?.kind === "list") syncListSectionSelection(); else syncProjectSectionSelection();
+  openProjectSectionAction(state.action);
+}
+function closeProjectSectionAction() {
+  if (projectSectionBusy) return;
+  projectEls.sectionActionDialog.close();
+  if (sectionDialogScope?.kind === "list") (els.list.querySelector(".list-section-toggle[aria-pressed='true']") || els.listEditorOpen).focus();
+  else (projectEls.taskList.querySelector("[data-project-section-toggle][aria-pressed='true']") || projectEls.editOpen).focus();
+  scheduleMobileNavigationRecord();
+}
+function syncProjectEditorSummary() {
+  projectEls.descriptionOpen.textContent = richPreviewText(projectEls.description.value).trim() || "Додати опис…";
+}
+function closeProjectActions({ focus = false } = {}) {
+  projectEls.actionsMenu.hidden = true;
+  projectEls.actionsTrigger.setAttribute("aria-expanded", "false");
+  if (focus) projectEls.actionsTrigger.focus();
+}
+function syncProjectDialogViewport() {
+  const viewport = window.visualViewport;
+  for (const dialog of [projectEls.sectionsDialog, projectEls.descriptionDialog, projectEls.sectionActionDialog]) {
+    dialog.style.setProperty("--project-dialog-top", `${viewport?.offsetTop || 0}px`);
+    dialog.style.setProperty("--project-dialog-height", `${viewport?.height || window.innerHeight}px`);
+    dialog.style.setProperty("--project-dialog-bottom", `${Math.max(0, window.innerHeight - (viewport?.height || window.innerHeight) - (viewport?.offsetTop || 0))}px`);
+  }
+}
+window.visualViewport?.addEventListener("resize", syncProjectDialogViewport);
+window.visualViewport?.addEventListener("scroll", syncProjectDialogViewport);
+window.addEventListener("resize", syncProjectDialogViewport);
+let projectDescriptionDraft = "";
+function openProjectDescription() {
+  projectDescriptionDraft = projectEls.description.value;
+  syncProjectDialogViewport();
+  projectEls.descriptionDialog.showModal();
+  projectEls.description.focus();
+  scheduleMobileNavigationRecord();
+}
+function closeProjectDescription(save = false) {
+  if (!save) projectEls.description.value = projectDescriptionDraft;
+  else markProjectDirty();
+  projectEls.descriptionDialog.close();
+  syncProjectEditorSummary();
+  projectEls.descriptionOpen.focus();
+  scheduleMobileNavigationRecord();
+}
+function openProjectSections() {
+  const context = sectionUiContext();
+  const selected = context.taskRecords.filter(task => selectedTaskIds.has(task.id));
+  if (!context.record || !selected.length || projectSectionBusy || (context.kind === "list" ? context.record.kind !== "regular" : context.record.status !== "active")) return;
+  sectionDialogScope = { kind: context.kind, id: context.id };
+  projectEls.sectionCreate.reset();
+  document.querySelector("#project-section-picker-error").hidden = true;
+  document.querySelector("#project-section-options").replaceChildren(...context.sections.map(section => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.dataset.assignProjectSection = section.id;
+    button.textContent = section.title;
+    return button;
+  }));
+  syncProjectDialogViewport();
+  projectEls.sectionsDialog.showModal();
+  (document.querySelector("#project-section-options button") || projectEls.sectionName).focus();
+  scheduleMobileNavigationRecord();
+}
+function closeProjectSections() {
+  if (projectSectionBusy) return;
+  projectEls.sectionsDialog.close();
+  if (sectionDialogScope?.kind === "list") (els.selectionToolbar.hidden ? els.listEditorOpen : document.querySelector("#list-assign-section")).focus();
+  else if (!projectEls.selectionToolbar.hidden) projectEls.sectionsOpen.focus();
+  else projectEls.editOpen.focus();
+  scheduleMobileNavigationRecord();
+}
+async function assignSelectedProjectTasks(sectionId = null) {
+  const selected = new Set(selectedTaskIds);
+  const name = projectEls.sectionName.value;
+  const saved = sectionDialogScope?.kind === "list"
+    ? await changeListSections(list => assignListTasksToSection(list, sections, tasks, selected, sectionId, name), sectionDialogScope.id)
+    : await changeProjectSections(project => assignProjectTasksToSection(project, tasks, selected, sectionId, name));
+  if (!saved) return;
+  selectedTaskIds.clear();
+  closeProjectSections();
+  renderCurrentTasks();
+}
 function openProjectEditor() {
+  selectedProjectSectionIds.clear();
   renderOpenProject();
   projectEls.editor.hidden = false;
   document.body.classList.add("project-editor-open");
-  projectEls.title.focus();
+  syncProjectEditorSummary();
+  projectEls.saveStatus.textContent = "";
+  projectEls.editClose.focus();
 }
 
 function closeProjectEditor() {
+  selectedProjectSectionIds.clear();
+  syncProjectSectionSelection();
+  if (projectEls.sectionActionDialog.open) closeProjectSectionAction();
+  closeProjectActions();
+  document.querySelector(".project-copy-menu").open = false;
+  if (projectEls.sectionsDialog.open) closeProjectSections();
+  if (projectEls.descriptionDialog.open) closeProjectDescription();
   projectEls.editor.hidden = true;
   document.body.classList.remove("project-editor-open");
   renderOpenProject();
@@ -589,6 +769,9 @@ function toggleCompletedProjectTasks() {
 }
 
 async function closeProject({ animated = false } = {}) {
+  clearProjectSectionSelection();
+  if (projectEls.sectionsDialog.open) closeProjectSections();
+  if (projectEls.sectionActionDialog.open) closeProjectSectionAction();
   closeProjectOverdueDialog();
   if (!projectEls.attachBackdrop.hidden) closeAttachDialog();
   if (!projectEls.editor.hidden) closeProjectEditor();
@@ -612,9 +795,10 @@ async function saveProjectFields({ closeAfter = false } = {}) {
   const title = projectEls.title.value.trim();
   if (!title) {
     projectEls.saveStatus.textContent = "Назва не може бути порожньою";
-    return;
+    projectEls.title.focus();
+    return false;
   }
-  const updated = createProject({ ...project, title, goal: projectEls.goal.value.trim(), description: projectEls.description.value.trim(), dueDate: projectEls.dueDate.value || null, dueTime: projectEls.dueDate.value && projectEls.dueTime.value ? projectEls.dueTime.value : null, showCountdown: projectEls.showCountdown.checked, defaultListId: projectEls.defaultList.value || null, updatedAt: new Date().toISOString() });
+  const updated = createProject({ ...project, title, description: projectEls.description.value.trim(), dueDate: projectEls.dueDate.value || null, dueTime: projectEls.dueDate.value && projectEls.dueTime.value ? projectEls.dueTime.value : null, showCountdown: projectEls.showCountdown.checked, defaultListId: projectEls.defaultList.value || null, updatedAt: new Date().toISOString() });
   projectEls.saveStatus.textContent = "Збереження…";
   try {
     await projectDb.put(updated);
@@ -623,9 +807,12 @@ async function saveProjectFields({ closeAfter = false } = {}) {
     projectEls.saveStatus.textContent = "Збережено";
     renderProjects();
     renderCurrentTasks();
+    syncProjectEditorSummary();
     if (closeAfter) closeProjectEditor();
+    return true;
   } catch (_error) {
     projectEls.saveStatus.textContent = "Не вдалося зберегти";
+    return false;
   }
 }
 
@@ -721,7 +908,7 @@ async function deleteProject() {
 function closeProjectConvertDialog() {
   projectEls.convertDialogBackdrop.hidden = true;
   document.body.classList.remove("project-delete-dialog-open");
-  projectEls.convertTask.focus();
+  projectEls.actionsTrigger.focus();
 }
 
 function openProjectConvertDialog() {
@@ -1019,70 +1206,19 @@ projectEls.editOpen.addEventListener("click", openProjectEditor);
 projectEls.editClose.addEventListener("click", () => saveProjectFields({ closeAfter: true }));
 projectEls.tasksExpand.addEventListener("click", toggleProjectTasks);
 projectEls.mainComplete.addEventListener("click", toggleProjectStatus);
-[projectEls.title, projectEls.goal, projectEls.description, projectEls.dueDate, projectEls.dueTime, projectEls.defaultList].forEach(field => field.addEventListener("input", markProjectDirty));
+[projectEls.title, projectEls.description, projectEls.dueDate, projectEls.dueTime, projectEls.defaultList].forEach(field => field.addEventListener("input", markProjectDirty));
 projectEls.datePickerOpen.addEventListener("click", () => {
   editingSelectedTaskDates = false;
   editingProjectDate = true;
   openDatePicker(projectEls.dueDate.value, projectEls.dueTime.value);
 });
 projectEls.showCountdown.addEventListener("change", () => { markProjectDirty(); renderProjectCountdown(); });
-projectEls.save.addEventListener("click", () => saveProjectFields({ closeAfter: true }));
+
 projectEls.stepForm.addEventListener("submit", event => { event.preventDefault(); addProjectStep(projectEls.stepTitle.value); });
-projectEls.sectionCreate.addEventListener("submit", async event => {
-  event.preventDefault();
-  const project = projects.find(item => item.id === activeProjectId);
-  const title = projectEls.sectionName.value.trim();
-  if (!project || !title) return;
-  if ((project.projectSections || []).some(section => section.title.toLocaleLowerCase("uk") === title.toLocaleLowerCase("uk"))) { toast("Секція з такою назвою вже є"); return; }
-  const updated = createProject({ ...project, projectSections: [...(project.projectSections || []), { id: crypto.randomUUID(), title, collapsed: false }], updatedAt: new Date().toISOString() });
-  try { await projectDb.put(updated); projects = projects.map(item => item.id === updated.id ? updated : item); projectEls.sectionName.value = ""; renderOpenProject(); }
-  catch (_error) { toast("Не вдалося додати секцію"); }
-});
-projectEls.sections.addEventListener("change", async event => {
-  if (!event.target.matches(".section-name")) return;
-  const project = projects.find(item => item.id === activeProjectId);
-  const id = event.target.closest("[data-section-id]")?.dataset.sectionId;
-  if (!project || !id) return;
-  const title = event.target.value.trim();
-  const current = project.projectSections.find(section => section.id === id);
-  if (!current) return;
-  if (!title || project.projectSections.some(section => section.id !== id && section.title.toLocaleLowerCase("uk") === title.toLocaleLowerCase("uk"))) {
-    event.target.value = current.title;
-    toast(title ? "Секція з такою назвою вже є" : "Введіть назву секції");
-    return;
-  }
-  if (title === current.title) return;
-  const updated = createProject({ ...project, projectSections: project.projectSections.map(section => section.id === id ? { ...section, title } : section), updatedAt: new Date().toISOString() });
-  try { await projectDb.put(updated); projects = projects.map(item => item.id === updated.id ? updated : item); renderOpenProject(); }
-  catch (_error) { event.target.value = current.title; toast("Не вдалося перейменувати секцію"); }
-});
-projectEls.sections.addEventListener("click", async event => {
-  const button = event.target.closest("[data-section-action]");
-  const project = projects.find(item => item.id === activeProjectId);
-  const id = button?.closest("[data-section-id]")?.dataset.sectionId;
-  if (!button || !project || !id) return;
-  const sections = (project.projectSections || []).map(section => ({ ...section }));
-  const index = sections.findIndex(section => section.id === id);
-  if (index < 0) return;
-  const action = button.dataset.sectionAction;
-  if (action === "delete") {
-    if (!confirm(`Видалити секцію «${sections[index].title}»? Кроки залишаться в проєкті.`)) return;
-    sections.splice(index, 1);
-  } else {
-    const other = index + (action === "up" ? -1 : 1);
-    if (other < 0 || other >= sections.length) return;
-    [sections[index], sections[other]] = [sections[other], sections[index]];
-  }
-  const updated = createProject({ ...project, projectSections: sections, updatedAt: new Date().toISOString() });
-  try {
-    if (action === "delete") {
-      const changed = tasks.filter(task => task.projectId === project.id && task.projectSectionId === id).map(task => ({ ...task, projectSectionId: null, updatedAt: updated.updatedAt }));
-      await projectDb.putWithTasks(updated, changed);
-      tasks = tasks.map(task => changed.find(item => item.id === task.id) || task);
-    } else await projectDb.put(updated);
-    projects = projects.map(item => item.id === updated.id ? updated : item);
-    renderOpenProject();
-  } catch (_error) { toast("Не вдалося змінити секцію"); }
+projectEls.sectionCreate.addEventListener("submit", event => { event.preventDefault(); assignSelectedProjectTasks(); });
+document.querySelector("#project-section-options").addEventListener("click", event => {
+  const button = event.target.closest("[data-assign-project-section]");
+  if (button) assignSelectedProjectTasks(button.dataset.assignProjectSection);
 });
 projectEls.taskList.addEventListener("click", async event => {
   const add = event.target.closest(".list-section-add");
@@ -1091,7 +1227,16 @@ projectEls.taskList.addEventListener("click", async event => {
     if (sectionId) openQuickTask({ kind: "project-section", projectId: activeProjectId, sectionId });
     return;
   }
-  const id = event.target.closest("[data-project-section-toggle]")?.dataset.projectSectionToggle;
+  const header = event.target.closest("[data-project-section-toggle]");
+  const id = header?.dataset.projectSectionToggle;
+  const row = header?.closest(".project-section-heading");
+  if (row?.dataset.longPressed || row?.dataset.dragged) { delete row.dataset.longPressed; delete row.dataset.dragged; return; }
+  if (id && selectedProjectSectionIds.size) {
+    if (selectedProjectSectionIds.has(id)) selectedProjectSectionIds.delete(id);
+    else selectedProjectSectionIds.add(id);
+    syncProjectSectionSelection();
+    return;
+  }
   const project = projects.find(item => item.id === activeProjectId);
   if (!id || !project) return;
   const updated = createProject({ ...project, projectSections: project.projectSections.map(section => section.id === id ? { ...section, collapsed: !section.collapsed } : section), updatedAt: new Date().toISOString() });
@@ -1135,9 +1280,49 @@ projectEls.addNewFirst.addEventListener("change", async () => {
     toast("Не вдалося зберегти порядок нових завдань");
   }
 });
-projectEls.complete.addEventListener("click", toggleProjectStatus);
-projectEls.delete.addEventListener("click", deleteProject);
-projectEls.convertTask.addEventListener("click", openProjectConvertDialog);
+projectEls.actionsTrigger.addEventListener("click", () => {
+  const open = projectEls.actionsMenu.hidden;
+  projectEls.actionsMenu.hidden = !open;
+  projectEls.actionsTrigger.setAttribute("aria-expanded", String(open));
+  if (open) projectEls.actionsMenu.querySelector("button:not([hidden])").focus();
+});
+document.addEventListener("click", event => {
+  if (!event.target.closest("#project-actions-menu, #project-actions-trigger")) closeProjectActions();
+  if (!event.target.closest(".project-copy-menu")) document.querySelector(".project-copy-menu").open = false;
+});
+projectEls.actionsMenu.addEventListener("keydown", event => {
+  const buttons = [...projectEls.actionsMenu.querySelectorAll("button:not([hidden])")];
+  const index = buttons.indexOf(document.activeElement);
+  if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); closeProjectActions({ focus: true }); }
+  if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+    event.preventDefault();
+    buttons[(index + (event.key === "ArrowDown" ? 1 : buttons.length - 1)) % buttons.length].focus();
+  }
+  if (event.key === "Tab") closeProjectActions({ focus: true });
+});
+projectEls.sectionsOpen.addEventListener("click", openProjectSections);
+document.querySelector("#project-sections-close").addEventListener("click", closeProjectSections);
+projectEls.descriptionOpen.addEventListener("click", openProjectDescription);
+document.querySelector("#project-description-cancel").addEventListener("click", () => closeProjectDescription());
+document.querySelector("#project-description-done").addEventListener("click", () => closeProjectDescription(true));
+for (const [dialog, close] of [[projectEls.sectionsDialog, closeProjectSections], [projectEls.descriptionDialog, closeProjectDescription]]) {
+  dialog.addEventListener("cancel", event => { event.preventDefault(); close(); });
+  dialog.addEventListener("click", event => {
+    const rect = dialog.getBoundingClientRect();
+    if (event.target === dialog && (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom)) close();
+  });
+}
+document.querySelector(".project-copy-menu").addEventListener("click", event => {
+  if (event.target.closest("button")) event.currentTarget.open = false;
+});
+async function runProjectMenuAction(action) {
+  if (!await saveProjectFields()) { closeProjectActions(); return; }
+  closeProjectActions({ focus: true });
+  await action();
+}
+projectEls.complete.addEventListener("click", () => runProjectMenuAction(toggleProjectStatus));
+projectEls.delete.addEventListener("click", () => runProjectMenuAction(deleteProject));
+projectEls.convertTask.addEventListener("click", () => runProjectMenuAction(openProjectConvertDialog));
 projectEls.convertCancel.addEventListener("click", closeProjectConvertDialog);
 projectEls.convertConfirm.addEventListener("click", convertOpenProjectToTask);
 projectEls.convertDialogBackdrop.addEventListener("click", event => {
@@ -1219,4 +1404,55 @@ enableProjectCardReorder({
   onSelectOnly: selectOnlyProject,
   getSelectedIds: () => new Set(selectedProjectIds),
   onReorder: reorderProjectCards
+});
+
+projectEls.taskList.addEventListener("contextmenu", event => {
+  if (event.target.closest("[data-project-section-toggle]")) event.preventDefault();
+});
+document.querySelector("#project-section-selection-close").addEventListener("click", clearProjectSectionSelection);
+projectEls.taskList.addEventListener("keydown", event => {
+  const header = event.target.closest("[data-project-section-toggle]");
+  if (!header) return;
+  if (event.key === "Escape") { clearProjectSectionSelection(); event.preventDefault(); }
+  if (event.key === " " && event.shiftKey) { selectProjectSection(header.dataset.projectSectionToggle); event.preventDefault(); }
+  if (event.altKey && ["ArrowUp", "ArrowDown"].includes(event.key)) {
+    event.preventDefault();
+    const sections = projects.find(project => project.id === activeProjectId)?.projectSections || [];
+    const index = sections.findIndex(section => section.id === header.dataset.projectSectionToggle);
+    const target = event.key === "ArrowUp" ? index - 1 : index + 2;
+    if ((event.key === "ArrowUp" && index <= 0) || (event.key === "ArrowDown" && index >= sections.length - 1)) return;
+    changeProjectSections(project => ({ project: reorderProjectSections(project, new Set([header.dataset.projectSectionToggle]), sections[target]?.id || null) }));
+  }
+});
+for (const action of ["rename", "dissolve", "delete"]) document.getElementById(`project-section-${action}`).addEventListener("click", () => openProjectSectionAction(action));
+document.querySelector("#project-section-action-cancel").addEventListener("click", closeProjectSectionAction);
+projectEls.sectionActionDialog.addEventListener("cancel", event => { event.preventDefault(); closeProjectSectionAction(); });
+document.querySelector("#project-section-action-form").addEventListener("submit", async event => {
+  event.preventDefault();
+  const action = projectEls.sectionActionDialog.dataset.action;
+  const listMode = sectionDialogScope?.kind === "list";
+  const selected = new Set(listMode ? selectedListSectionIds : selectedProjectSectionIds);
+  const confirm = document.querySelector("#project-section-action-confirm");
+  confirm.disabled = true;
+  const saved = listMode
+    ? await changeListSections(list => action === "rename"
+      ? renameListSection(sections, list.id, [...selected][0], document.querySelector("#project-section-rename-input").value)
+      : removeListSections(sections, tasks, list.id, selected, action === "delete"), sectionDialogScope.id)
+    : await changeProjectSections(project => action === "rename"
+      ? { project: renameProjectSection(project, [...selected][0], document.querySelector("#project-section-rename-input").value) }
+      : removeProjectSections(project, tasks, selected, action === "delete"));
+  confirm.disabled = false;
+  if (saved) {
+    if (action !== "rename") (listMode ? selectedListSectionIds : selectedProjectSectionIds).clear();
+    closeProjectSectionAction();
+    if (listMode) syncListSectionSelection(); else syncProjectSectionSelection();
+  }
+});
+enableProjectCardReorder({
+  container: projectEls.taskList, cardSelector: ".project-section-heading", handleSelector: "[data-project-section-toggle]", insertionSelector: ".list-section-heading", idKey: "sectionId", scrollElement: projectEls.screen, requireSelectionForDrag: true,
+  isSelectionMode: () => !projectSectionBusy && selectedProjectSectionIds.size > 0,
+  isSelected: id => !projectSectionBusy && selectedProjectSectionIds.has(id),
+  onLongPress: id => selectProjectSection(id), onSelectOnly: id => selectProjectSection(id, true),
+  getSelectedIds: () => new Set(selectedProjectSectionIds),
+  onReorder: ({ selectedIds, beforeId }) => changeProjectSections(project => ({ project: reorderProjectSections(project, selectedIds, beforeId) }))
 });

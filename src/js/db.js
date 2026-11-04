@@ -272,6 +272,12 @@ const listDb = {
 };
 
 const sectionDb = {
+  applyChanges: ({ sections = [], tasks = [], deletedSectionIds = [], deletedTaskIds = [] }) => transact(["sections", "tasks"], "readwrite", (_tx, stores) => {
+    for (const section of sections) stores.sections.put(section);
+    for (const task of tasks) stores.tasks.put(task);
+    for (const id of deletedSectionIds) stores.sections.delete(id);
+    for (const id of deletedTaskIds) stores.tasks.delete(id);
+  }),
   all: () => appDb.all("sections"),
   put: section => appDb.put("sections", section),
   putMany: sections => transact("sections", "readwrite", (_tx, stores) => {
@@ -291,9 +297,10 @@ const sectionDb = {
 const projectDb = {
   all: () => appDb.all("projects"),
   put: project => appDb.put("projects", project),
-  putWithTasks: (project, changed) => transact(["projects", "tasks"], "readwrite", (_tx, stores) => {
+  putWithTasks: (project, changed, deletedTaskIds = []) => transact(["projects", "tasks"], "readwrite", (_tx, stores) => {
     stores.projects.put(project);
     for (const task of changed) stores.tasks.put(task);
+    for (const id of deletedTaskIds) stores.tasks.delete(id);
   }),
   createFromSteps: (sourceProjectId, project, steps) => transact(["projects", "tasks"], "readwrite", (tx, stores) => {
     const sourceRequest = stores.projects.get(sourceProjectId);

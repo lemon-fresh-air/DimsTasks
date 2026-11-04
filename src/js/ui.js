@@ -458,7 +458,7 @@ function installRichDescription(editor, titleInput) {
   }
   shell.querySelectorAll("[data-rich-copy]").forEach(button => button.addEventListener("click", () => copyDescription(button.dataset.richCopy === "title-description")));
   if (editor.id === "task-description") document.querySelector("#task-copy-description").addEventListener("click", () => copyDescription(false));
-  else document.querySelector('[data-rich-target="project-description"]').addEventListener("click", () => copyDescription(false));
+  else document.querySelectorAll('[data-rich-target="project-description"]').forEach(button => button.addEventListener("click", () => copyDescription(button.dataset.richCopy === "title-description")));
 }
 installRichDescription(els.description, els.input);
 installRichDescription(document.querySelector("#project-description"), document.querySelector("#project-title"));
@@ -1009,8 +1009,7 @@ function renderTasks(tasks, selectedIds = new Set(), taskLists = [], taskProject
     els.list.replaceChildren(...active.filter(task => !placed.has(task.id)).map(task => rows.get(task.id)),
       ...layout.items.map(item => rows.get(item.id)).filter(Boolean));
   } else if (contextList?.kind === "regular" && listSections.some(section => section.listId === contextList.id)) {
-    const currentSections = listSections.filter(section => section.listId === contextList.id)
-      .sort((a, b) => a.position - b.position || a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id));
+    const currentSections = listSectionOrder(listSections, contextList.id);
     const validIds = new Set(currentSections.map(section => section.id));
     const rootRows = active.filter(task => !task.sectionId || !validIds.has(task.sectionId)).map(task => rows.get(task.id));
     const sectionRows = currentSections.map(section => {

@@ -1,6 +1,7 @@
 let tasks = [];
 let lists = [];
 let sections = [];
+const selectedListSectionIds = new Set();
 let activeListId = INBOX_LIST_ID;
 let todayDefaultListId = INBOX_LIST_ID;
 let returnOverdueToInbox = false;
@@ -170,6 +171,7 @@ function renderCurrentTasks() {
   renderTasks(visibleTasks(), selectedTaskIds, lists, projects, activeList(),
     isDayList() && todayLayout?.date === activePlanDate() ? todayLayout : null, selectedTodayGroupIds,
     sections);
+  syncListSectionSelection();
   updateMainMenuTaskCounts(tasks);
   renderSelectedListOptions(lists, activeListId);
   renderProjects();
@@ -667,6 +669,7 @@ function checkForDateChange() {
 function openList(listId) {
   closeProjects();
   if (!isDayList(listId) && !lists.some(list => list.id === listId)) return;
+  selectedListSectionIds.clear();
   activeListId = listId;
   todayLayout = null;
   selectedTaskIds = new Set();
@@ -724,116 +727,111 @@ function showListEditorError(message = "") {
 }
 
 function orderedListSections(listId = activeListId) {
-  return sections.filter(section => section.listId === listId)
-    .sort((a, b) => a.position - b.position || a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id));
+  return listSectionOrder(sections, listId);
 }
 
-function renderListSections() {
-  const container = document.querySelector("#list-sections");
-  const ordered = orderedListSections();
-  container.replaceChildren(...ordered.map((section, index) => {
-    const row = document.createElement("li");
-    row.dataset.sectionId = section.id;
-    const name = document.createElement("input");
-    name.value = section.title;
-    name.maxLength = 80;
-    name.setAttribute("aria-label", `Назва секції ${section.title}`);
-    name.className = "section-name";
-    const controls = document.createElement("div");
-    for (const [action, label, disabled] of [["up", "Вище", index === 0], ["down", "Нижче", index === ordered.length - 1], ["delete", "Видалити", false]]) {
-      const button = document.createElement("button");
-      button.type = "button";
-      button.dataset.action = action;
-      if (action === "delete") {
-        const icon = document.createElement("span");
-        icon.className = "trash-icon";
-        icon.setAttribute("aria-hidden", "true");
-        button.append(icon);
-      } else button.textContent = action === "up" ? "↑" : "↓";
-      button.setAttribute("aria-label", `${label}: ${section.title}`);
-      button.title = label;
-      button.disabled = disabled;
-      controls.append(button);
-    }
-    row.append(name, controls);
-    return row;
-  }));
-}
-
-function showSectionError(message = "") {
-  const error = document.querySelector("#section-error");
-  error.textContent = message;
-  error.hidden = !message;
-}
-
-document.querySelector("#section-create-form").addEventListener("submit", async event => {
-  event.preventDefault();
-  const list = activeList();
-  if (list?.kind !== "regular") return;
-  const input = document.querySelector("#section-create-name");
-  const title = input.value.trim();
-  if (!title) { showSectionError("Введіть назву секції"); return; }
-  const section = createSection({ listId: list.id, title, position: orderedListSections().length });
-  try {
-    await sectionDb.put(section);
-    sections.push(section);
-    input.value = "";
-    showSectionError();
-    renderListSections();
-    renderCurrentTasks();
-  } catch (_error) { showSectionError("Не вдалося додати секцію"); }
-});
-
-document.querySelector("#list-sections").addEventListener("change", async event => {
-  if (!event.target.matches(".section-name")) return;
-  const section = sections.find(item => item.id === event.target.closest("li").dataset.sectionId);
-  if (!section) return;
-  const title = event.target.value.trim();
-  if (!title) { event.target.value = section.title; showSectionError("Введіть назву секції"); return; }
-  const updated = { ...section, title, updatedAt: new Date().toISOString() };
-  try {
-    await sectionDb.put(updated);
-    sections = sections.map(item => item.id === updated.id ? updated : item);
-    showSectionError();
-    renderListSections();
-    renderCurrentTasks();
-  } catch (_error) { event.target.value = section.title; showSectionError("Не вдалося перейменувати секцію"); }
-});
-
-document.querySelector("#list-sections").addEventListener("click", async event => {
-  const button = event.target.closest("button[data-action]");
-  if (!button) return;
-  const sectionId = button.closest("li").dataset.sectionId;
-  const ordered = orderedListSections();
-  const index = ordered.findIndex(section => section.id === sectionId);
-  if (index < 0) return;
-  if (button.dataset.action === "delete") {
-    if (!confirm(`Видалити секцію «${ordered[index].title}»? Її завдання залишаться в цьому списку без секції.`)) return;
-    try {
-      await sectionDb.deleteAndUnassign(sectionId, new Date().toISOString());
-      sections = sections.filter(section => section.id !== sectionId);
-      tasks = tasks.map(task => task.sectionId === sectionId ? { ...task, sectionId: null } : task);
-      renderListSections();
-      renderCurrentTasks();
-      showSectionError();
-    } catch (_error) { showSectionError("Не вдалося видалити секцію"); }
-    return;
+function syncListSectionSelection() {
+  const regular = activeList()?.kind === "regular" && projectEls.screen.hidden;
+  const valid = new Set(regular ? orderedListSections().map(section => section.id) : []);
+  for (const id of selectedListSectionIds) if (!valid.has(id)) selectedListSectionIds.delete(id);
+  const selected = selectedListSectionIds.size > 0;
+  document.querySelector("#list-section-selection-toolbar").hidden = !selected;
+  document.querySelector("#list-section-selection-count").textContent = `Секцій: ${selectedListSectionIds.size}`;
+  document.querySelector("#list-section-rename").disabled = selectedListSectionIds.size !== 1 || projectSectionBusy;
+  for (const id of ["list-section-dissolve", "list-section-delete"]) document.getElementById(id).disabled = projectSectionBusy;
+  document.querySelector("#list-assign-section").hidden = !regular || !selectedTaskIds.size;
+  if (regular) {
+    els.normalHeader.hidden = selected || selectedTaskIds.size > 0;
+    els.selectionToolbar.hidden = selected || !selectedTaskIds.size;
+    els.shell.classList.toggle("selection-active", selected || selectedTaskIds.size > 0);
   }
-  const other = index + (button.dataset.action === "up" ? -1 : 1);
-  if (other < 0 || other >= ordered.length) return;
-  [ordered[index], ordered[other]] = [ordered[other], ordered[index]];
-  const now = new Date().toISOString();
-  const changed = ordered.map((section, position) => ({ ...section, position, updatedAt: now }));
+  for (const row of els.list.querySelectorAll(":scope > .list-section")) {
+    const section = sections.find(section => section.id === row.dataset.sectionId && section.listId === activeListId);
+    if (!section) continue;
+    const chosen = selectedListSectionIds.has(section.id);
+    row.classList.toggle("section-selected", chosen);
+    const toggle = row.querySelector(".list-section-toggle");
+    toggle.setAttribute("aria-pressed", String(chosen));
+    const members = row.querySelector(".list-section-tasks");
+    const containsSelected = [...members.querySelectorAll("[data-id]")].some(task => selectedTaskIds.has(task.dataset.id));
+    members.hidden = chosen || (section.collapsed && !containsSelected);
+    toggle.setAttribute("aria-expanded", String(!members.hidden));
+  }
+}
+function clearListSectionSelection() {
+  selectedListSectionIds.clear();
+  syncListSectionSelection();
+}
+function selectListSection(id, only = false) {
+  if (projectSectionBusy || activeList()?.kind !== "regular" || !sections.some(section => section.id === id && section.listId === activeListId)) return;
+  if (only) selectedListSectionIds.clear();
+  selectedListSectionIds.add(id);
+  selectedTaskIds.clear();
+  selectedTodayGroupIds.clear();
+  closeSelectedListDropdown();
+  els.list.classList.remove("selection-mode");
+  els.list.querySelectorAll(".swipe-row.selected").forEach(row => { row.classList.remove("selected"); row.setAttribute("aria-selected", "false"); });
+  syncListSectionSelection();
+}
+async function changeListSections(transform, expectedListId = activeListId) {
+  if (projectSectionBusy) return false;
+  projectSectionBusy = true;
+  syncListSectionSelection();
   try {
-    await sectionDb.putMany(changed);
-    const byId = new Map(changed.map(section => [section.id, section]));
-    sections = sections.map(section => byId.get(section.id) || section);
-    renderListSections();
+    const list = activeList();
+    if (!projectEls.screen.hidden || list?.kind !== "regular" || list.id !== expectedListId) throw new Error("Список змінився. Спробуйте ще раз");
+    const plan = transform(list);
+    await sectionDb.applyChanges(plan);
+    const sectionUpdates = new Map((plan.sections || []).map(section => [section.id, section]));
+    const deletedSections = new Set(plan.deletedSectionIds || []);
+    sections = sections.filter(section => !deletedSections.has(section.id)).map(section => {
+      const updated = sectionUpdates.get(section.id);
+      sectionUpdates.delete(section.id);
+      return updated || section;
+    }).concat([...sectionUpdates.values()]);
+    const taskUpdates = new Map((plan.tasks || []).map(task => [task.id, task]));
+    const deletedTasks = new Set(plan.deletedTaskIds || []);
+    tasks = tasks.filter(task => !deletedTasks.has(task.id)).map(task => taskUpdates.get(task.id) || task);
+    selectedTaskIds = new Set([...selectedTaskIds].filter(id => !deletedTasks.has(id)));
     renderCurrentTasks();
-    showSectionError();
-  } catch (_error) { showSectionError("Не вдалося змінити порядок секцій"); }
+    renderCompletedTasks();
+    return true;
+  } catch (error) {
+    const field = document.querySelector(projectEls.sectionActionDialog.open ? "#project-section-action-error" : "#project-section-picker-error");
+    if (projectEls.sectionActionDialog.open || projectEls.sectionsDialog.open) {
+      field.textContent = error.message || "Не вдалося змінити секції";
+      field.hidden = false;
+    } else toast("Не вдалося змінити секції");
+    return false;
+  } finally { projectSectionBusy = false; syncListSectionSelection(); }
+}
+document.querySelector("#list-assign-section").addEventListener("click", openProjectSections);
+document.querySelector("#list-section-selection-close").addEventListener("click", clearListSectionSelection);
+for (const action of ["rename", "dissolve", "delete"]) document.getElementById(`list-section-${action}`).addEventListener("click", () => openProjectSectionAction(action));
+els.list.addEventListener("contextmenu", event => { if (event.target.closest(".list-section-toggle")) event.preventDefault(); });
+els.list.addEventListener("keydown", event => {
+  const header = event.target.closest(".list-section-toggle");
+  if (!header || activeList()?.kind !== "regular") return;
+  const id = header.closest(".list-section").dataset.sectionId;
+  if (event.key === "Escape") { clearListSectionSelection(); event.preventDefault(); }
+  if (event.key === " " && event.shiftKey) { selectListSection(id); event.preventDefault(); }
+  if (event.altKey && ["ArrowUp", "ArrowDown"].includes(event.key)) {
+    event.preventDefault();
+    const ordered = orderedListSections();
+    const index = ordered.findIndex(section => section.id === id);
+    if ((event.key === "ArrowUp" && index <= 0) || (event.key === "ArrowDown" && index >= ordered.length - 1)) return;
+    const target = event.key === "ArrowUp" ? index - 1 : index + 2;
+    changeListSections(list => reorderListSections(sections, list.id, new Set([id]), ordered[target]?.id || null));
+  }
 });
-
+enableProjectCardReorder({
+  container: els.list, cardSelector: ".list-section", handleSelector: ".list-section-toggle", insertionSelector: ".list-section-heading", idKey: "sectionId", requireSelectionForDrag: true,
+  isSelectionMode: () => !projectSectionBusy && selectedListSectionIds.size > 0,
+  isSelected: id => !projectSectionBusy && selectedListSectionIds.has(id),
+  onLongPress: id => selectListSection(id), onSelectOnly: id => selectListSection(id, true),
+  getSelectedIds: () => new Set(selectedListSectionIds),
+  onReorder: ({ selectedIds, beforeId }) => changeListSections(list => reorderListSections(sections, list.id, selectedIds, beforeId))
+});
 
 function openListEditor() {
   const list = activeList();
@@ -841,7 +839,6 @@ function openListEditor() {
   clearTimeout(listEditorCloseTimer);
   cancelAnimationFrame(listEditorOpenFrame);
   els.listEditorName.value = displayListTitle(list);
-  renderListSections();
   els.listDeleteOpen.hidden = false;
   els.listDeleteConfirm.hidden = true;
   showListEditorError();
@@ -1018,12 +1015,16 @@ async function reorderTaskLists({ selectedIds, beforeId }) {
 }
 
 function selectTask(id) {
+  if (selectedListSectionIds.size) clearListSectionSelection();
+  if (selectedProjectSectionIds.size) clearProjectSectionSelection();
   if (selectedTodayGroupIds.size) { toast("Завдання виділяються окремо від груп"); return; }
   selectedTaskIds = new Set([id]);
   renderCurrentTasks();
 }
 
 function toggleTaskSelection(id) {
+  if (selectedListSectionIds.size) clearListSectionSelection();
+  if (selectedProjectSectionIds.size) clearProjectSectionSelection();
   if (selectedTodayGroupIds.size) { toast("Завдання виділяються окремо від груп"); return; }
   const next = new Set(selectedTaskIds);
   if (next.has(id)) next.delete(id); else next.add(id);
@@ -1032,6 +1033,7 @@ function toggleTaskSelection(id) {
 }
 
 function clearTaskSelection() {
+  selectedListSectionIds.clear();
   selectedTaskIds = new Set();
   selectedTodayGroupIds = new Set();
   closeSelectedListDropdown();
@@ -2414,6 +2416,7 @@ enableCalendarLongPress();
 async function savePendingDateSelection() {
   if (editingProjectDate) {
     editingProjectDate = false;
+    document.querySelector("#project-date-countdown").dataset.committed = "true";
     projectEls.dueDate.value = pendingDateValue || "";
     projectEls.dueTime.value = pendingDateValue ? pendingTimeValue : "";
     projectEls.dateLabel.textContent = readableDueDate(pendingDateValue, pendingTimeValue);
@@ -2555,10 +2558,20 @@ els.form.addEventListener("keydown", event => {
 });
 els.form.addEventListener("submit", event => { event.preventDefault(); saveAndLeaveTaskEditor(); });
 let quickTaskTarget = null;
+function syncQuickTaskViewport() {
+  if (els.quickTaskBackdrop.hidden) return;
+  const viewport = window.visualViewport;
+  els.quickTaskBackdrop.style.setProperty("--quick-task-viewport-top", `${viewport?.offsetTop || 0}px`);
+  els.quickTaskBackdrop.style.setProperty("--quick-task-viewport-height", `${viewport?.height || window.innerHeight}px`);
+}
+window.visualViewport?.addEventListener("resize", syncQuickTaskViewport);
+window.visualViewport?.addEventListener("scroll", syncQuickTaskViewport);
+window.addEventListener("resize", syncQuickTaskViewport);
 function openQuickTask(target) {
   quickTaskTarget = target;
   els.quickTaskForm.reset();
   els.quickTaskBackdrop.hidden = false;
+  syncQuickTaskViewport();
   els.quickTaskTitle.focus();
 }
 function closeQuickTask() {
@@ -2570,6 +2583,12 @@ els.quickTaskCancel.addEventListener("click", closeQuickTask);
 els.quickTaskBackdrop.addEventListener("click", event => { if (event.target === els.quickTaskBackdrop) closeQuickTask(); });
 els.quickTaskForm.addEventListener("keydown", event => {
   if (event.key === "Escape") { event.preventDefault(); closeQuickTask(); }
+  if (event.key === "Enter" && !event.isComposing && event.target === els.quickTaskTitle) {
+    event.preventDefault();
+    event.stopPropagation();
+    const submit = els.quickTaskForm.querySelector('[type="submit"]');
+    if (!submit.disabled) els.quickTaskForm.requestSubmit(submit);
+  }
 });
 els.quickTaskForm.addEventListener("submit", async event => {
   event.preventDefault();
@@ -2623,6 +2642,13 @@ els.list.addEventListener("click", async event => {
   if (!button) return;
   const section = sections.find(item => item.id === button.closest(".list-section")?.dataset.sectionId);
   if (!section || section.listId !== activeListId) return;
+  const row = button.closest(".list-section");
+  if (row.dataset.longPressed || row.dataset.dragged) { delete row.dataset.longPressed; delete row.dataset.dragged; return; }
+  if (selectedListSectionIds.size) {
+    if (selectedListSectionIds.has(section.id)) selectedListSectionIds.delete(section.id); else selectedListSectionIds.add(section.id);
+    syncListSectionSelection();
+    return;
+  }
   button.disabled = true;
   const updated = { ...section, collapsed: section.collapsed !== true, updatedAt: new Date().toISOString() };
   try {
@@ -2938,6 +2964,9 @@ function mobileNavigationState() {
     completedDetail: !els.completedTasksScreen.hidden ? completedDetailId : null,
     listEditor: listEditorOpen,
     projectEditor: !projectEls.editor.hidden,
+    projectSections: projectEls.sectionsDialog.open,
+    projectSectionAction: projectEls.sectionActionDialog.open ? { action: projectEls.sectionActionDialog.dataset.action, ids: [...(sectionDialogScope?.kind === "list" ? selectedListSectionIds : selectedProjectSectionIds)], scope: sectionDialogScope } : null,
+    projectDescription: projectEls.descriptionDialog.open,
     taskEditor: !els.editor.hidden && !els.editor.classList.contains("is-closing")
       ? (els.editor.dataset.taskId || "new") : null,
     taskListId: !els.editor.hidden && !els.editor.classList.contains("is-closing")
@@ -2999,6 +3028,12 @@ async function restoreMobileNavigation(view) {
     const sameParent = ["screen", "listId", "projectId", "menu", "settings", "completed",
       "listEditor", "projectEditor", "taskEditor"].every(key => current[key] === view[key]);
     if (sameParent) {
+      if (current.projectSectionAction && !view.projectSectionAction) closeProjectSectionAction();
+      if (view.projectSectionAction && !current.projectSectionAction) restoreProjectSectionAction(view.projectSectionAction);
+      if (current.projectSections && !view.projectSections) closeProjectSections();
+      if (current.projectDescription && !view.projectDescription) closeProjectDescription();
+      if (view.projectSections && !current.projectSections) await openProjectSections();
+      if (view.projectDescription && !current.projectDescription) openProjectDescription();
       if (current.timeDialog && !view.timeDialog) closeTimeDialog();
       if (current.datePicker && !view.datePicker) closeDatePicker();
       if (current.attachDialog && !view.attachDialog) closeAttachDialog();
@@ -3033,6 +3068,9 @@ async function restoreMobileNavigation(view) {
       if (view.listDeleteDialog && !current.listDeleteDialog) els.mainMenuDeleteSelected.click();
       return;
     }
+    if (projectEls.sectionActionDialog.open) closeProjectSectionAction();
+    if (projectEls.sectionsDialog.open) closeProjectSections();
+    if (projectEls.descriptionDialog.open) closeProjectDescription();
     if (!els.timeDialogBackdrop.hidden) closeTimeDialog();
     if (!els.datePickerBackdrop.hidden) closeDatePicker();
     if (!projectEls.attachBackdrop.hidden) closeAttachDialog();
@@ -3082,6 +3120,9 @@ async function restoreMobileNavigation(view) {
     }
     if (view.listEditor && activeList()?.kind === "regular") openListEditor();
     if (view.projectEditor && view.projectId && !projectEls.screen.hidden) openProjectEditor();
+    if (view.projectSections) await openProjectSections();
+    if (view.projectSectionAction) restoreProjectSectionAction(view.projectSectionAction);
+    if (view.projectDescription && !projectEls.editor.hidden) openProjectDescription();
     if (view.taskEditor) {
       const task = tasks.find(item => item.id === view.taskEditor);
       if (task) openTaskDetails(task);

@@ -11,12 +11,15 @@ const { openTestApp } = require("./e2e-helper");
     await page.fill("#project-step-title", "Крок лишається");
     await page.click("#project-step-form button");
     await page.click("#project-edit-open");
+    await page.click("#project-actions-trigger");
     await page.click("#project-delete");
     assert.equal(await page.locator("#project-delete-dialog-title").textContent(), "Видалити проєкт?");
     assert.equal(await page.locator("#project-delete-keep-tasks").isChecked(), true);
     await page.click("#project-delete-no");
     assert.equal(await page.locator("#project-delete-dialog-backdrop").isVisible(), false);
     assert.equal(await page.locator("#project-screen").isVisible(), true);
+
+    await page.click("#project-actions-trigger");
 
     await page.click("#project-delete");
     assert.equal(await page.locator("#project-delete-keep-tasks").isChecked(), true);

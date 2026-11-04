@@ -21,4 +21,25 @@ async function openTestApp() {
   return { browser, page, errors };
 }
 
-module.exports = { openTestApp };
+async function seedProjectSections(page, titles) {
+  await page.locator("#project-screen").waitFor({ state: "visible" });
+  return page.evaluate(async titles => {
+    const original = projects.find(project => project.id === activeProjectId);
+    const sections = titles.map(title => ({ id: crypto.randomUUID(), title, collapsed: false }));
+    const updated = { ...original, projectSections: sections, updatedAt: new Date().toISOString() };
+    await projectDb.put(updated);
+    projects = projects.map(project => project.id === updated.id ? updated : project);
+    renderOpenProject();
+    return sections.map(section => section.id);
+  }, titles);
+}
+async function holdProjectSection(page, id) {
+  const header = page.locator(`#project-task-list [data-project-section-toggle="${id}"]`);
+  await header.scrollIntoViewIfNeeded();
+  const box = await header.boundingBox();
+  await page.mouse.move(box.x + 30, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.waitForFunction(id => selectedProjectSectionIds.has(id), id);
+  await page.mouse.up();
+}
+module.exports = { openTestApp, seedProjectSections, holdProjectSection };

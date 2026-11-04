@@ -1,5 +1,5 @@
 const assert = require("node:assert/strict");
-const { openTestApp } = require("./e2e-helper");
+const { openTestApp, seedProjectSections, holdProjectSection } = require("./e2e-helper");
 
 (async () => {
   const { browser, page, errors } = await openTestApp();
@@ -8,14 +8,13 @@ const { openTestApp } = require("./e2e-helper");
     await page.click("#project-add");
     await page.fill("#project-create-title", "Секції");
     await page.click("#project-create-form button[type=submit]");
-    await page.click("#project-edit-open");
-    await page.fill("#project-section-name", "Підготовка");
-    await page.click("#project-section-create button[type=submit]");
-    await page.waitForFunction(() => document.querySelectorAll("#project-task-list .project-section-heading").length === 1);
-    await page.fill("#project-sections .section-name", "Підготовка роботи");
-    await page.locator("#project-sections .section-name").blur();
-    await page.waitForFunction(() => projects[0].projectSections[0].title === "Підготовка роботи");
-    await page.click("#project-edit-close");
+    const [sectionId] = await seedProjectSections(page, ["Підготовка"]);
+    await holdProjectSection(page, sectionId);
+    await page.click("#project-section-rename");
+    await page.fill("#project-section-rename-input", "Підготовка роботи");
+    await page.click("#project-section-action-confirm");
+    await page.waitForFunction(() => !document.querySelector("#project-section-action-dialog").open);
+    await page.click("#project-section-selection-close");
     assert.equal(await page.locator("#project-task-list .project-section-heading").isVisible(), true);
     assert.equal(await page.locator("#project-step-section-row").isVisible(), true);
     await page.selectOption("#project-step-section", { label: "Підготовка роботи" });

@@ -87,11 +87,13 @@ h1 { font-size:clamp(2.25rem,9vw,3.4rem); line-height:1; letter-spacing:-.05em; 
 .today-group-add::after { transform:rotate(90deg); }
 .today-group-add:focus-visible { outline:2px solid var(--accent); }
 .today-group-toggle:focus-visible { outline:2px solid var(--accent); outline-offset:2px; border-radius:8px; }
-.quick-task-dialog { width:min(92vw,420px); margin:auto; padding:20px; border-radius:20px; background:var(--surface); color:var(--text); box-shadow:var(--shadow-sheet); }
+#quick-task-backdrop { top:var(--quick-task-viewport-top,0px); bottom:auto; height:var(--quick-task-viewport-height,100dvh); box-sizing:border-box; }
+.quick-task-dialog { width:min(100%,420px); max-height:100%; overflow-y:auto; box-sizing:border-box; margin:auto; padding:20px; border-radius:20px; background:var(--surface); color:var(--text); box-shadow:var(--shadow-sheet); }
 .quick-task-dialog form { display:grid; gap:10px; }
 .quick-task-dialog h2 { margin:0 0 4px; font-size:1.2rem; }
 .quick-task-dialog label { font-weight:600; }
 .quick-task-dialog input,.quick-task-dialog textarea { width:100%; box-sizing:border-box; padding:12px; border:1px solid var(--line); border-radius:10px; background:var(--bg); color:var(--text); font:inherit; }
+#quick-task-title { resize:none; }
 .quick-task-actions { display:flex; justify-content:flex-end; gap:10px; margin-top:8px; }
 .quick-task-actions button { min-height:44px; padding:0 16px; border:0; border-radius:10px; font:inherit; cursor:pointer; }
 .quick-task-actions button[type="submit"] { background:var(--accent); color:var(--on-accent); }
@@ -499,7 +501,7 @@ body.project-attach-open { overflow:hidden; }
 .project-editor { position:fixed; z-index:30; inset:0; overflow-y:auto; background:var(--bg); }
 .project-editor[hidden] { display:none; }
 .project-editor-panel { width:min(100%,760px); min-height:100dvh; margin:0 auto; padding-bottom:calc(36px + env(safe-area-inset-bottom)); }
-.project-editor-header { position:sticky; z-index:2; top:0; min-height:72px; display:grid; grid-template-columns:48px minmax(0,1fr); align-items:center; gap:8px; padding:max(12px,env(safe-area-inset-top)) 18px 10px; background:color-mix(in srgb,var(--bg) 96%,transparent); border-bottom:1px solid var(--line); backdrop-filter:blur(14px); }
+.project-editor-header { position:sticky; z-index:2; top:0; min-height:72px; display:grid; grid-template-columns:48px minmax(0,1fr) 44px; align-items:center; gap:8px; padding:max(12px,env(safe-area-inset-top)) 18px 10px; background:var(--bg); border-bottom:1px solid var(--line); }
 .project-editor-header h2 { font-size:1.18rem; }
 .project-actions { display:flex; flex-wrap:wrap; gap:10px; padding-top:18px; border-top:1px solid var(--line); }
 .project-actions .primary-action { justify-self:auto; }
@@ -787,3 +789,94 @@ body:has(.app-update:not([hidden])) .toast { bottom:calc(152px + env(safe-area-i
 @media (prefers-reduced-motion:reduce) { *,*::before,*::after { scroll-behavior:auto!important; transition-duration:.01ms!important; animation-duration:.01ms!important; } }
 
 
+
+/* Project settings use the task editor's compact hierarchy. */
+body.project-editor-open #project-screen > .project-panel { visibility:hidden; }
+body.project-editor-open .projects-overview { visibility:hidden; }
+.project-editor .project-fields { grid-template-columns:minmax(0,1fr); border-bottom:0; gap:18px; }
+.project-editor .project-fields > * { min-width:0; }
+.project-editor-menu button { min-height:48px; width:100%; padding:10px 12px; border:0; border-radius:10px; background:transparent; color:var(--text); text-align:left; font:500 .96rem/1.4 system-ui,sans-serif; }
+.project-editor-menu button:hover,.project-editor-menu button:focus-visible { background:var(--control); }
+.project-editor-menu .project-menu-delete { color:var(--danger); border-top:1px solid var(--line); border-radius:0 0 10px 10px; }
+.project-editor-menu button[hidden] { display:none; }
+.project-editor .project-setting-row { width:100%; min-height:54px; display:flex; align-items:center; justify-content:space-between; gap:16px; padding:10px 0; border:0; border-bottom:1px solid var(--line); background:transparent; color:var(--text); font:500 .94rem/1.4 system-ui,sans-serif; text-align:left; }
+.project-default-list-row > span { flex:0 0 auto; }
+.project-editor .project-default-list-row select { min-width:0; width:auto; max-width:65%; min-height:44px; padding:6px 8px; border:0; border-radius:8px; background:transparent; text-overflow:ellipsis; font-size:.94rem; }
+.project-editor .project-deadline { display:flex; align-items:center; justify-content:space-between; gap:16px; padding:4px 0 10px; border-bottom:1px solid var(--line); }
+.project-editor .project-deadline-label { color:var(--text); font-size:.94rem; font-weight:500; }
+.project-editor .project-deadline .meta-chip { border:0; background:transparent; padding-inline:8px; }
+.project-editor .project-countdown { display:none; }
+.project-editor .project-save-status:empty { display:none; }
+.project-editor .project-save-status { margin:0; min-height:0; }
+.project-description-preview { width:100%; min-height:48px; max-height:7em; overflow:hidden; white-space:pre-wrap; border:1px solid var(--line); border-radius:14px; padding:12px 13px; background:var(--surface); color:var(--text); text-align:left; font:500 1rem/1.4 system-ui,sans-serif; }
+.project-description-preview:focus-visible,.project-setting-row:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+.project-copy-menu { position:relative; }
+.project-copy-menu summary { width:44px; height:44px; display:grid; place-items:center; list-style:none; color:var(--muted); cursor:pointer; }
+.project-copy-menu summary::-webkit-details-marker { display:none; }
+.project-copy-menu summary .description-icon { position:relative; width:20px; height:20px; }
+.project-copy-menu > div { position:absolute; z-index:3; right:0; width:220px; display:grid; padding:6px; border:1px solid var(--line); border-radius:14px; background:var(--surface); box-shadow:var(--shadow-sheet); }
+.project-copy-menu button { min-height:44px; padding:8px; text-align:left; border:0; background:transparent; color:var(--text); font:inherit; }
+.project-settings-dialog { position:fixed; top:var(--project-dialog-top,0px); bottom:var(--project-dialog-bottom,0px); width:min(540px,calc(100% - 24px)); max-height:calc(var(--project-dialog-height,100dvh) - 24px); box-sizing:border-box; margin:auto; padding:20px; overflow-y:auto; border:1px solid var(--line); border-radius:20px; background:var(--bg); color:var(--text); box-shadow:var(--shadow-sheet); }
+.project-settings-dialog::backdrop { background:var(--overlay); }
+.project-settings-dialog header { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:16px; }
+.project-settings-dialog h3 { margin:0; font-size:1.1rem; }
+.project-settings-dialog header button { min-height:44px; border:0; padding:8px; border-radius:10px; background:transparent; color:var(--accent); font:650 .94rem system-ui,sans-serif; }
+.project-settings-dialog .project-section-settings { margin:0; }
+.project-settings-dialog .rich-description-shell { padding:0; }
+.project-settings-dialog .rich-description { min-height:120px; max-height:40dvh; overflow-y:auto; padding:12px; border:1px solid var(--line); border-radius:12px; background:var(--surface); }
+.project-settings-dialog > .primary-action { margin-top:18px; width:100%; }
+#project-date-countdown { margin:12px 0; }
+#project-date-countdown[hidden] { display:none!important; }
+@media (max-width:380px) { .project-editor .project-default-list-row { align-items:flex-start; flex-direction:column; gap:0; } .project-editor .project-default-list-row select { max-width:100%; width:100%; } }
+
+.project-description-field .rich-description-heading { display:flex; align-items:center; justify-content:space-between; gap:12px; color:var(--muted); font-size:.82rem; font-weight:700; }
+
+
+.project-section-card > span:last-child { color:var(--muted); }
+
+#project-section-action-form { display:grid; gap:12px; }
+#project-section-action-form header { margin-bottom:0; }
+#project-section-action-form p { margin:0; line-height:1.5; }
+#project-section-action-error { color:var(--danger); }
+#project-section-rename-label[hidden] { display:none; }
+#project-section-action-confirm.danger-action { background:var(--danger); color:var(--on-accent); }
+
+
+#project-section-selection-toolbar .project-selection-actions { gap:4px; }
+#project-selection-toolbar .project-selection-actions { gap:3px; }
+#project-selection-toolbar .toolbar-action { width:40px; height:44px; }
+#project-selection-toolbar { grid-template-columns:40px minmax(0,1fr); gap:4px 8px; }
+#project-selection-toolbar > .project-selection-actions { grid-column:1 / -1; justify-content:flex-end; }
+#project-section-options { display:grid; gap:8px; }
+#project-section-options:empty { display:none; }
+#project-section-options button { width:100%; min-height:48px; padding:12px; border:1px solid var(--line); border-radius:12px; background:var(--surface); color:var(--text); text-align:left; font:inherit; }
+#project-sections-dialog label,#project-section-action-dialog label { display:grid; gap:8px; font-size:.9rem; }
+#project-sections-dialog input,#project-section-action-dialog input { width:100%; min-height:48px; padding:10px 12px; border:1px solid var(--line); border-radius:12px; background:var(--surface); color:var(--text); font:inherit; }
+#project-section-picker-error { color:var(--danger); }
+#project-task-list .project-section-heading.section-selected > .list-section-heading { background:var(--selected); border-radius:8px; box-shadow:inset 3px 0 0 var(--accent); }
+#project-task-list .project-section-heading.section-selected > .list-section-heading .list-section-toggle::after { content:"✓"; margin-left:auto; color:var(--accent); }
+#project-task-list .project-section-heading.drag-source { display:none; }
+#project-task-list .project-section-heading > .list-section-heading { touch-action:none; user-select:none; }
+.project-drag-preview .project-section-heading { list-style:none; margin:0; padding:0; border-radius:8px; background:var(--bg); }
+.project-drag-preview .project-section-heading > .list-section-heading { margin:0; }
+.project-drag-preview .project-section-heading > .list-section-tasks { display:none; }
+@media (min-width:760px) { #project-selection-toolbar { grid-template-columns:44px minmax(0,1fr) auto; } #project-selection-toolbar > .project-selection-actions { grid-column:auto; } }
+@media (max-width:360px) { #project-section-selection-toolbar { padding-inline:10px; gap:4px; } #project-section-selection-toolbar .toolbar-action { width:40px; } }
+
+#project-section-selection-toolbar { grid-template-columns:44px minmax(0,1fr) auto; gap:4px; }
+#project-section-selection-toolbar > .project-selection-actions { grid-column:auto; }
+#project-section-selection-toolbar > strong { font-size:.9rem; }
+
+.list-section-selection-toolbar { display:grid; grid-template-columns:44px minmax(0,1fr) auto; gap:4px; align-items:center; min-height:58px; }
+.list-section-selection-toolbar[hidden] { display:none; }
+.list-section-selection-toolbar > strong { font-size:.9rem; }
+.list-section-selection-toolbar .selection-actions { display:flex; gap:4px; padding:0; }
+.list-section-selection-toolbar .toolbar-action { width:44px; height:44px; }
+#task-list > .list-section.section-selected > .list-section-heading { background:var(--selected); border-radius:8px; box-shadow:inset 3px 0 0 var(--accent); }
+#task-list > .list-section.section-selected .list-section-toggle::after { content:"✓"; margin-left:auto; color:var(--accent); }
+#task-list > .list-section.drag-source { display:none; }
+#task-list > .list-section > .list-section-heading { touch-action:none; user-select:none; }
+.project-drag-preview > .list-section { margin:0; padding:0; list-style:none; border-radius:8px; background:var(--bg); }
+.project-drag-preview > .list-section > .list-section-heading { margin:0; }
+.project-drag-preview > .list-section > .list-section-tasks { display:none; }
+@media (max-width:360px) { .list-section-selection-toolbar .toolbar-action { width:40px; } .list-section-selection-toolbar { grid-template-columns:40px minmax(0,1fr) auto; } }

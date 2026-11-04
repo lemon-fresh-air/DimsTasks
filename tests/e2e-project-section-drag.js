@@ -1,5 +1,5 @@
 const assert = require("node:assert/strict");
-const { openTestApp } = require("./e2e-helper");
+const { openTestApp, seedProjectSections, holdProjectSection } = require("./e2e-helper");
 
 (async () => {
   const { browser, page, errors } = await openTestApp();
@@ -8,13 +8,7 @@ const { openTestApp } = require("./e2e-helper");
     await page.click("#project-add");
     await page.fill("#project-create-title", "Перетягування між секціями");
     await page.click("#project-create-form button[type=submit]");
-    await page.click("#project-edit-open");
-    for (const title of ["Початок", "Продовження"]) {
-      await page.fill("#project-section-name", title);
-      await page.click("#project-section-create button[type=submit]");
-      await page.waitForFunction(count => document.querySelectorAll("#project-sections li").length === count, title === "Початок" ? 1 : 2);
-    }
-    await page.click("#project-edit-close");
+    await seedProjectSections(page, ["Початок", "Продовження"]);
     for (const [title, section] of [["Перший", "Початок"], ["Другий", "Продовження"]]) {
       await page.fill("#project-step-title", title);
       await page.click("#project-step-form button[type=submit]");

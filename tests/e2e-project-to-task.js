@@ -23,7 +23,10 @@ const { openTestApp } = require("./e2e-helper");
 
     await page.click("#project-edit-open");
     await page.fill("#project-title", "Нове завдання з проєкту");
+    await page.click("#project-description-open");
     await page.fill("#project-description", "Незбережений опис");
+    await page.click("#project-description-done");
+    await page.click("#project-actions-trigger");
     await page.click("#project-convert-task");
     assert.equal(await page.locator('input[name="project-convert-choice"]:checked').inputValue(), "save");
     await page.click("#project-convert-cancel");
@@ -34,6 +37,7 @@ const { openTestApp } = require("./e2e-helper");
       window.originalTaskFromProject = taskFromProject;
       taskFromProject = (...args) => ({ ...window.originalTaskFromProject(...args), id });
     }, stepId);
+    await page.click("#project-actions-trigger");
     await page.click("#project-convert-task");
     await page.click("#project-convert-confirm");
     await page.locator("#toast .toast-message").filter({ hasText: "Не вдалося перетворити проєкт" }).waitFor();
@@ -41,6 +45,8 @@ const { openTestApp } = require("./e2e-helper");
     assert.equal((await page.evaluate(async () => projectDb.all())).length, 1);
     assert.equal((await page.evaluate(async id => (await taskDb.all()).find(task => task.id === id)?.projectId, stepId)), firstProjectId);
     await page.evaluate(() => { taskFromProject = window.originalTaskFromProject; });
+
+    await page.click("#project-actions-trigger");
 
     await page.click("#project-convert-task");
     await page.locator('input[value="keep"][name="project-convert-choice"]').check();
@@ -68,6 +74,7 @@ const { openTestApp } = require("./e2e-helper");
     await page.click("#project-step-form button");
     const deletedStepId = await page.locator("#project-task-list .swipe-row").first().getAttribute("data-id");
     await page.click("#project-edit-open");
+    await page.click("#project-actions-trigger");
     await page.click("#project-convert-task");
     await page.locator('input[value="delete"][name="project-convert-choice"]').check();
     await page.click("#project-convert-confirm");

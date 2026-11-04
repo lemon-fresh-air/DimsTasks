@@ -16,6 +16,7 @@ function dateFromValue(value) {
 
 function setPendingDate(value) {
   pendingDateValue = value || "";
+  document.querySelector("#project-date-countdown").hidden = !editingProjectDate || !pendingDateValue;
   if (!pendingDateValue) pendingTimeValue = "";
   els.datePickerValue.textContent = value ? `${fullDateFormatter.format(dateFromValue(value))}${pendingTimeValue ? ` · ${pendingTimeValue}` : ""}` : "Без дати";
   els.timePickerOpen.disabled = !pendingDateValue;
@@ -300,6 +301,7 @@ function renderCalendar() {
 
 function openDatePicker(initialValue = els.date.value, initialTime = els.time.value) {
   datePickerReturnFocus = document.activeElement;
+  document.querySelector("#project-date-countdown").dataset.previous = String(projectEls.showCountdown.checked);
   const today = new Date();
   visibleCalendarStart = calendarWeekStart(dateFromValue(localDateValue()));
   els.todayWeekday.textContent = weekdayFormatter.format(today);
@@ -313,6 +315,11 @@ function openDatePicker(initialValue = els.date.value, initialTime = els.time.va
 }
 
 function closeDatePicker() {
+  if (document.querySelector("#project-date-countdown").dataset.committed !== "true") {
+    projectEls.showCountdown.checked = document.querySelector("#project-date-countdown").dataset.previous === "true";
+  }
+  delete document.querySelector("#project-date-countdown").dataset.committed;
+  document.querySelector("#project-date-countdown").hidden = true;
   els.datePickerBackdrop.hidden = true;
   document.body.classList.remove("date-picker-open");
   datePickerReturnFocus?.focus();

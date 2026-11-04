@@ -63,7 +63,7 @@ const { openTestApp } = require("./e2e-helper");
     await page.click("#nav-today");
     assert.match(await page.locator('.today-group[data-group-id="blue"] .today-group-heading').innerText(), /Мої справи/);
     await page.evaluate(() => selectTodayGroup("blue"));
-    assert.equal(await page.locator("#group-action-placeholder").isDisabled(), true);
+    assert.equal(await page.locator("#rename-selected-group").isVisible(), true);
     layout = await page.evaluate(() => appDb.get("settings", dayPlanId(localDateValue())));
     assert.deepEqual(layout.items.map(item => item.id), ["orange", "outer-c", "blue"]);
     assert.deepEqual(layout.groups.find(group => group.id === "blue").taskIds, ["outer-a", "outer-b"]);

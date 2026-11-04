@@ -631,3 +631,111 @@ function reorderProjectStepBlock(records, projectId, selectedIds, beforeId) {
   return records.map(task => replacements.get(task.id) || task);
 }
 
+
+function reorderProjectSections(project, selectedIds, beforeId, updatedAt = nowIso()) {
+  const sections = project.projectSections || [];
+  const moving = sections.filter(section => selectedIds.has(section.id));
+  if (!moving.length || selectedIds.has(beforeId)) return project;
+  const remaining = sections.filter(section => !selectedIds.has(section.id));
+  const index = beforeId == null ? remaining.length : remaining.findIndex(section => section.id === beforeId);
+  if (index < 0) return project;
+  remaining.splice(index, 0, ...moving);
+  if (remaining.every((section, index) => section.id === sections[index].id)) return project;
+  return { ...project, projectSections: remaining, updatedAt };
+}
+function renameProjectSection(project, sectionId, title, updatedAt = nowIso()) {
+  title = String(title || "").trim();
+  if (!title || title.length > 80) throw new Error("Введіть назву секції до 80 символів");
+  const sections = project.projectSections || [];
+  if (!sections.some(section => section.id === sectionId)) throw new Error("Секцію не знайдено");
+  if (sections.some(section => section.id !== sectionId && section.title.toLocaleLowerCase("uk") === title.toLocaleLowerCase("uk"))) throw new Error("Секція з такою назвою вже є");
+  return { ...project, projectSections: sections.map(section => section.id === sectionId ? { ...section, title } : section), updatedAt };
+}
+function removeProjectSections(project, taskRecords, selectedIds, deleteTasks, updatedAt = nowIso()) {
+  const removed = new Set((project.projectSections || []).filter(section => selectedIds.has(section.id)).map(section => section.id));
+  const affected = taskRecords.filter(task => task.projectId === project.id && removed.has(task.projectSectionId));
+  return {
+    project: { ...project, projectSections: (project.projectSections || []).filter(section => !removed.has(section.id)), updatedAt },
+    tasks: deleteTasks ? [] : affected.map(task => ({ ...task, projectSectionId: null, updatedAt })),
+    deletedTaskIds: deleteTasks ? affected.map(task => task.id) : []
+  };
+}
+
+function assignProjectTasksToSection(project, taskRecords, selectedIds, sectionId = null, title = "", updatedAt = nowIso()) {
+  if (project.status === "completed") throw new Error("Завершений проєкт не можна змінювати");
+  const sections = project.projectSections || [];
+  const sectionOrder = new Map(sections.map((section, index) => [section.id, index + 1]));
+  const selected = taskRecords.filter(task => task.projectId === project.id && selectedIds.has(task.id))
+    .sort((a, b) => Number(isTaskCompleted(a)) - Number(isTaskCompleted(b))
+      || (sectionOrder.get(a.projectSectionId) || 0) - (sectionOrder.get(b.projectSectionId) || 0)
+      || compareProjectTasks(a, b));
+  if (!selected.length) throw new Error("Виберіть завдання цього проєкту");
+  let updated;
+  if (sectionId == null) {
+    sectionId = crypto.randomUUID();
+    const section = { id: sectionId, title: String(title || "").trim(), collapsed: false };
+    updated = renameProjectSection({ ...project, projectSections: [...sections, section] }, sectionId, title, updatedAt);
+  } else {
+    if (!sections.some(section => section.id === sectionId)) throw new Error("Секцію не знайдено");
+    updated = { ...project, projectSections: sections.map(section => section.id === sectionId ? { ...section, collapsed: false } : section), updatedAt };
+  }
+  const alreadyAssigned = selected.every(task => task.projectSectionId === sectionId);
+  const members = taskRecords.filter(task => task.projectId === project.id && task.projectSectionId === sectionId && !selectedIds.has(task.id));
+  const start = Math.max(-1, ...members.map(task => Number.isFinite(task.projectPosition) ? task.projectPosition : -1)) + 1;
+  return { project: updated, tasks: alreadyAssigned ? [] : selected.map((task, index) => ({ ...task, projectSectionId: sectionId, projectPosition: start + index, updatedAt })) };
+}
+
+function listSectionOrder(sectionRecords, listId) {
+  return sectionRecords.filter(section => section.listId === listId)
+    .sort((a, b) => a.position - b.position || String(a.createdAt || "").localeCompare(String(b.createdAt || "")) || a.id.localeCompare(b.id));
+}
+function validListSectionTitle(sectionRecords, listId, title, exceptId = null) {
+  title = String(title || "").trim();
+  if (!title || title.length > 80) throw new Error("Введіть назву секції до 80 символів");
+  if (sectionRecords.some(section => section.listId === listId && section.id !== exceptId && section.title.toLocaleLowerCase("uk") === title.toLocaleLowerCase("uk"))) throw new Error("Секція з такою назвою вже є");
+  return title;
+}
+function reorderListSections(sectionRecords, listId, selectedIds, beforeId, updatedAt = nowIso()) {
+  const ordered = listSectionOrder(sectionRecords, listId);
+  const moving = ordered.filter(section => selectedIds.has(section.id));
+  if (!moving.length || selectedIds.has(beforeId)) return { sections: [] };
+  const remaining = ordered.filter(section => !selectedIds.has(section.id));
+  const index = beforeId == null ? remaining.length : remaining.findIndex(section => section.id === beforeId);
+  if (index < 0) return { sections: [] };
+  remaining.splice(index, 0, ...moving);
+  return { sections: remaining.filter((section, position) => section.position !== position).map(section => ({ ...section, position: remaining.indexOf(section), updatedAt })) };
+}
+function renameListSection(sectionRecords, listId, sectionId, title, updatedAt = nowIso()) {
+  const section = sectionRecords.find(section => section.listId === listId && section.id === sectionId);
+  if (!section) throw new Error("Секцію не знайдено в цьому списку");
+  return { sections: [{ ...section, title: validListSectionTitle(sectionRecords, listId, title, sectionId), updatedAt }] };
+}
+function orderedListSectionTasks(taskRecords, sectionRecords, listId) {
+  const order = new Map(listSectionOrder(sectionRecords, listId).map((section, index) => [section.id, index + 1]));
+  return taskRecords.filter(task => task.listId === listId).sort((a, b) => Number(isTaskCompleted(a)) - Number(isTaskCompleted(b))
+    || (order.get(a.sectionId) || 0) - (order.get(b.sectionId) || 0) || compareTasks(a, b));
+}
+function assignListTasksToSection(list, sectionRecords, taskRecords, selectedIds, sectionId = null, title = "", updatedAt = nowIso()) {
+  if (list?.kind !== "regular") throw new Error("Секції доступні лише у звичайному списку");
+  const selected = orderedListSectionTasks(taskRecords, sectionRecords, list.id).filter(task => selectedIds.has(task.id));
+  if (!selected.length || selected.length !== selectedIds.size) throw new Error("Виберіть завдання лише цього списку");
+  let section;
+  if (sectionId == null) {
+    section = createSection({ listId: list.id, title: validListSectionTitle(sectionRecords, list.id, title), position: Math.max(-1, ...listSectionOrder(sectionRecords, list.id).map(section => section.position)) + 1, createdAt: updatedAt, updatedAt });
+    sectionId = section.id;
+  } else {
+    const current = sectionRecords.find(section => section.id === sectionId && section.listId === list.id);
+    if (!current) throw new Error("Секцію не знайдено в цьому списку");
+    section = { ...current, collapsed: false, updatedAt };
+  }
+  if (selected.every(task => task.sectionId === sectionId)) return { sections: [section], tasks: [] };
+  const moved = moveTaskBlockToSection(taskRecords, selected.map(task => task.id), list.id, sectionId);
+  return { sections: [section], tasks: moved.filter((task, index) => task !== taskRecords[index]).map(task => ({ ...task, updatedAt })) };
+}
+function removeListSections(sectionRecords, taskRecords, listId, selectedIds, deleteTasks, updatedAt = nowIso()) {
+  const removed = new Set(sectionRecords.filter(section => section.listId === listId && selectedIds.has(section.id)).map(section => section.id));
+  const members = orderedListSectionTasks(taskRecords, sectionRecords, listId).filter(task => removed.has(task.sectionId));
+  const moved = !deleteTasks && members.length ? moveTaskBlockToSection(taskRecords, members.map(task => task.id), listId, null) : taskRecords;
+  return { deletedSectionIds: [...removed], deletedTaskIds: deleteTasks ? members.map(task => task.id) : [],
+    tasks: moved.filter((task, index) => task !== taskRecords[index]).map(task => ({ ...task, updatedAt })) };
+}

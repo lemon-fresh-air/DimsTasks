@@ -589,7 +589,7 @@ function enableTodayGroupReordering({ isSelected, onSelect, onReorder }) {
   window.addEventListener("pointercancel", event => finish(event, true));
 }
 
-function enableProjectCardReorder({ container, isSelectionMode, isSelected, onLongPress, onSelectOnly, getSelectedIds, onReorder }) {
+function enableProjectCardReorder({ container, isSelectionMode, isSelected, onLongPress, onSelectOnly, getSelectedIds, onReorder, cardSelector = ".project-card", idKey = "projectId", scrollElement = window, requireSelectionForDrag = false, handleSelector = null, insertionSelector = null }) {
   let gesture = null;
 
   function cleanup(finished) {
@@ -603,11 +603,18 @@ function enableProjectCardReorder({ container, isSelectionMode, isSelected, onLo
   }
 
   function updateInsertion(clientY) {
-    const candidates = [...container.children].filter(card => card.dataset.projectId && !gesture.selectedIds.has(card.dataset.projectId));
-    const before = candidates.find(card => clientY < card.getBoundingClientRect().top + card.getBoundingClientRect().height / 2) || null;
-    const beforeId = before?.dataset.projectId || null;
+    const candidates = [...container.children].filter(card => card.dataset[idKey] && !gesture.selectedIds.has(card.dataset[idKey]));
+    const before = candidates.find(card => {
+      const target = insertionSelector ? card.querySelector(insertionSelector) || card : card;
+      const rect = target.getBoundingClientRect();
+      return clientY < rect.top + rect.height / 2;
+    }) || null;
+    const beforeId = before?.dataset[idKey] || null;
     if (beforeId === gesture.lastBeforeId) return;
-    if (before) before.before(gesture.placeholder); else container.append(gesture.placeholder);
+    if (before) before.before(gesture.placeholder); else {
+      const footer = container.querySelector(".project-completed-heading");
+      if (footer) footer.before(gesture.placeholder); else container.append(gesture.placeholder);
+    }
     gesture.lastBeforeId = beforeId;
     gesture.moved = true;
   }
@@ -627,7 +634,7 @@ function enableProjectCardReorder({ container, isSelectionMode, isSelected, onLo
     const speed = gesture.lastY < edge ? -Math.min(14, (edge - gesture.lastY) / 4)
       : gesture.lastY > innerHeight - edge ? Math.min(14, (gesture.lastY - innerHeight + edge) / 4) : 0;
     if (speed) {
-      window.scrollBy(0, speed);
+      scrollElement.scrollBy(0, speed);
       updateInsertion(gesture.lastY);
     }
     gesture.scrollFrame = requestAnimationFrame(autoScroll);
@@ -637,10 +644,10 @@ function enableProjectCardReorder({ container, isSelectionMode, isSelected, onLo
     clearTimeout(gesture.longPressTimer);
     if (!isSelected(gesture.id)) {
       onSelectOnly(gesture.id);
-      gesture.card = container.querySelector(`[data-project-id="${CSS.escape(gesture.id)}"]`);
+      gesture.card = [...container.children].find(card => card.dataset[idKey] === gesture.id);
     }
     const selectedIds = getSelectedIds();
-    const cards = [...container.children].filter(card => selectedIds.has(card.dataset.projectId));
+    const cards = [...container.children].filter(card => selectedIds.has(card.dataset[idKey]));
     if (!cards.length) return;
     const rect = gesture.card.getBoundingClientRect();
     const gap = Number.parseFloat(getComputedStyle(container).rowGap) || 0;
@@ -673,15 +680,17 @@ function enableProjectCardReorder({ container, isSelectionMode, isSelected, onLo
   }
 
   container.addEventListener("pointerdown", event => {
-    const card = event.target.closest(".project-card");
+    if (handleSelector && !event.target.closest(handleSelector)) return;
+    const card = event.target.closest(cardSelector);
     if (!card || event.button > 0) return;
-    gesture = { card, id: card.dataset.projectId, pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, lastY: event.clientY, ready: event.pointerType === "mouse", scrolling: false, dragging: false };
-    card.setPointerCapture?.(event.pointerId);
+    gesture = { card, id: card.dataset[idKey], pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, lastY: event.clientY, ready: (!requireSelectionForDrag && event.pointerType === "mouse") || isSelected(card.dataset[idKey]), scrolling: false, dragging: false };
+    const captureTarget = handleSelector ? event.target.closest(handleSelector) : card;
+    captureTarget.setPointerCapture?.(event.pointerId);
     gesture.longPressTimer = setTimeout(() => {
       if (!gesture || gesture.pointerId !== event.pointerId) return;
       gesture.ready = true;
       onLongPress(gesture.id);
-      gesture.card = container.querySelector(`[data-project-id="${CSS.escape(gesture.id)}"]`);
+      gesture.card = [...container.children].find(card => card.dataset[idKey] === gesture.id);
       if (gesture.card) {
         gesture.card.dataset.longPressed = "true";
         gesture.card.classList.add("lifted");
@@ -712,7 +721,7 @@ function enableProjectCardReorder({ container, isSelectionMode, isSelected, onLo
         event.preventDefault();
         gesture.scrolling = true;
         gesture.card.dataset.dragged = "true";
-        window.scrollBy(0, gesture.lastY - event.clientY);
+        scrollElement.scrollBy(0, gesture.lastY - event.clientY);
         gesture.lastY = event.clientY;
       }
     }
