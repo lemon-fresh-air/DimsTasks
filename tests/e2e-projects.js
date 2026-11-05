@@ -71,13 +71,13 @@ async function waitForServer() {
   await page.click("#project-back");
   assert.equal(await page.locator("#projects-overview").isVisible(), true);
   await page.click(".project-card");
+  await page.click("#project-edit-open");
   assert.equal(await page.isChecked("#project-add-new-first"), false);
+  await page.click("#project-edit-close");
 
-  await page.fill("#project-step-title", "Перший крок");
-  await page.click("#project-step-form button");
+  await page.addProjectStep("Перший крок");
   await page.waitForFunction(() => document.querySelectorAll("#project-task-list .swipe-row").length === 1);
-  await page.fill("#project-step-title", "Другий крок");
-  await page.click("#project-step-form button");
+  await page.addProjectStep("Другий крок");
   await page.waitForFunction(() => document.querySelectorAll("#project-task-list .swipe-row").length === 2);
   assert.deepEqual(await page.locator("#project-task-list .task-text").allTextContents(), ["Перший крок", "Другий крок"]);
   await page.evaluate(() => addList("Зелений", { fromMainMenu: false }));

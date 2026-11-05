@@ -1,0 +1,74 @@
+const assert = require("node:assert/strict");
+const { openTestApp, seedProjectSections } = require("./e2e-helper");
+
+(async () => {
+  const { browser, page, errors } = await openTestApp();
+  try {
+    await page.click("#nav-projects");
+    await page.click("#project-add");
+    await page.fill("#project-create-title", "Додавання до секцій");
+    await page.click("#project-create-form button[type=submit]");
+    await page.waitForSelector("#project-screen:not([hidden])");
+    assert.equal(await page.locator("#project-step-form, #project-attach-open").count(), 0);
+    const [sectionId] = await seedProjectSections(page, ["Робота"]);
+    const rootAdd = page.locator(".project-root-heading .list-section-add");
+    await rootAdd.click();
+    await page.fill("#quick-task-title", "Швидкий крок");
+    await page.click("#quick-task-form button[type=submit]");
+    await page.waitForFunction(() => document.querySelector(".project-root-heading [data-id]"));
+    assert.equal(await page.locator(".project-root-heading [data-id]").count(), 1);
+    await page.evaluate(async () => {
+      const free = ["Перший наявний", "Другий наявний", ...Array.from({ length: 25 }, (_, index) => `Інше завдання ${index + 1}`)]
+        .map(title => createTask({ title, listId: INBOX_LIST_ID }));
+      await taskDb.putMany(free);
+      tasks.push(...free);
+    });
+    const sectionAdd = page.locator(`[data-section-id="${sectionId}"] .list-section-add`);
+    const rect = await sectionAdd.boundingBox();
+    await page.mouse.move(rect.x + rect.width / 2, rect.y + rect.height / 2);
+    await page.mouse.down();
+    await page.waitForSelector("#project-attach-backdrop:not([hidden])");
+    await page.mouse.up();
+    assert.match(await page.locator("#project-attach-destination").textContent(), /Робота/);
+    assert.equal(await page.locator("#quick-task-backdrop").isVisible(), false);
+    await page.setViewportSize({ width: 390, height: 500 });
+    await page.waitForFunction(() => document.querySelector("#project-attach-backdrop").getBoundingClientRect().height <= 500);
+    const saveBox = await page.locator("#project-attach-save").boundingBox();
+    assert.ok(saveBox && saveBox.y + saveBox.height <= 500, "Кнопка додавання має бути над клавіатурою");
+    await page.fill("#project-attach-search", "Перший");
+    assert.equal(await page.evaluate(() => document.activeElement.id), "project-attach-search");
+    const focusedSaveBox = await page.locator("#project-attach-save").boundingBox();
+    assert.ok(focusedSaveBox && focusedSaveBox.y + focusedSaveBox.height <= 500, "Пошук не має ховати кнопку додавання");
+    assert.equal(await page.locator("#project-attach-results input[type=checkbox]").count(), 1);
+    await page.locator("#project-attach-results input[type=checkbox]").check();
+    await page.fill("#project-attach-search", "Другий");
+    await page.locator("#project-attach-results input[type=checkbox]").check();
+    assert.equal(await page.locator("#project-attach-save").textContent(), "Додати (2)");
+    await page.click("#project-attach-close");
+    assert.equal(await page.evaluate(() => tasks.filter(task => task.projectId === activeProjectId).length), 1);
+    await page.holdProjectSectionAdd();
+    assert.match(await page.locator("#project-attach-destination").textContent(), /Звичайні кроки/);
+    await page.click("#project-attach-close");
+    await page.mouse.move(rect.x + rect.width / 2, rect.y + rect.height / 2);
+    await page.mouse.down();
+    await page.waitForSelector("#project-attach-backdrop:not([hidden])");
+    await page.mouse.up();
+    await page.fill("#project-attach-search", "наявний");
+    await page.locator("#project-attach-results input[type=checkbox]").first().check();
+    await page.locator("#project-attach-results input[type=checkbox]").nth(1).check();
+    await page.click("#project-attach-save");
+    await page.waitForFunction(id => document.querySelectorAll(`[data-section-id="${id}"] [data-id]`).length === 2, sectionId);
+    assert.equal(await page.evaluate(id => tasks.filter(task => task.projectSectionId === id).length, sectionId), 2);
+    await page.click("#project-edit-open");
+    await page.locator("#project-add-new-first").check();
+    await page.click("#project-edit-close");
+    await page.reload({ waitUntil: "networkidle" });
+    await page.click("#nav-projects");
+    await page.locator(".project-card").first().click();
+    assert.equal(await page.locator(`[data-section-id="${sectionId}"] [data-id]`).count(), 2);
+    await page.click("#project-edit-open");
+    assert.equal(await page.locator("#project-add-new-first").isChecked(), true);
+    assert.deepEqual(errors, []);
+    console.log("project section add: passed");
+  } finally { await browser.close(); }
+})().catch(error => { console.error(error); process.exitCode = 1; });

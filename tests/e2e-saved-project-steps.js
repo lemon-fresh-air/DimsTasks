@@ -9,8 +9,7 @@ const { openTestApp } = require("./e2e-helper");
     await page.fill("#project-create-title", "План");
     await page.click("#project-create-form button[type=submit]");
     for (const title of ["Перший", "Виконаний", "Другий"]) {
-      await page.fill("#project-step-title", title);
-      await page.click("#project-step-form button");
+      await page.addProjectStep(title);
       await page.waitForFunction(count => tasks.filter(task => task.projectId === activeProjectId).length === count,
         ["Перший", "Виконаний", "Другий"].indexOf(title) + 1);
     }

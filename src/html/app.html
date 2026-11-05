@@ -14,6 +14,7 @@
     <div id="selection-toolbar" class="selection-toolbar" hidden>
       <button id="selection-close" class="toolbar-action" type="button" aria-label="Завершити виділення"><span class="back-icon" aria-hidden="true"></span></button>
       <p id="selection-count">Вибрано: 0</p>
+      <button class="toolbar-action selection-more-placeholder" type="button" aria-label="Додаткові дії з вибраним"><span class="selection-more-dots" aria-hidden="true"></span></button>
       <div id="selection-controls" class="selection-controls">
         <button id="select-all-tasks" class="toolbar-action" type="button" aria-label="Вибрати всі завдання" aria-pressed="false"><svg class="selection-glyph" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="#selection-icon-all"/></svg></button>
         <div class="selection-actions" aria-label="Дії з вибраними завданнями">
@@ -33,7 +34,7 @@
           <button id="delete-selected-group" class="toolbar-action destructive" type="button" aria-label="Видалити вибрані групи" aria-haspopup="dialog"><span class="trash-icon" aria-hidden="true"></span></button>
         </div>
     </div>
-    <div id="list-section-selection-toolbar" class="list-section-selection-toolbar" hidden><button id="list-section-selection-close" class="toolbar-action" type="button" aria-label="Завершити виділення секцій"><span class="back-icon" aria-hidden="true"></span></button><strong id="list-section-selection-count"></strong><div class="selection-actions"><button id="list-section-rename" class="toolbar-action" type="button" aria-label="Перейменувати секцію"><span class="rename-group-icon" aria-hidden="true">T</span></button><button id="list-section-dissolve" class="toolbar-action" type="button" aria-label="Розпустити секції"><svg class="selection-glyph" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3H3v5m13-5h5v5M3 16v5h5m13-5v5h-5M8 8l-5-5m13 5 5-5M8 16l-5 5m13-5 5 5"/></svg></button><button id="list-section-delete" class="toolbar-action destructive" type="button" aria-label="Видалити секції із завданнями"><svg class="selection-glyph" viewBox="0 0 24 24" aria-hidden="true"><use href="#selection-icon-delete"/></svg></button></div></div>
+    <div id="list-section-selection-toolbar" class="list-section-selection-toolbar" hidden><button id="list-section-selection-close" class="toolbar-action" type="button" aria-label="Завершити виділення секцій"><span class="back-icon" aria-hidden="true"></span></button><strong id="list-section-selection-count"></strong><button class="toolbar-action selection-more-placeholder" type="button" aria-label="Додаткові дії з вибраними секціями"><span class="selection-more-dots" aria-hidden="true"></span></button><div class="selection-actions"><button id="list-section-rename" class="toolbar-action" type="button" aria-label="Перейменувати секцію"><span class="rename-group-icon" aria-hidden="true">T</span></button><button id="list-section-dissolve" class="toolbar-action" type="button" aria-label="Розпустити секції"><svg class="selection-glyph" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3H3v5m13-5h5v5M3 16v5h5m13-5v5h-5M8 8l-5-5m13 5 5-5M8 16l-5 5m13-5 5 5"/></svg></button><button id="list-section-delete" class="toolbar-action destructive" type="button" aria-label="Видалити секції із завданнями"><svg class="selection-glyph" viewBox="0 0 24 24" aria-hidden="true"><use href="#selection-icon-delete"/></svg></button></div></div>
   </header>
   <main><section class="task-section" aria-labelledby="current-list-heading">
     <ul id="task-list" aria-live="polite"></ul>
@@ -44,6 +45,7 @@
     <div id="projects-selection-toolbar" class="projects-selection-toolbar" hidden>
       <button id="projects-selection-close" class="toolbar-action" type="button" aria-label="Завершити виділення"><span class="back-icon" aria-hidden="true"></span></button>
       <p id="projects-selection-count">Вибрано: 0</p>
+      <button class="toolbar-action selection-more-placeholder" type="button" aria-label="Додаткові дії з вибраними проєктами"><span class="selection-more-dots" aria-hidden="true"></span></button>
       <div class="selection-actions" aria-label="Дії з вибраними проєктами">
         <button id="projects-complete-selected" class="toolbar-action" type="button" aria-label="Завершити вибрані проєкти"><span class="project-complete-icon" aria-hidden="true">✓</span></button>
         <button id="projects-delete-selected" class="toolbar-action destructive" type="button" aria-label="Видалити вибрані проєкти"><span class="trash-icon" aria-hidden="true"></span></button>
@@ -143,6 +145,7 @@
       <div id="main-menu-selection-toolbar" class="main-menu-selection-toolbar" hidden>
         <button id="main-menu-selection-close" class="toolbar-action" type="button" aria-label="Завершити виділення"><span class="back-icon" aria-hidden="true"></span></button>
         <p id="main-menu-selection-count">Вибрано: 0</p>
+        <button class="toolbar-action selection-more-placeholder" type="button" aria-label="Додаткові дії з вибраними списками"><span class="selection-more-dots" aria-hidden="true"></span></button>
         <div class="selection-actions" aria-label="Дії з вибраними списками">
           <button id="main-menu-delete-selected" class="toolbar-action destructive" type="button" aria-label="Видалити вибрані списки"><span class="trash-icon" aria-hidden="true"></span></button>
         </div>
@@ -253,7 +256,7 @@
         </div>
       </div>
     </div>
-    <p class="settings-version"><span>Версія 0.22 · 4 листопада 2026</span><button id="check-app-update" type="button">Перевірити оновлення</button></p>
+    <p class="settings-version"><span>Версія 0.23 · 6 листопада 2026</span><button id="check-app-update" type="button">Перевірити оновлення</button></p>
   </div>
 </section>
 <section id="completed-tasks-screen" class="completed-tasks-screen" aria-labelledby="completed-tasks-title" hidden>
@@ -297,15 +300,15 @@
 <section id="project-screen" class="project-screen" aria-labelledby="project-screen-title" hidden>
   <div class="project-panel">
     <header class="project-screen-header"><button id="project-back" class="editor-back" type="button" aria-label="Повернутися до всіх проєктів"><span aria-hidden="true"></span></button><div class="project-screen-title-copy"><h2 id="project-screen-title">Проєкт</h2><p id="project-progress">0 завдань</p></div><button id="project-edit-open" class="project-edit-open" type="button" aria-label="Редагувати проєкт" aria-controls="project-editor"><span class="edit-list-icon" aria-hidden="true"></span></button></header>
-<div id="project-section-selection-toolbar" class="project-selection-toolbar" hidden><button id="project-section-selection-close" class="toolbar-action" type="button" aria-label="Завершити виділення секцій"><span class="back-icon" aria-hidden="true"></span></button><strong id="project-section-selection-count"></strong><div class="project-selection-actions"><button id="project-section-rename" class="toolbar-action" type="button" aria-label="Перейменувати секцію"><span class="rename-group-icon" aria-hidden="true">T</span></button><button id="project-section-dissolve" class="toolbar-action" type="button" aria-label="Розпустити секції"><svg class="selection-glyph" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3H3v5m13-5h5v5M3 16v5h5m13-5v5h-5M8 8l-5-5m13 5 5-5M8 16l-5 5m13-5 5 5"/></svg></button><button id="project-section-delete" class="toolbar-action destructive" type="button" aria-label="Видалити секції із завданнями"><svg class="selection-glyph" viewBox="0 0 24 24" aria-hidden="true"><use href="#selection-icon-delete"/></svg></button></div></div>
+<div id="project-section-selection-toolbar" class="project-selection-toolbar" hidden><button id="project-section-selection-close" class="toolbar-action" type="button" aria-label="Завершити виділення секцій"><span class="back-icon" aria-hidden="true"></span></button><strong id="project-section-selection-count"></strong><button class="toolbar-action selection-more-placeholder" type="button" aria-label="Додаткові дії з вибраними секціями проєкту"><span class="selection-more-dots" aria-hidden="true"></span></button><div class="project-selection-actions"><button id="project-section-rename" class="toolbar-action" type="button" aria-label="Перейменувати секцію"><span class="rename-group-icon" aria-hidden="true">T</span></button><button id="project-section-dissolve" class="toolbar-action" type="button" aria-label="Розпустити секції"><svg class="selection-glyph" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3H3v5m13-5h5v5M3 16v5h5m13-5v5h-5M8 8l-5-5m13 5 5-5M8 16l-5 5m13-5 5 5"/></svg></button><button id="project-section-delete" class="toolbar-action destructive" type="button" aria-label="Видалити секції із завданнями"><svg class="selection-glyph" viewBox="0 0 24 24" aria-hidden="true"><use href="#selection-icon-delete"/></svg></button></div></div>
     <div id="project-selection-toolbar" class="project-selection-toolbar" hidden>
       <button id="project-selection-close" class="toolbar-action" type="button" aria-label="Завершити виділення"><span class="back-icon" aria-hidden="true"></span></button>
       <strong id="project-selection-count">Вибрано: 0</strong>
+      <div class="project-selection-more"><button id="project-selection-more-trigger" class="toolbar-action project-selection-more-trigger" type="button" aria-label="Додаткові дії з вибраними завданнями" aria-haspopup="menu" aria-expanded="false" aria-controls="project-selection-more-menu"><span aria-hidden="true"></span></button><div id="project-selection-more-menu" class="project-selection-more-menu" role="menu" aria-label="Додаткові дії з вибраними завданнями" hidden><button id="project-add-to-existing" type="button" role="menuitem"><span class="projects-icon project-menu-icon project-menu-icon-existing" aria-hidden="true"><svg viewBox="0 0 16 16"><path d="M2 8h11m-4-4 4 4-4 4"/></svg></span><span>Додати до проєкту</span></button><button id="project-create-from-steps" type="button" role="menuitem"><span class="projects-icon project-menu-icon project-menu-icon-new" aria-hidden="true"></span><span>Створити новий проєкт</span></button><button id="project-detach-selected" type="button" role="menuitem"><span class="projects-icon project-menu-icon project-menu-icon-detach" aria-hidden="true"></span><span>Відкріпити від проєкту</span></button></div></div>
       <div class="project-selection-actions">
         <button id="project-select-all-tasks" class="toolbar-action" type="button" aria-label="Вибрати всі завдання проєкту" aria-pressed="false"><svg class="selection-glyph" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="#selection-icon-all"/></svg></button>
         <button id="project-date-selected" class="toolbar-action" type="button" aria-label="Змінити дату вибраних кроків"><svg class="selection-glyph" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="#selection-icon-calendar"/></svg></button>
         <span class="project-list-dropdown"><button id="project-list-selected" class="toolbar-action" type="button" aria-label="Перемістити вибрані кроки" aria-expanded="false"><svg class="selection-glyph" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="#selection-icon-move"/></svg></button></span>
-        <button id="project-create-from-steps" class="toolbar-action" type="button" aria-label="Додати вибрані завдання до проєкту" aria-haspopup="dialog"><span class="projects-icon project-create-icon" aria-hidden="true"></span></button>
         <button id="project-assign-section" class="toolbar-action" type="button" aria-label="Додати вибрані завдання до секції" aria-haspopup="dialog"><svg class="selection-glyph" viewBox="0 0 24 24" aria-hidden="true"><use href="#selection-icon-group"/></svg></button>
         <button id="project-delete-selected" class="toolbar-action destructive" type="button" aria-label="Видалити вибрані кроки"><svg class="selection-glyph" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="#selection-icon-delete"/></svg></button>
       </div>
@@ -314,9 +317,6 @@
     <section id="project-steps" class="project-steps" aria-label="Завдання проєкту"><div class="project-steps-heading"><button id="project-tasks-expand" class="project-tasks-expand" type="button" aria-label="Розгорнути всі завдання" aria-expanded="false"><span aria-hidden="true"></span></button></div>
       <ul id="project-task-list"></ul>
       <p id="project-tasks-empty" class="project-tasks-empty" hidden>Додайте перше завдання, щоб почати рух проєктом.</p>
-      <form id="project-step-form" class="project-step-form"><label class="sr-only" for="project-step-title">Нове завдання</label><input id="project-step-title" maxlength="160" autocomplete="off" placeholder="Додати нове завдання"><button type="submit" aria-label="Додати нове завдання">＋</button><label id="project-step-section-row" class="project-step-section" hidden>Секція<select id="project-step-section"></select></label></form>
-      <button id="project-attach-open" class="project-attach-trigger" type="button">Прикріпити існуюче завдання</button>
-      <label class="project-step-placement"><input id="project-add-new-first" type="checkbox"><span>Нові завдання — на початок</span></label>
     </section>
     <div class="project-main-actions"><button id="project-main-complete" class="secondary-action" type="button">Завершити проєкт</button></div>
   </div>
@@ -331,6 +331,7 @@
 
       <div class="project-deadline"><span class="project-deadline-label">Термін</span><div class="project-deadline-controls"><button id="project-date-picker-open" class="meta-chip date-chip" type="button" aria-haspopup="dialog"><span class="calendar-icon" aria-hidden="true"></span><span id="project-date-label">Без дати</span></button></div><small id="project-countdown" class="project-countdown" hidden></small><input id="project-due-date" type="hidden"><input id="project-due-time" type="hidden"></div>
        <label class="project-setting-row project-default-list-row"><span>Нові завдання</span><select id="project-default-list" aria-label="Список для нових завдань"><option value="">Останній вибраний</option></select></label>
+        <label class="project-setting-row project-step-placement"><span>Нові завдання — на початок</span><input id="project-add-new-first" type="checkbox" role="switch"></label>
 
        <p id="project-save-status" class="project-save-status" aria-live="polite"></p>
       </div>
@@ -343,8 +344,9 @@
 <div id="project-attach-backdrop" class="project-attach-backdrop" hidden>
   <section id="project-attach-dialog" class="project-attach-dialog" role="dialog" aria-modal="true" aria-labelledby="project-attach-title" tabindex="-1">
     <div class="project-attach-heading"><h2 id="project-attach-title">Прикріпити існуюче завдання</h2><button id="project-attach-close" type="button" aria-label="Закрити">×</button></div>
+    <p id="project-attach-destination" class="project-attach-destination"></p>
     <label class="sr-only" for="project-attach-search">Пошук завдань за назвою</label>
-    <input id="project-attach-search" type="search" autocomplete="off" placeholder="Пошук за назвою">
+    <div class="project-attach-search-shell"><span class="project-attach-search-icon" aria-hidden="true"></span><input id="project-attach-search" type="search" autocomplete="off" placeholder="Пошук завдань"></div>
     <p id="project-attach-empty" class="project-attach-empty" hidden></p>
     <div id="project-attach-results" class="project-attach-results"></div>
     <button id="project-attach-save" class="primary-action" type="button" disabled>Додати</button>
@@ -488,13 +490,10 @@
 </div>
 <div id="project-create-from-steps-backdrop" class="project-delete-dialog-backdrop" hidden>
   <section id="project-create-from-steps-dialog" class="project-delete-dialog" role="dialog" aria-modal="true" aria-labelledby="project-create-from-steps-title" tabindex="-1">
-    <h2 id="project-create-from-steps-title">Куди додати завдання?</h2>
-    <label class="project-create-choice"><input type="radio" name="project-create-mode" value="existing" checked><span>До існуючого проєкту</span></label>
-    <label class="project-create-choice"><input type="radio" name="project-create-mode" value="new"><span>Створити з цих завдань новий</span></label>
+    <h2 id="project-create-from-steps-title">Додати до проєкту</h2>
     <div id="project-create-existing-fields">
       <label for="project-create-existing-select">Проєкт</label>
       <select id="project-create-existing-select"></select>
-      <label class="project-create-choice"><input id="project-create-add-first" type="checkbox" checked><span>На початок проєкту</span></label>
     </div>
     <div id="project-create-new-fields" hidden><label for="project-create-from-steps-name">Назва проєкту</label><input id="project-create-from-steps-name" type="text" maxlength="160" autocomplete="off"></div>
     <footer><button id="project-create-from-steps-cancel" type="button">Скасувати</button><button id="project-create-from-steps-confirm" type="button">Додати</button></footer>

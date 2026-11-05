@@ -688,6 +688,9 @@ els.daySwitch.addEventListener("click", () => {
 });
 els.dayChangeConfirm.addEventListener("click", () => window.location.reload());
 document.addEventListener("click", event => {
+  if (event.target.closest(".selection-more-placeholder")) toast("В розробці");
+});
+document.addEventListener("click", event => {
   if (ensureCurrentDay() || event.target.closest("#day-change-confirm")) return;
   event.preventDefault();
   event.stopImmediatePropagation();
@@ -2604,7 +2607,7 @@ els.quickTaskForm.addEventListener("submit", async event => {
   if (target.kind === "list-section" && (activeListId !== target.listId || !sections.some(section => section.id === target.sectionId && section.listId === target.listId))) {
     closeQuickTask(); toast("Секція змінилася. Спробуйте ще раз"); return;
   }
-  if (target.kind === "project-section" && (activeProjectId !== target.projectId || !projects.some(project => project.id === target.projectId && project.projectSections?.some(section => section.id === target.sectionId)))) {
+  if (target.kind === "project-section" && (activeProjectId !== target.projectId || !projects.some(project => project.id === target.projectId && (target.sectionId === null || project.projectSections?.some(section => section.id === target.sectionId))))) {
     closeQuickTask(); toast("Секція змінилася. Спробуйте ще раз"); return;
   }
   const submit = els.quickTaskForm.querySelector('[type="submit"]');
@@ -2974,8 +2977,10 @@ function mobileNavigationState() {
     datePicker: !els.datePickerBackdrop.hidden,
     timeDialog: !els.timeDialogBackdrop.hidden,
     attachDialog: !projectEls.attachBackdrop.hidden,
+    attachSectionId: attachTargetSectionId,
     convertDialog: !projectEls.convertDialogBackdrop.hidden,
     createFromStepsDialog: !projectEls.createFromStepsBackdrop.hidden,
+    createFromStepsMode: projectEls.createFromStepsDialog.dataset.mode,
     completeDialog: !projectEls.completeDialogBackdrop.hidden,
     deleteDialog: !projectEls.deleteDialogBackdrop.hidden,
     overdueDialog: !projectEls.overdueDialogBackdrop.hidden,
@@ -3057,9 +3062,10 @@ async function restoreMobileNavigation(view) {
           view.projectEditor ? projectEls.dueTime.value : els.time.value);
       }
       if (view.timeDialog && !current.timeDialog) openTimeDialog();
-      if (view.attachDialog && !current.attachDialog) projectEls.attachOpen.click();
+      if (view.attachDialog && !current.attachDialog) openAttachDialog(view.attachSectionId || null,
+        projectEls.taskList.querySelector(`[data-section-id="${view.attachSectionId || PROJECT_ROOT_SECTION_ID}"] .list-section-add`) || projectEls.editOpen);
       if (view.convertDialog && !current.convertDialog) openProjectConvertDialog();
-      if (view.createFromStepsDialog && !current.createFromStepsDialog) openCreateFromStepsDialog();
+      if (view.createFromStepsDialog && !current.createFromStepsDialog) openCreateFromStepsDialog(view.createFromStepsMode);
       if (view.detachDialog && !current.detachDialog) openTaskDetachDialog();
       if (view.taskAttachDialog && !current.taskAttachDialog) els.taskAttachProject.click();
       if (view.completeDialog && !current.completeDialog) requestProjectCompletion(Math.max(1, selectedProjectIds.size));
@@ -3130,9 +3136,10 @@ async function restoreMobileNavigation(view) {
     }
     if (view.datePicker) openDatePicker();
     if (view.timeDialog && view.datePicker) openTimeDialog();
-    if (view.attachDialog && view.projectId) projectEls.attachOpen.click();
+    if (view.attachDialog && view.projectId) openAttachDialog(view.attachSectionId || null,
+      projectEls.taskList.querySelector(`[data-section-id="${view.attachSectionId || PROJECT_ROOT_SECTION_ID}"] .list-section-add`) || projectEls.editOpen);
     if (view.convertDialog && view.projectId) openProjectConvertDialog();
-    if (view.createFromStepsDialog && view.projectId) openCreateFromStepsDialog();
+    if (view.createFromStepsDialog && view.projectId) openCreateFromStepsDialog(view.createFromStepsMode);
     if (view.detachDialog && view.taskEditor) openTaskDetachDialog();
     if (view.taskAttachDialog && view.taskEditor) els.taskAttachProject.click();
     if (view.completeDialog) requestProjectCompletion(Math.max(1, selectedProjectIds.size));

@@ -34,6 +34,8 @@ test("project section membership is independent of list section and resets when 
   assert.equal(task.projectSectionId, "phase");
   assert.equal(createTask({ ...task, projectId: null }).projectSectionId, null);
   assert.deepEqual(Array.from(createProject({ title: "Проєкт" }).projectSections), []);
+  assert.equal(createProject({ title: "Старий проєкт" }).unsectionedCollapsed, false);
+  assert.equal(createProject({ title: "Згорнутий", unsectionedCollapsed: true }).unsectionedCollapsed, true);
 });
 
 test("current project step follows visible section order before stored project position", () => {

@@ -1139,7 +1139,7 @@ function openTaskDetails(task) {
   els.detailToggle.hidden = false;
   const project = projects.find(item => item.id === task.projectId);
   els.taskProjectSectionRow.hidden = !project || !project.projectSections?.length;
-  els.taskProjectSectionSelect.replaceChildren(new Option("Без секції", ""), ...(project?.projectSections || []).map(section => new Option(section.title, section.id)));
+  els.taskProjectSectionSelect.replaceChildren(new Option("Звичайні кроки", ""), ...(project?.projectSections || []).map(section => new Option(section.title, section.id)));
   els.taskProjectSectionSelect.value = project?.projectSections?.some(section => section.id === task.projectSectionId) ? task.projectSectionId : "";
   els.taskProjectRow.hidden = !project;
   els.taskProjectOptions.hidden = true;

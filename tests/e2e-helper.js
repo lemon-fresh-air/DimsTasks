@@ -18,6 +18,23 @@ async function openTestApp() {
   page.on("console", message => { if (message.type() === "error") errors.push(message.text()); });
   page.on("pageerror", error => errors.push(error.message));
   await page.goto(pathToFileURL(path.resolve("dist/index.html")).href, { waitUntil: "networkidle" });
+  page.addProjectStep = async (title, sectionId = null) => {
+    const selector = sectionId ? `[data-section-id="${sectionId}"] .list-section-add` : ".project-root-heading .list-section-add";
+    await page.locator(selector).click();
+    await page.fill("#quick-task-title", title);
+    await page.click("#quick-task-form button[type=submit]");
+    await page.locator("#quick-task-backdrop").waitFor({ state: "hidden" });
+  };
+  page.holdProjectSectionAdd = async (sectionId = null) => {
+    const selector = sectionId ? `[data-section-id="${sectionId}"] .list-section-add` : ".project-root-heading .list-section-add";
+    const button = page.locator(selector);
+    await button.scrollIntoViewIfNeeded();
+    const box = await button.boundingBox();
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.down();
+    await page.locator("#project-attach-backdrop").waitFor({ state: "visible" });
+    await page.mouse.up();
+  };
   return { browser, page, errors };
 }
 

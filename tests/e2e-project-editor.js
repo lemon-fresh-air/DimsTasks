@@ -85,8 +85,7 @@ const { openTestApp, seedProjectSections, holdProjectSection } = require('./e2e-
     await page.screenshot({ path: 'D:/Downloads/dimstasks-project-editor.png' });
     await page.click('#project-edit-close');
     await page.locator('#project-editor').waitFor({ state: 'hidden' });
-    await page.fill('#project-step-title', 'Сусіднє завдання');
-    await page.click('#project-step-form button[type=submit]');
+    await page.addProjectStep('Сусіднє завдання');
     await page.waitForFunction(() => tasks.some(task => task.title === 'Сусіднє завдання'));
     await page.reload({ waitUntil: 'networkidle' });
     await page.click('#nav-projects');

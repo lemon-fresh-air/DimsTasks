@@ -58,13 +58,17 @@ const projectEls = {
   listSelected: document.querySelector("#project-list-selected"),
   listOptions: document.querySelector("#project-list-options"),
   createFromSteps: document.querySelector("#project-create-from-steps"),
+  addToExisting: document.querySelector("#project-add-to-existing"),
+  detachSelected: document.querySelector("#project-detach-selected"),
+  selectionMore: document.querySelector(".project-selection-more"),
+  selectionMoreTrigger: document.querySelector("#project-selection-more-trigger"),
+  selectionMoreMenu: document.querySelector("#project-selection-more-menu"),
   createFromStepsBackdrop: document.querySelector("#project-create-from-steps-backdrop"),
   createFromStepsDialog: document.querySelector("#project-create-from-steps-dialog"),
   createFromStepsName: document.querySelector("#project-create-from-steps-name"),
   createExistingFields: document.querySelector("#project-create-existing-fields"),
   createExistingSelect: document.querySelector("#project-create-existing-select"),
   createNewFields: document.querySelector("#project-create-new-fields"),
-  createAddFirst: document.querySelector("#project-create-add-first"),
   createFromStepsCancel: document.querySelector("#project-create-from-steps-cancel"),
   createFromStepsConfirm: document.querySelector("#project-create-from-steps-confirm"),
   deleteSelected: document.querySelector("#project-delete-selected"),
@@ -90,11 +94,6 @@ const projectEls = {
   taskList: document.querySelector("#project-task-list"),
   sectionCreate: document.querySelector("#project-section-create"),
   sectionName: document.querySelector("#project-section-name"),
-  stepForm: document.querySelector("#project-step-form"),
-  stepTitle: document.querySelector("#project-step-title"),
-  stepSectionRow: document.querySelector("#project-step-section-row"),
-  stepSection: document.querySelector("#project-step-section"),
-  attachOpen: document.querySelector("#project-attach-open"),
   attachBackdrop: document.querySelector("#project-attach-backdrop"),
   attachDialog: document.querySelector("#project-attach-dialog"),
   attachClose: document.querySelector("#project-attach-close"),
@@ -115,6 +114,8 @@ const projectEls = {
   delete: document.querySelector("#project-delete")
 };
 let attachSelectedIds = new Set();
+let attachTargetSectionId = null;
+let attachReturnFocus = null;
 
 function projectSteps(projectId) {
   return tasks.filter(task => task.projectId === projectId).sort(compareProjectTasks);
@@ -238,9 +239,11 @@ function renderProjectTask(task, target = projectEls.taskList) {
   target.append(row);
 }
 
-function renderProjectSectionHeading(section, count) {
+const PROJECT_ROOT_SECTION_ID = "project-root";
+
+function renderProjectSectionHeading(section, count, root = false) {
   const row = document.createElement("li");
-  row.className = "list-section project-section-heading";
+  row.className = `list-section project-section-heading${root ? " project-root-heading" : ""}`;
   row.dataset.sectionId = section.id;
   const heading = document.createElement("div");
   heading.className = "list-section-heading";
@@ -250,7 +253,7 @@ function renderProjectSectionHeading(section, count) {
   button.dataset.projectSectionToggle = section.id;
   button.setAttribute("aria-expanded", String(!section.collapsed));
   const current = currentProjectTask(tasks, activeProjectId, projects);
-  row.classList.toggle("contains-current-step", section.collapsed && current?.projectSectionId === section.id);
+  row.classList.toggle("contains-current-step", section.collapsed && (root ? !current?.projectSectionId : current?.projectSectionId === section.id));
   button.setAttribute("aria-label", `${section.collapsed ? "Розгорнути" : "Згорнути"} секцію «${section.title}»`);
   if (row.classList.contains("contains-current-step")) button.setAttribute("aria-label", `${section.title} · ${count} · поточний крок`);
   const label = document.createElement("span");
@@ -264,6 +267,8 @@ function renderProjectSectionHeading(section, count) {
   add.type = "button";
   add.className = "today-group-add list-section-add";
   add.setAttribute("aria-label", `Додати крок до секції «${section.title}»`);
+  add.setAttribute("aria-description", "Утримуйте, щоб прикріпити існуючі завдання");
+  add.setAttribute("aria-keyshortcuts", "Shift+Enter");
   add.setAttribute("aria-haspopup", "dialog");
   heading.append(button, add);
   const members = document.createElement("ul");
@@ -336,24 +341,24 @@ function renderOpenProject() {
   renderProjectCountdown();
   projectEls.progress.textContent = `${steps.length} завд. · ${completedCount} виконано`;
   projectEls.tasksEmpty.hidden = steps.length > 0 || Boolean(project.projectSections?.length);
-  projectEls.tasksExpand.hidden = !projectPreview || activeSteps.length <= 3 || selectedHere.size > 0 || Boolean(project.projectSections?.length);
-  if (!projectPreview) projectEls.steps.classList.add("is-expanded");
-  else if (!project.projectSections?.length && !selectedHere.size && projectEls.steps.dataset.previewProjectId !== project.id) projectEls.steps.classList.remove("is-expanded");
+  projectEls.tasksExpand.hidden = true;
+  projectEls.steps.classList.add("is-expanded");
   projectEls.steps.dataset.previewProjectId = project.id;
   projectEls.selectAll.setAttribute("aria-pressed", String(steps.length > 0 && steps.every(task => selectedHere.has(task.id))));
   projectEls.addNewFirst.checked = project.addNewTasksFirst === true;
-  const sectionId = projectEls.stepSection.value;
-  projectEls.stepSectionRow.hidden = !project.projectSections?.length;
-  projectEls.stepSection.replaceChildren(new Option("Без секції", ""), ...(project.projectSections || []).map(section => new Option(section.title, section.id)));
-  projectEls.stepSection.value = project.projectSections?.some(section => section.id === sectionId) ? sectionId : "";
-  projectEls.attachOpen.hidden = project.status === "completed";
   projectEls.complete.textContent = project.status === "completed" ? "Повернути в активні" : "Завершити проєкт";
   projectEls.convertTask.hidden = project.status === "completed";
   projectEls.mainComplete.textContent = projectEls.complete.textContent;
   projectEls.taskList.replaceChildren();
   const projectSections = project.projectSections || [];
   const validSectionIds = new Set(projectSections.map(section => section.id));
-  activeSteps.filter(task => !validSectionIds.has(task.projectSectionId)).forEach(task => renderProjectTask(task));
+  const unsectioned = activeSteps.filter(task => !validSectionIds.has(task.projectSectionId));
+  const rootSection = { id: PROJECT_ROOT_SECTION_ID, title: "Звичайні кроки", collapsed: project.unsectionedCollapsed === true };
+  const rootTarget = renderProjectSectionHeading(rootSection, unsectioned.length, true);
+  if (!rootSection.collapsed || unsectioned.some(task => selectedHere.has(task.id))) {
+    rootTarget.hidden = false;
+    unsectioned.forEach(task => renderProjectTask(task, rootTarget));
+  }
   for (const section of projectSections) {
     const members = activeSteps.filter(task => task.projectSectionId === section.id);
     const target = renderProjectSectionHeading(section, members.length);
@@ -369,7 +374,8 @@ function renderOpenProject() {
   projectEls.selectionToolbar.hidden = selectedHere.size === 0;
   projectEls.screen.querySelector(".project-screen-header").hidden = selectedHere.size > 0;
   projectEls.selectionCount.textContent = `Вибрано: ${selectedHere.size}`;
-  projectEls.createFromSteps.hidden = project.status !== "active";
+  projectEls.selectionMore.hidden = project.status !== "active";
+  if (!selectedHere.size) closeProjectSelectionMore();
   projectEls.listOptions.replaceChildren(...lists.map(createListDropdownOption));
   projectEls.sectionsOpen.hidden = project.status !== "active";
   syncProjectSectionSelection();
@@ -485,9 +491,33 @@ function closeAttachDialog() {
   projectEls.attachBackdrop.style.top = "";
   projectEls.attachBackdrop.style.height = "";
   projectEls.attachBackdrop.style.bottom = "";
+  projectEls.attachBackdrop.style.removeProperty("--project-attach-viewport-height");
   document.body.classList.remove("project-attach-open");
   attachSelectedIds.clear();
-  projectEls.attachOpen.focus();
+  attachReturnFocus?.focus();
+  attachReturnFocus = null;
+  attachTargetSectionId = null;
+}
+
+function openAttachDialog(sectionId, trigger) {
+  const project = projects.find(item => item.id === activeProjectId);
+  if (!project || project.status !== "active") return;
+  if (sectionId && !project.projectSections?.some(section => section.id === sectionId)) return;
+  attachTargetSectionId = sectionId;
+  attachReturnFocus = trigger;
+  const section = project.projectSections?.find(item => item.id === sectionId);
+  document.querySelector("#project-attach-destination").textContent = `До секції «${section?.title || "Звичайні кроки"}»`;
+  attachSelectedIds.clear();
+  projectEls.attachSearch.value = "";
+  renderAttachResults();
+  projectEls.attachBackdrop.hidden = false;
+  document.body.classList.add("project-attach-open");
+  positionAttachDialog();
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener("resize", positionAttachDialog);
+    window.visualViewport.addEventListener("scroll", positionAttachDialog);
+  }
+  projectEls.attachSearch.focus();
 }
 
 function positionAttachDialog() {
@@ -496,17 +526,18 @@ function positionAttachDialog() {
   projectEls.attachBackdrop.style.top = `${viewport.offsetTop}px`;
   projectEls.attachBackdrop.style.height = `${viewport.height}px`;
   projectEls.attachBackdrop.style.bottom = "auto";
+  projectEls.attachBackdrop.style.setProperty("--project-attach-viewport-height", `${viewport.height}px`);
 }
 
 async function saveAttachedTasks() {
   const project = projects.find(item => item.id === activeProjectId);
-  if (!project || !attachSelectedIds.size) return;
+  if (!project || !attachSelectedIds.size || attachTargetSectionId && !project.projectSections?.some(section => section.id === attachTargetSectionId)) return;
   const selected = tasks.filter(task => attachSelectedIds.has(task.id) && task.status === "active" && !task.projectId && !task.savedSteps?.length);
   if (!selected.length) return;
   const now = new Date().toISOString();
   const bumped = tasks.filter(task => task.projectId === project.id && task.status === "active")
     .map(task => ({ ...task, projectPosition: (task.projectPosition ?? 0) + selected.length, updatedAt: now }));
-  const changed = selected.map((task, index) => ({ ...task, projectId: project.id, projectSectionId: null, projectPosition: index, updatedAt: now }));
+  const changed = selected.map((task, index) => ({ ...task, projectId: project.id, projectSectionId: attachTargetSectionId, projectPosition: index, updatedAt: now }));
   projectEls.attachSave.disabled = true;
   try {
     await taskDb.putMany([...changed, ...bumped]);
@@ -538,7 +569,7 @@ function syncProjectSectionSelection() {
   if (active) projectEls.selectionToolbar.hidden = true;
   for (const row of projectEls.taskList.querySelectorAll(".project-section-heading")) {
     const selected = selectedProjectSectionIds.has(row.dataset.sectionId);
-    const section = sections.find(section => section.id === row.dataset.sectionId);
+    const section = row.dataset.sectionId === PROJECT_ROOT_SECTION_ID ? { collapsed: project?.unsectionedCollapsed === true } : sections.find(section => section.id === row.dataset.sectionId);
     const button = row.querySelector("[data-project-section-toggle]");
     row.classList.toggle("section-selected", selected);
     button.setAttribute("aria-pressed", String(selected));
@@ -684,13 +715,21 @@ function openProjectSections() {
   sectionDialogScope = { kind: context.kind, id: context.id };
   projectEls.sectionCreate.reset();
   document.querySelector("#project-section-picker-error").hidden = true;
-  document.querySelector("#project-section-options").replaceChildren(...context.sections.map(section => {
+  const options = context.sections.map(section => {
     const button = document.createElement("button");
     button.type = "button";
     button.dataset.assignProjectSection = section.id;
     button.textContent = section.title;
     return button;
-  }));
+  });
+  if (context.kind === "project") {
+    const root = document.createElement("button");
+    root.type = "button";
+    root.dataset.assignProjectSection = PROJECT_ROOT_SECTION_ID;
+    root.textContent = "Звичайні кроки";
+    options.unshift(root);
+  }
+  document.querySelector("#project-section-options").replaceChildren(...options);
   syncProjectDialogViewport();
   projectEls.sectionsDialog.showModal();
   (document.querySelector("#project-section-options button") || projectEls.sectionName).focus();
@@ -709,7 +748,11 @@ async function assignSelectedProjectTasks(sectionId = null) {
   const name = projectEls.sectionName.value;
   const saved = sectionDialogScope?.kind === "list"
     ? await changeListSections(list => assignListTasksToSection(list, sections, tasks, selected, sectionId, name), sectionDialogScope.id)
-    : await changeProjectSections(project => assignProjectTasksToSection(project, tasks, selected, sectionId, name));
+    : await changeProjectSections(project => sectionId === PROJECT_ROOT_SECTION_ID
+      ? { project: { ...project, unsectionedCollapsed: false, updatedAt: new Date().toISOString() },
+        tasks: tasks.filter(task => task.projectId === project.id && selected.has(task.id) && task.projectSectionId)
+          .map(task => ({ ...task, projectSectionId: null, updatedAt: new Date().toISOString() })) }
+      : assignProjectTasksToSection(project, tasks, selected, sectionId, name));
   if (!saved) return;
   selectedTaskIds.clear();
   closeProjectSections();
@@ -740,16 +783,8 @@ function closeProjectEditor() {
 }
 
 function syncProjectTaskPreview() {
-  if (projects.find(item => item.id === activeProjectId)?.projectSections?.length) {
-    projectEls.steps.classList.add("is-expanded");
-    projectEls.taskList.querySelectorAll(".swipe-row:not(.completed)").forEach(row => { row.inert = false; });
-    projectEls.taskList.querySelectorAll(".swipe-row.completed").forEach(row => { row.inert = !projectEls.steps.classList.contains("is-completed-expanded"); });
-    return;
-  }
-  const collapsed = !projectEls.steps.classList.contains("is-expanded");
-  const completedCollapsed = !projectEls.steps.classList.contains("is-completed-expanded");
-  projectEls.taskList.querySelectorAll(".swipe-row:not(.completed)").forEach((row, index) => { row.inert = collapsed && index >= 3; });
-  projectEls.taskList.querySelectorAll(".swipe-row.completed").forEach(row => { row.inert = completedCollapsed; });
+  projectEls.taskList.querySelectorAll(".swipe-row:not(.completed)").forEach(row => { row.inert = false; });
+  projectEls.taskList.querySelectorAll(".swipe-row.completed").forEach(row => { row.inert = !projectEls.steps.classList.contains("is-completed-expanded"); });
 }
 
 function toggleProjectTasks() {
@@ -832,7 +867,7 @@ async function addProject(title) {
   openProject(project.id);
 }
 
-async function addProjectStep(title, { sectionId = projectEls.stepSection.value || null, description = "" } = {}) {
+async function addProjectStep(title, { sectionId = null, description = "" } = {}) {
   const project = projects.find(item => item.id === activeProjectId);
   const value = title.trim();
   if (!project || !value) return;
@@ -868,7 +903,6 @@ async function addProjectStep(title, { sectionId = projectEls.stepSection.value 
   tasks = tasks.map(existing => replacements.get(existing.id) || existing);
   tasks.push(task);
   await rememberProjectList(project.id, listId);
-  if (projectEls.stepTitle.value.trim() === value) projectEls.stepTitle.value = "";
   renderOpenProject();
   renderProjects();
 }
@@ -969,31 +1003,58 @@ function selectedActiveProjectStepIds() {
 
 function closeCreateFromStepsDialog() {
   projectEls.createFromStepsBackdrop.hidden = true;
-  projectEls.createFromSteps.focus();
+  projectEls.selectionMoreTrigger.focus();
 }
 
-function openCreateFromStepsDialog() {
+function closeProjectSelectionMore({ focus = false } = {}) {
+  projectEls.selectionMoreMenu.hidden = true;
+  projectEls.selectionMoreTrigger.setAttribute("aria-expanded", "false");
+  if (focus) projectEls.selectionMoreTrigger.focus();
+}
+
+async function detachSelectedProjectSteps() {
+  const projectId = activeProjectId;
+  const selected = projectSteps(projectId).filter(task => selectedTaskIds.has(task.id));
+  if (!selected.length) return;
+  closeProjectSelectionMore();
+  const updatedAt = new Date().toISOString();
+  const changed = selected.map(task => ({ ...task, projectId: null, projectSectionId: null, projectPosition: null, updatedAt }));
+  try {
+    await taskDb.putMany(changed);
+    const replacements = new Map(changed.map(task => [task.id, task]));
+    tasks = tasks.map(task => replacements.get(task.id) || task);
+    selectedTaskIds.clear();
+    renderProjects();
+    renderCurrentTasks();
+    renderOpenProject();
+    toast(`Відкріплено завдань: ${changed.length}`);
+  } catch (_error) {
+    toast("Не вдалося відкріпити завдання");
+  }
+}
+
+function openCreateFromStepsDialog(mode = "existing") {
   if (!selectedTaskIds.size || !projects.some(project => project.id === activeProjectId && project.status === "active")) return;
+  closeProjectSelectionMore();
+  projectEls.createFromStepsDialog.dataset.mode = mode === "new" ? "new" : "existing";
   projectEls.createFromStepsName.value = "";
-  projectEls.createAddFirst.checked = true;
   projectEls.createExistingSelect.replaceChildren(...projects.filter(project => project.status === "active" && project.id !== activeProjectId).sort(compareProjects).map(project => new Option(project.title, project.id)));
-  const existing = projectEls.createExistingSelect.options.length > 0;
-  projectEls.createFromStepsDialog.querySelector(`input[name="project-create-mode"][value="${existing ? "existing" : "new"}"]`).checked = true;
   syncCreateFromStepsMode();
   projectEls.createFromStepsBackdrop.hidden = false;
-  (existing ? projectEls.createExistingSelect : projectEls.createFromStepsName).focus();
+  (projectEls.createFromStepsDialog.dataset.mode === "existing" ? projectEls.createExistingSelect : projectEls.createFromStepsName).focus();
 }
 
 function syncCreateFromStepsMode() {
-  const existing = projectEls.createFromStepsDialog.querySelector('input[name="project-create-mode"]:checked').value === "existing";
+  const existing = projectEls.createFromStepsDialog.dataset.mode === "existing";
   projectEls.createExistingFields.hidden = !existing;
   projectEls.createNewFields.hidden = existing;
+  document.querySelector("#project-create-from-steps-title").textContent = existing ? "Додати до проєкту" : "Створити новий проєкт";
   projectEls.createFromStepsConfirm.textContent = existing ? "Додати" : "Створити";
   projectEls.createFromStepsConfirm.disabled = existing && !projectEls.createExistingSelect.value;
 }
 
 async function createProjectFromSelectedSteps() {
-  const existing = projectEls.createFromStepsDialog.querySelector('input[name="project-create-mode"]:checked').value === "existing";
+  const existing = projectEls.createFromStepsDialog.dataset.mode === "existing";
   const title = projectEls.createFromStepsName.value.trim();
   if (!existing && !title) { projectEls.createFromStepsName.focus(); return; }
   const selectedIds = new Set(projectSteps(activeProjectId).filter(task => selectedTaskIds.has(task.id)).map(task => task.id));
@@ -1005,7 +1066,7 @@ async function createProjectFromSelectedSteps() {
       if (!destination) { toast("Виберіть проєкт"); return; }
       const selected = projectSteps(activeProjectId).filter(task => selectedIds.has(task.id));
       const current = projectSteps(destination.id).filter(task => !isTaskCompleted(task));
-      const ordered = projectEls.createAddFirst.checked ? [...selected, ...current] : [...current, ...selected];
+      const ordered = destination.addNewTasksFirst === true ? [...selected, ...current] : [...current, ...selected];
       const now = new Date().toISOString();
       const changed = ordered.map((task, index) => ({ ...task, projectId: destination.id, projectSectionId: selectedIds.has(task.id) ? null : task.projectSectionId, projectPosition: index, updatedAt: now }));
       await taskDb.putMany(changed);
@@ -1037,6 +1098,7 @@ async function createProjectFromSelectedSteps() {
 }
 
 async function reorderSelectedProjectSteps({ beforeId, sectionId = null, movedIds = null }) {
+  if (sectionId === PROJECT_ROOT_SECTION_ID) sectionId = null;
   const projectSelectedIds = selectedActiveProjectStepIds();
   const ordered = reorderProjectStepBlock(tasks, activeProjectId, projectSelectedIds, beforeId);
   const moveSet = new Set(movedIds || []);
@@ -1214,7 +1276,6 @@ projectEls.datePickerOpen.addEventListener("click", () => {
 });
 projectEls.showCountdown.addEventListener("change", () => { markProjectDirty(); renderProjectCountdown(); });
 
-projectEls.stepForm.addEventListener("submit", event => { event.preventDefault(); addProjectStep(projectEls.stepTitle.value); });
 projectEls.sectionCreate.addEventListener("submit", event => { event.preventDefault(); assignSelectedProjectTasks(); });
 document.querySelector("#project-section-options").addEventListener("click", event => {
   const button = event.target.closest("[data-assign-project-section]");
@@ -1223,15 +1284,16 @@ document.querySelector("#project-section-options").addEventListener("click", eve
 projectEls.taskList.addEventListener("click", async event => {
   const add = event.target.closest(".list-section-add");
   if (add) {
+    if (add.dataset.longPressed) { delete add.dataset.longPressed; return; }
     const sectionId = add.closest("[data-section-id]")?.dataset.sectionId;
-    if (sectionId) openQuickTask({ kind: "project-section", projectId: activeProjectId, sectionId });
+    if (sectionId) openQuickTask({ kind: "project-section", projectId: activeProjectId, sectionId: sectionId === PROJECT_ROOT_SECTION_ID ? null : sectionId });
     return;
   }
   const header = event.target.closest("[data-project-section-toggle]");
   const id = header?.dataset.projectSectionToggle;
   const row = header?.closest(".project-section-heading");
   if (row?.dataset.longPressed || row?.dataset.dragged) { delete row.dataset.longPressed; delete row.dataset.dragged; return; }
-  if (id && selectedProjectSectionIds.size) {
+  if (id && id !== PROJECT_ROOT_SECTION_ID && selectedProjectSectionIds.size) {
     if (selectedProjectSectionIds.has(id)) selectedProjectSectionIds.delete(id);
     else selectedProjectSectionIds.add(id);
     syncProjectSectionSelection();
@@ -1239,22 +1301,48 @@ projectEls.taskList.addEventListener("click", async event => {
   }
   const project = projects.find(item => item.id === activeProjectId);
   if (!id || !project) return;
-  const updated = createProject({ ...project, projectSections: project.projectSections.map(section => section.id === id ? { ...section, collapsed: !section.collapsed } : section), updatedAt: new Date().toISOString() });
+  const updated = createProject({ ...project,
+    ...(id === PROJECT_ROOT_SECTION_ID ? { unsectionedCollapsed: !project.unsectionedCollapsed } : { projectSections: project.projectSections.map(section => section.id === id ? { ...section, collapsed: !section.collapsed } : section) }),
+    updatedAt: new Date().toISOString() });
   try { await projectDb.put(updated); projects = projects.map(item => item.id === updated.id ? updated : item); renderOpenProject(); }
   catch (_error) { toast("Не вдалося змінити секцію"); }
 });
-projectEls.attachOpen.addEventListener("click", () => {
-  attachSelectedIds.clear();
-  projectEls.attachSearch.value = "";
-  renderAttachResults();
-  projectEls.attachBackdrop.hidden = false;
-  document.body.classList.add("project-attach-open");
-  positionAttachDialog();
-  if (window.visualViewport) {
-    window.visualViewport.addEventListener("resize", positionAttachDialog);
-    window.visualViewport.addEventListener("scroll", positionAttachDialog);
+let sectionAddPress = null;
+projectEls.taskList.addEventListener("pointerdown", event => {
+  const button = event.target.closest(".project-section-heading .list-section-add");
+  if (!button || event.button > 0) return;
+  const sectionId = button.closest("[data-section-id]")?.dataset.sectionId;
+  if (!sectionId) return;
+  sectionAddPress = { button, pointerId: event.pointerId, x: event.clientX, y: event.clientY,
+    timer: setTimeout(() => {
+      if (!sectionAddPress || sectionAddPress.button !== button) return;
+      button.dataset.longPressed = "true";
+      setTimeout(() => { delete button.dataset.longPressed; }, 700);
+      openAttachDialog(sectionId === PROJECT_ROOT_SECTION_ID ? null : sectionId, button);
+      sectionAddPress = null;
+    }, 450) };
+});
+projectEls.taskList.addEventListener("pointermove", event => {
+  if (!sectionAddPress || event.pointerId !== sectionAddPress.pointerId) return;
+  if (Math.hypot(event.clientX - sectionAddPress.x, event.clientY - sectionAddPress.y) > 12) {
+    clearTimeout(sectionAddPress.timer);
+    sectionAddPress = null;
   }
-  projectEls.attachSearch.focus();
+});
+for (const type of ["pointerup", "pointercancel", "pointerleave"]) projectEls.taskList.addEventListener(type, event => {
+  if (!sectionAddPress || event.pointerId !== sectionAddPress.pointerId) return;
+  clearTimeout(sectionAddPress.timer);
+  sectionAddPress = null;
+});
+projectEls.taskList.addEventListener("contextmenu", event => {
+  if (event.target.closest(".project-section-heading .list-section-add")) event.preventDefault();
+});
+projectEls.taskList.addEventListener("keydown", event => {
+  const button = event.target.closest(".project-section-heading .list-section-add");
+  if (!button || event.key !== "Enter" || !event.shiftKey) return;
+  event.preventDefault();
+  const sectionId = button.closest("[data-section-id]")?.dataset.sectionId;
+  openAttachDialog(sectionId === PROJECT_ROOT_SECTION_ID ? null : sectionId, button);
 });
 projectEls.attachClose.addEventListener("click", closeAttachDialog);
 projectEls.attachBackdrop.addEventListener("click", event => { if (event.target === projectEls.attachBackdrop) closeAttachDialog(); });
@@ -1368,10 +1456,22 @@ projectEls.listOptions.addEventListener("click", event => {
   moveSelectedTasksToList(option.dataset.listId);
 });
 projectEls.deleteSelected.addEventListener("click", deleteSelectedTasks);
-projectEls.createFromSteps.addEventListener("click", openCreateFromStepsDialog);
+projectEls.selectionMoreTrigger.addEventListener("click", () => {
+  const open = projectEls.selectionMoreMenu.hidden;
+  projectEls.addToExisting.disabled = !projects.some(project => project.status === "active" && project.id !== activeProjectId);
+  projectEls.selectionMoreMenu.hidden = !open;
+  projectEls.selectionMoreTrigger.setAttribute("aria-expanded", String(open));
+  if (open) projectEls.selectionMoreMenu.querySelector("button:not(:disabled)")?.focus();
+});
+projectEls.addToExisting.addEventListener("click", () => openCreateFromStepsDialog("existing"));
+projectEls.createFromSteps.addEventListener("click", () => openCreateFromStepsDialog("new"));
+projectEls.detachSelected.addEventListener("click", detachSelectedProjectSteps);
+document.addEventListener("click", event => { if (!event.target.closest(".project-selection-more")) closeProjectSelectionMore(); });
+projectEls.selectionMore.addEventListener("keydown", event => {
+  if (event.key === "Escape") { event.preventDefault(); closeProjectSelectionMore({ focus: true }); }
+});
 projectEls.createFromStepsCancel.addEventListener("click", closeCreateFromStepsDialog);
 projectEls.createFromStepsConfirm.addEventListener("click", createProjectFromSelectedSteps);
-projectEls.createFromStepsDialog.querySelectorAll('input[name="project-create-mode"]').forEach(input => input.addEventListener("change", syncCreateFromStepsMode));
 projectEls.createFromStepsName.addEventListener("keydown", event => {
   if (event.key === "Enter") { event.preventDefault(); createProjectFromSelectedSteps(); }
 });
@@ -1414,7 +1514,7 @@ projectEls.taskList.addEventListener("keydown", event => {
   const header = event.target.closest("[data-project-section-toggle]");
   if (!header) return;
   if (event.key === "Escape") { clearProjectSectionSelection(); event.preventDefault(); }
-  if (event.key === " " && event.shiftKey) { selectProjectSection(header.dataset.projectSectionToggle); event.preventDefault(); }
+  if (event.key === " " && event.shiftKey && header.dataset.projectSectionToggle !== PROJECT_ROOT_SECTION_ID) { selectProjectSection(header.dataset.projectSectionToggle); event.preventDefault(); }
   if (event.altKey && ["ArrowUp", "ArrowDown"].includes(event.key)) {
     event.preventDefault();
     const sections = projects.find(project => project.id === activeProjectId)?.projectSections || [];
@@ -1449,7 +1549,7 @@ document.querySelector("#project-section-action-form").addEventListener("submit"
   }
 });
 enableProjectCardReorder({
-  container: projectEls.taskList, cardSelector: ".project-section-heading", handleSelector: "[data-project-section-toggle]", insertionSelector: ".list-section-heading", idKey: "sectionId", scrollElement: projectEls.screen, requireSelectionForDrag: true,
+  container: projectEls.taskList, cardSelector: ".project-section-heading:not(.project-root-heading)", handleSelector: "[data-project-section-toggle]", insertionSelector: ".list-section-heading", idKey: "sectionId", scrollElement: projectEls.screen, requireSelectionForDrag: true,
   isSelectionMode: () => !projectSectionBusy && selectedProjectSectionIds.size > 0,
   isSelected: id => !projectSectionBusy && selectedProjectSectionIds.has(id),
   onLongPress: id => selectProjectSection(id), onSelectOnly: id => selectProjectSection(id, true),

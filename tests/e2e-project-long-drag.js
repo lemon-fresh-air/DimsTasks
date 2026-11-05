@@ -8,10 +8,8 @@ const { openTestApp } = require("./e2e-helper");
     await page.click("#project-add");
     await page.fill("#project-create-title", "Довгий проєкт");
     await page.click("#project-create-form button[type=submit]");
-    await page.uncheck("#project-add-new-first");
     for (let index = 1; index <= 15; index++) {
-      await page.fill("#project-step-title", `Крок ${index}`);
-      await page.click("#project-step-form button");
+      await page.addProjectStep(`Крок ${index}`);
       await page.waitForFunction(count => document.querySelectorAll("#project-task-list .swipe-row").length === count, index);
     }
     assert.equal(await page.locator("#project-task-list .swipe-row:visible").count(), 3);

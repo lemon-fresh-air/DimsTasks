@@ -32,8 +32,7 @@ const { openTestApp } = require("./e2e-helper");
   assert.equal(await page.locator(".project-summary").count(), 0);
 
   step("add and expand tasks");
-  await page.fill("#project-step-title", "Завдання 1");
-  await page.click("#project-step-form button");
+  await page.addProjectStep("Завдання 1");
   await page.evaluate(() => addList("Робота", { fromMainMenu: false }));
   await page.locator("#project-task-list .task-open").first().click();
   await page.click("#task-list-trigger");
@@ -41,8 +40,7 @@ const { openTestApp } = require("./e2e-helper");
   await page.waitForFunction(() => document.querySelector("#task-list-value").textContent === "Робота");
   await page.click("#task-editor-back");
   for (let index = 2; index <= 5; index += 1) {
-    await page.fill("#project-step-title", `Завдання ${index}`);
-    await page.click("#project-step-form button");
+    await page.addProjectStep(`Завдання ${index}`);
   }
   await page.waitForFunction(() => tasks.filter(task => task.projectId === activeProjectId).length === 5);
   assert.equal(await page.evaluate(() => tasks.filter(task => task.projectId === activeProjectId && task.title !== "Завдання 1").every(task => lists.find(list => list.id === task.listId)?.title === "Робота")), true);
@@ -87,8 +85,7 @@ const { openTestApp } = require("./e2e-helper");
   assert.equal(await page.locator("#project-description").evaluate(node => node.value), "Короткий опис у налаштуваннях проєкту.");
   await page.click("#project-edit-close");
   assert.equal(await page.locator("#project-task-list .swipe-row").count(), 10);
-  await page.fill("#project-step-title", "Завдання 11");
-  await page.click("#project-step-form button");
+  await page.addProjectStep("Завдання 11");
   await page.waitForFunction(() => tasks.some(task => task.title === "Завдання 11"));
   assert.equal(await page.evaluate(() => lists.find(list => list.id === tasks.find(task => task.title === "Завдання 11").listId)?.title), "Робота");
 

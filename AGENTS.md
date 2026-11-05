@@ -94,6 +94,14 @@ Push to `main` triggers `.github/workflows/pages.yml`, which builds `dist/` and 
 - НаКП: settings of a specific project (rename etc.).
 - ГМ: main menu. Also the all-lists screen.
 - НаГ: global app settings. Opened from ГМ.
-- КС: a specific task list. System lists «Нові» and «Сьогодні» are not КС.
+- КСЗ: a specific task list. System lists «Нові», «Сьогодні», and «Завтра» are not КСЗ.
+- НаКСЗ: settings for a specific task list, opened from КСЗ.
+- ЕЗ: task screen, where its details are viewed and edited.
+- ЗЗ: completed tasks screen, opened from НаГ.
+- КоГр: colored task groups in the «Сьогодні» and «Завтра» lists.
+- ПаВи: selection panel, the row of visible action icons shown when an item is selected.
+- МеДО: menu of additional options, opened with the three-dot button at the top while an item (for example, a task card) is selected. Separate from the contextual action icons shown for the selection.
 
 The prefix «На» always means settings.
+The prefix «Ме» always means menu.
+The prefix «Па» always means panel.
