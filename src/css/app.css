@@ -371,8 +371,9 @@ h1 { font-size:clamp(2.25rem,9vw,3.4rem); line-height:1; letter-spacing:-.05em; 
 .theme-switch input:disabled + span { opacity:.45; }
 body.main-menu-open,body.settings-open,body.list-editor-open { overflow:hidden; }
 .app-shell.projects-mode > .page-header,.app-shell.projects-mode > main,.app-shell.projects-mode > .fab { display:none; }
-.projects-overview { width:min(100%,760px); margin:0 auto; padding:max(22px,env(safe-area-inset-top)) 20px calc(108px + env(safe-area-inset-bottom)); }
+.projects-overview { width:min(100%,760px); min-height:calc(100dvh - 76px); display:flex; flex-direction:column; margin:0 auto; padding:max(22px,env(safe-area-inset-top)) 20px calc(108px + env(safe-area-inset-bottom)); }
 .projects-overview[hidden] { display:none; }
+.projects-swipe-zone { flex:1; min-height:32px; touch-action:pan-y; }
 .projects-header { min-height:64px; display:flex; align-items:center; justify-content:space-between; gap:16px; margin-bottom:20px; }
 .projects-header h1 { font-size:2rem; letter-spacing:-.035em; }
 .projects-header p { margin-top:4px; color:var(--muted); font-size:.9rem; }
@@ -846,7 +847,7 @@ body.project-editor-open .projects-overview { visibility:hidden; }
 #project-section-selection-toolbar .project-selection-actions { gap:4px; }
 #project-selection-toolbar .project-selection-actions { gap:12px; }
 #project-selection-toolbar .toolbar-action { width:44px; height:44px; }
-#project-selection-toolbar { grid-template-columns:40px minmax(0,1fr) 44px; gap:4px 8px; }
+#project-selection-toolbar { grid-template-columns:48px minmax(0,1fr) 48px; gap:12px 8px; }
 #project-selection-toolbar > .project-selection-actions { grid-column:1 / -1; justify-content:center; }
 .project-selection-more { position:relative; grid-column:3; grid-row:1; }
 #project-selection-toolbar .project-selection-more-trigger { width:44px; height:44px; display:grid; place-items:center; border-radius:12px; }
@@ -873,7 +874,7 @@ body.project-editor-open .projects-overview { visibility:hidden; }
 .project-drag-preview .project-section-heading { list-style:none; margin:0; padding:0; border-radius:8px; background:var(--bg); }
 .project-drag-preview .project-section-heading > .list-section-heading { margin:0; }
 .project-drag-preview .project-section-heading > .list-section-tasks { display:none; }
-@media (min-width:760px) { #project-selection-toolbar { grid-template-columns:44px minmax(0,1fr) 44px auto; } #project-selection-toolbar > .project-selection-actions { grid-column:4; grid-row:1; } }
+@media (min-width:760px) { #project-selection-toolbar { grid-template-columns:48px minmax(0,1fr) 48px auto; } #project-selection-toolbar > .project-selection-actions { grid-column:4; grid-row:1; } }
 @media (max-width:360px) { #project-section-selection-toolbar { padding-inline:10px; gap:4px; } #project-section-selection-toolbar .toolbar-action { width:40px; } }
 
 #project-section-selection-toolbar { grid-template-columns:44px minmax(0,1fr) auto; gap:4px; }
@@ -895,12 +896,14 @@ body.project-editor-open .projects-overview { visibility:hidden; }
 @media (max-width:360px) { .list-section-selection-toolbar .toolbar-action { width:40px; } .list-section-selection-toolbar { grid-template-columns:40px minmax(0,1fr) auto; } }
 
 /* Selection toolbars share one touch target and a top-row overflow position. */
-:is(#selection-toolbar,#projects-selection-toolbar,#main-menu-selection-toolbar,#list-section-selection-toolbar,#project-section-selection-toolbar) { position:relative; grid-template-columns:44px minmax(0,1fr) 44px; grid-template-rows:44px auto; align-items:center; gap:4px 8px; }
-:is(#selection-toolbar,#projects-selection-toolbar,#main-menu-selection-toolbar,#list-section-selection-toolbar,#project-section-selection-toolbar) .toolbar-action { width:44px; height:44px; }
+:is(#selection-toolbar,#projects-selection-toolbar,#main-menu-selection-toolbar,#list-section-selection-toolbar,#project-section-selection-toolbar) { position:relative; grid-template-columns:48px minmax(0,1fr) 48px; grid-template-rows:48px auto; align-items:center; gap:12px 8px; }
+:is(#selection-toolbar,#projects-selection-toolbar,#main-menu-selection-toolbar,#list-section-selection-toolbar,#project-section-selection-toolbar,#project-selection-toolbar) .toolbar-action { width:48px; height:48px; }
 :is(#selection-toolbar,#projects-selection-toolbar,#main-menu-selection-toolbar,#list-section-selection-toolbar,#project-section-selection-toolbar) > :is(p,strong) { grid-column:2; grid-row:1; padding-top:0; }
 :is(#selection-toolbar,#projects-selection-toolbar,#main-menu-selection-toolbar,#list-section-selection-toolbar,#project-section-selection-toolbar) > .selection-more-placeholder { grid-column:3; grid-row:1; }
 :is(#projects-selection-toolbar,#main-menu-selection-toolbar,#list-section-selection-toolbar,#project-section-selection-toolbar) > :is(.selection-actions,.project-selection-actions) { grid-column:1 / -1; grid-row:2; justify-content:center; justify-self:stretch; margin:0; }
 #selection-toolbar > .selection-controls { grid-column:1 / -1; grid-row:2; display:flex; align-items:center; justify-content:center; gap:8px; padding:0; }
 #selection-toolbar .selection-controls > .selection-actions { justify-self:auto; gap:8px; }
 #selection-toolbar #selected-group-actions { grid-column:1 / -1; grid-row:2; justify-self:center; }
+:is(#selection-toolbar,#projects-selection-toolbar,#main-menu-selection-toolbar,#list-section-selection-toolbar,#project-section-selection-toolbar,#project-selection-toolbar) :is(.selection-actions,.project-selection-actions) { gap:12px; flex-wrap:wrap; }
+#selection-toolbar > .selection-controls { gap:12px; flex-wrap:wrap; }
 .selection-more-dots { width:4px; height:4px; border-radius:50%; background:currentColor; box-shadow:-10px 0 currentColor,10px 0 currentColor; }

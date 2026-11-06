@@ -2083,6 +2083,18 @@ enableHorizontalSwipe(els.shell, {
   canComplete: () => selectedTaskIds.size === 0,
   onSwipe: openMainMenu
 });
+enableHorizontalSwipe(projectEls.overview, {
+  direction: "right",
+  canStart: event => {
+    if (projectEls.overview.hidden || selectedProjectIds.size) return false;
+    if (event.target.closest("#projects-swipe-zone")) return true;
+    if (event.target.closest(".projects-header")) return !event.target.closest("button");
+    return event.target === projectEls.overview
+      && event.clientY < (projectEls.overviewHeader.hidden ? projectEls.overviewSelectionToolbar : projectEls.overviewHeader).getBoundingClientRect().top;
+  },
+  canComplete: () => selectedProjectIds.size === 0,
+  onSwipe: openMainMenu
+});
 enableHorizontalSwipe(els.mainMenu.querySelector(".main-menu-panel"), {
   direction: "left",
   canStart: event => selectedListIds.size === 0 && !event.target.closest(".main-menu-footer"),
