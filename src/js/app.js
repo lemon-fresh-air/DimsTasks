@@ -2235,7 +2235,6 @@ function closeDescriptionEdit({ discard = false } = {}) {
   descriptionSaveConfirm.hidden = true;
   descriptionEditOverlay.hidden = true;
   els.editor.classList.remove("description-edit-mode");
-  els.editor.classList.remove("description-edit-entering");
   els.form.style.removeProperty("--description-viewport-top");
   els.form.style.removeProperty("--description-viewport-height");
   els.editor.querySelector(".description-edit-snapshot")?.remove();
@@ -2270,16 +2269,13 @@ els.description.addEventListener("focus", () => {
   background.inert = true;
   background.setAttribute("aria-hidden", "true");
   descriptionEditOverlay.before(background);
-  els.editor.classList.add("description-edit-mode", "description-edit-entering");
+  els.editor.classList.add("description-edit-mode");
   syncDescriptionViewport();
   els.form.setAttribute("role", "dialog");
   els.form.setAttribute("aria-modal", "true");
   els.form.setAttribute("aria-label", "Редагувати опис завдання");
   descriptionEditOverlay.hidden = false;
-  requestAnimationFrame(() => {
-    resizeTaskTitle(); resizeDescription();
-    requestAnimationFrame(() => els.editor.classList.remove("description-edit-entering"));
-  });
+  requestAnimationFrame(() => { resizeTaskTitle(); resizeDescription(); });
 });
 document.querySelector("#description-edit-back").addEventListener("click", saveDescriptionEdit);
 document.querySelector("#description-edit-save").addEventListener("click", saveDescriptionEdit);

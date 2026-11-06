@@ -286,9 +286,11 @@ function richMarkdownFragment(value) {
   if (!value) return root;
   const lines = String(value || "").replace(/\r\n?/g, "\n").split("\n");
   let list = null;
+  let emptyChecklistContent = null;
   for (const line of lines) {
     const bullet = line.match(/^\s*([-*+] |\d+[.)] )(.*)$/);
     if (bullet) {
+      emptyChecklistContent = null;
       const ordered = /^\d/.test(bullet[1]);
       if (!list || list.tagName !== (ordered ? "OL" : "UL")) {
         list = document.createElement(ordered ? "ol" : "ul"); root.append(list);
@@ -311,6 +313,7 @@ function richMarkdownFragment(value) {
         richInline(content, check[2]);
         if (!content.childNodes.length) content.append(document.createElement("br"));
         item.append(content);
+        if (!check[2].trim()) emptyChecklistContent = content;
       } else {
         if (list.classList.contains("rich-checklist")) {
           list = document.createElement("ul"); root.append(list);
@@ -319,9 +322,16 @@ function richMarkdownFragment(value) {
       }
       list.append(item);
     } else if (!line.trim()) {
+      emptyChecklistContent = null;
       list = null;
       const blank = document.createElement("div"); blank.className = "rich-blank-line"; root.append(blank);
     } else {
+      if (emptyChecklistContent) {
+        emptyChecklistContent.replaceChildren();
+        richInline(emptyChecklistContent, line);
+        emptyChecklistContent = null;
+        continue;
+      }
       list = null;
       const paragraph = document.createElement("p"); root.append(paragraph);
       richInline(paragraph, line);
@@ -340,6 +350,7 @@ function richSerializeInline(node) {
   const tag = node.tagName.toLowerCase();
   const content = [...node.childNodes].map(richSerializeInline).join("");
   if (tag === "br") return "\n";
+  if (node.classList.contains("checklist-item-text")) return content.replaceAll("\n", "");
   if (tag === "strong" || tag === "b") return `**${content}**`;
   if (tag === "em" || tag === "i") return `*${content}*`;
   if (tag === "u") return `<u>${content}</u>`;
@@ -390,6 +401,8 @@ function installChecklistDrag(editor) {
     ? editor.closest(".detail-fields") : document.querySelector("#task-editor");
   function decorate() {
     for (const item of editor.querySelectorAll(".rich-checklist > li")) {
+      const content = item.querySelector(".checklist-item-text");
+      if (content?.textContent.trim()) content.querySelectorAll("br").forEach(br => br.remove());
       if (item.querySelector(":scope > .checklist-drag-handle")) continue;
       const handle = document.createElement("span");
       handle.className = "checklist-drag-handle";
@@ -464,12 +477,23 @@ function installChecklistDrag(editor) {
     if (finished.swiping) {
       const item = finished.item;
       if (!cancel && finished.swipeX <= -72) {
-        item.classList.add("checklist-deleting");
-        setTimeout(() => {
-          item.remove();
-          if (!finished.list.children.length) finished.list.remove();
-          editor.dispatchEvent(new Event("input", { bubbles: true }));
-        }, 260);
+        const list = finished.list;
+        const siblings = [...list.children].filter(sibling => sibling !== item);
+        const positions = new Map(siblings.map(sibling => [sibling, sibling.getBoundingClientRect().top]));
+        const nextContent = (item.nextElementSibling || item.previousElementSibling)?.querySelector(".checklist-item-text");
+        item.remove();
+        if (!list.children.length) list.remove();
+        if (editor === document.activeElement && nextContent) {
+          const range = document.createRange();
+          range.selectNodeContents(nextContent); range.collapse(false);
+          const selection = window.getSelection();
+          selection.removeAllRanges(); selection.addRange(range);
+        }
+        if (!matchMedia("(prefers-reduced-motion: reduce)").matches) for (const sibling of siblings) {
+          const delta = positions.get(sibling) - sibling.getBoundingClientRect().top;
+          if (Math.abs(delta) > 1) sibling.animate([{ transform: `translateY(${delta}px)` }, { transform: "translateY(0)" }], { duration: 180, easing: "cubic-bezier(.2,.8,.2,1)" });
+        }
+        editor.dispatchEvent(new Event("input", { bubbles: true }));
       } else {
         item.classList.add("checklist-settling");
         item.style.setProperty("--checklist-swipe-x", "0px");
