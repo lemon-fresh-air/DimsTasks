@@ -170,6 +170,8 @@ h1 { font-size:clamp(2.25rem,9vw,3.4rem); line-height:1; letter-spacing:-.05em; 
 .rich-checklist .checklist-drag-handle { flex:0 0 44px; width:44px; height:44px; margin:-6px -8px -6px auto; display:grid; place-items:center; color:var(--muted); cursor:grab; touch-action:none; user-select:none; -webkit-user-select:none; }
 .rich-checklist .checklist-drag-handle::before { content:""; width:12px; height:18px; background:radial-gradient(circle,currentColor 1.25px,transparent 1.5px) 0 0/6px 6px; opacity:.7; }
 .rich-checklist .checklist-drag-handle:focus-visible { outline:2px solid var(--accent); outline-offset:-3px; border-radius:8px; }
+.rich-description[data-checklist-handle-active] { caret-color:transparent; user-select:none; -webkit-user-select:none; }
+.rich-description[data-checklist-handle-active] * { user-select:none; -webkit-user-select:none; }
 .rich-checklist li.checklist-swiping { position:relative; isolation:isolate; overflow:hidden; border-radius:10px; background:var(--danger); user-select:none; -webkit-user-select:none; }
 .rich-checklist li.checklist-swiping::before { content:""; position:absolute; z-index:1; inset:0; background:var(--surface); transform:translateX(var(--checklist-swipe-x,0px)); }
 .rich-checklist li.checklist-swiping::after { content:"Видалити"; position:absolute; z-index:0; top:0; right:0; width:112px; height:100%; display:grid; place-items:center; color:white; font-size:.8rem; font-weight:700; }

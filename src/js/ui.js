@@ -472,6 +472,7 @@ function installChecklistDrag(editor) {
     if (!gesture) return;
     const finished = gesture;
     gesture = null;
+    if (finished.handle) setTimeout(() => { delete editor.dataset.checklistHandleActive; }, 0);
     clearTimeout(finished.timer);
     cancelAnimationFrame(finished.frame);
     if (finished.swiping) {
@@ -540,6 +541,7 @@ function installChecklistDrag(editor) {
     if (!item || !editor.contains(item)) return;
     if (gesture) finish(true);
     const handle = event.target.closest(".checklist-drag-handle");
+    if (handle) editor.dataset.checklistHandleActive = "true";
     const content = item.querySelector(".checklist-item-text");
     let caret = document.caretRangeFromPoint?.(event.clientX, event.clientY) || null;
     if (content && (!caret || !content.contains(caret.startContainer))) {
@@ -548,15 +550,29 @@ function installChecklistDrag(editor) {
       caret.collapse(false);
     }
     event.preventDefault();
+    if (handle) {
+      window.getSelection()?.removeAllRanges();
+      handle.focus({ preventScroll: true });
+    }
     gesture = { item, list: item.parentElement, originalNext: item.nextSibling, pointerId: event.pointerId,
       startX: event.clientX, startY: event.clientY, lastX: event.clientX, lastY: event.clientY,
       previousY: event.clientY, dragging: false, moved: false, handle: Boolean(handle), caret };
     item.setPointerCapture?.(event.pointerId);
     gesture.timer = setTimeout(startDrag, 450);
   });
+  editor.addEventListener("click", event => {
+    if (event.target.closest(".checklist-drag-handle")) event.preventDefault();
+  });
   window.addEventListener("pointermove", event => {
     if (!gesture || event.pointerId !== gesture.pointerId) return;
     gesture.lastX = event.clientX; gesture.lastY = event.clientY;
+    if (gesture.handle && !gesture.dragging) {
+      event.preventDefault();
+      if (Math.hypot(event.clientX - gesture.startX, event.clientY - gesture.startY) > 4) {
+        clearTimeout(gesture.timer);
+        startDrag();
+      }
+    }
     if (!gesture.dragging) {
       const dx = event.clientX - gesture.startX;
       const dy = event.clientY - gesture.startY;

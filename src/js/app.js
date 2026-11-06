@@ -2258,7 +2258,7 @@ async function saveDescriptionEdit() {
   } catch (_error) { toast("Не вдалося зберегти завдання"); }
 }
 els.description.addEventListener("focus", () => {
-  if (els.editor.hidden || els.editor.classList.contains("description-edit-mode")) return;
+  if (els.editor.hidden || els.editor.classList.contains("description-edit-mode") || els.description.dataset.checklistHandleActive) return;
   descriptionEditSnapshot = { title: els.input.value, description: els.description.value };
   const background = els.form.cloneNode(true);
   background.classList.add("description-edit-snapshot");
