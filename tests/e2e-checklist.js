@@ -125,6 +125,32 @@ const { openTestApp } = require("./e2e-helper");
     await page.reload();
     const modalDeleted = await page.evaluate(async () => (await taskDb.all()).find(task => task.title === "Перевірити чекліст").description);
     assert.equal(modalDeleted, "- [x] Перший пункт");
+    await page.locator(".swipe-row").filter({ hasText: "Перевірити чекліст" }).first().locator(".task-open").click();
+    await page.locator("#task-description .checklist-item-text").click();
+    await page.locator("#task-editor.description-edit-mode").waitFor();
+    assert.equal(await page.evaluate(() => document.querySelector("#task-copy-description").getBoundingClientRect().bottom
+      < document.querySelector("#task-description .rich-checklist li").getBoundingClientRect().top), true);
+    await page.keyboard.press("End");
+    await page.keyboard.press("Enter");
+    await page.keyboard.type("Тест");
+    await page.keyboard.press("Enter");
+    assert.equal(await page.locator("#task-description .rich-checklist li").count(), 3);
+    await page.keyboard.press("Backspace");
+    assert.equal(await page.locator("#task-description .rich-checklist li").count(), 2);
+    for (let index = 0; index < 5; index += 1) await page.keyboard.press("Backspace");
+    assert.equal(await page.locator("#task-description .rich-checklist li").count(), 1);
+    assert.equal(await page.locator("#task-description > p, #task-description > .rich-blank-line").count(), 0);
+    assert.equal(await page.locator("#task-description").evaluate(() => {
+      const anchor = getSelection().anchorNode;
+      const element = anchor.nodeType === Node.ELEMENT_NODE ? anchor : anchor.parentElement;
+      return element.closest(".checklist-item-text") === document.querySelector("#task-description .rich-checklist li .checklist-item-text");
+    }), true);
+    await page.locator("#description-edit-save").click();
+    await page.locator("#task-editor-back").click();
+    await page.locator("#task-editor").waitFor({ state: "hidden" });
+    await page.reload();
+    const afterBackspace = await page.evaluate(async () => (await taskDb.all()).find(task => task.title === "Перевірити чекліст").description);
+    assert.equal(afterBackspace, "- [x] Перший пункт");
     assert.deepEqual(errors, []);
     console.log("Checklist scenario passed");
   } finally { await browser.close(); }

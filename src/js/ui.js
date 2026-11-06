@@ -620,10 +620,48 @@ function installRichDescription(editor, titleInput) {
     if (event.target.matches('.rich-checklist input[type="checkbox"]')) editor.dispatchEvent(new Event("input", { bubbles: true }));
   });
   editor.addEventListener("keydown", event => {
-    if (event.key !== "Enter" || event.shiftKey) return;
+    if (!["Enter", "Backspace"].includes(event.key) || event.key === "Enter" && event.shiftKey) return;
     const selection = window.getSelection();
-    const item = selection?.anchorNode?.parentElement?.closest("li");
+    const anchor = selection?.anchorNode;
+    const anchorElement = anchor?.nodeType === Node.ELEMENT_NODE ? anchor : anchor?.parentElement;
+    const item = anchorElement?.closest("li");
     if (!item || !editor.contains(item) || !item.parentElement.classList.contains("rich-checklist")) return;
+    const content = item.querySelector(".checklist-item-text");
+    if (event.key === "Backspace") {
+      if (!selection.isCollapsed || !content) return;
+      if (content.textContent.trim()) {
+        if (!content.contains(anchor)) {
+          event.preventDefault();
+          const range = document.createRange();
+          range.selectNodeContents(content); range.collapse(false);
+          selection.removeAllRanges(); selection.addRange(range);
+        } else {
+          const before = document.createRange();
+          before.selectNodeContents(content);
+          before.setEnd(anchor, selection.anchorOffset);
+          if (!before.toString()) event.preventDefault();
+        }
+        return;
+      }
+      event.preventDefault();
+      const list = item.parentElement;
+      const previous = item.previousElementSibling?.querySelector(".checklist-item-text");
+      const next = item.nextElementSibling?.querySelector(".checklist-item-text");
+      let target = previous || next;
+      if (!target) {
+        target = document.createElement("p");
+        target.append(document.createElement("br"));
+        list.after(target);
+      }
+      item.remove();
+      if (!list.children.length) list.remove();
+      const range = document.createRange();
+      range.selectNodeContents(target);
+      range.collapse(!previous);
+      selection.removeAllRanges(); selection.addRange(range);
+      editor.dispatchEvent(new Event("input", { bubbles: true }));
+      return;
+    }
     event.preventDefault();
     if (!item.textContent.trim()) {
       const paragraph = document.createElement("p"); paragraph.append(document.createElement("br"));
