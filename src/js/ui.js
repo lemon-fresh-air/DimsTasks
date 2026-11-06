@@ -294,7 +294,26 @@ function richMarkdownFragment(value) {
         list = document.createElement(ordered ? "ol" : "ul"); root.append(list);
         if (ordered) list.start = Number.parseInt(bullet[1], 10);
       }
-      const item = document.createElement("li"); richInline(item, bullet[2]); list.append(item);
+      const item = document.createElement("li");
+      const check = !ordered && bullet[2].match(/^\[([ xX])\](?: |$)(.*)$/);
+      if (check) {
+        if (!list.classList.contains("rich-checklist") && list.children.length) {
+          list = document.createElement("ul"); root.append(list);
+        }
+        list.classList.add("rich-checklist");
+        const box = document.createElement("input");
+        box.type = "checkbox"; box.checked = check[1].toLowerCase() === "x";
+        box.setAttribute("aria-label", "Виконано");
+        box.contentEditable = "false";
+        item.append(box);
+        richInline(item, check[2]);
+      } else {
+        if (list.classList.contains("rich-checklist")) {
+          list = document.createElement("ul"); root.append(list);
+        }
+        richInline(item, bullet[2]);
+      }
+      list.append(item);
     } else if (!line.trim()) {
       list = null;
       const blank = document.createElement("div"); blank.className = "rich-blank-line"; root.append(blank);
@@ -331,7 +350,7 @@ function richSerialize(node) {
     const tag = child.tagName.toLowerCase();
     if (tag === "ul" || tag === "ol") {
       parts.push([...child.children].filter(item => item.tagName === "LI")
-        .map((item, index) => `${tag === "ol" ? `${(Number.parseInt(child.getAttribute("start"), 10) || 1) + index}.` : "-"} ${[...item.childNodes].map(richSerializeInline).join("")}`).join("\n"));
+        .map((item, index) => `${tag === "ol" ? `${(Number.parseInt(child.getAttribute("start"), 10) || 1) + index}.` : "-"} ${item.querySelector(':scope > input[type="checkbox"]') ? `[${item.querySelector(':scope > input[type="checkbox"]').checked ? "x" : " "}] ` : ""}${[...item.childNodes].filter(node => node.tagName !== "INPUT" && (node.tagName !== "BR" || !item.querySelector(':scope > input[type="checkbox"]'))).map(richSerializeInline).join("")}`).join("\n"));
     } else if (child.classList.contains("rich-blank-line")) parts.push("");
     else if (tag === "p" || tag === "div") parts.push([...child.childNodes].map(richSerializeInline).join(""));
     else parts.push(richSerializeInline(child));
@@ -361,10 +380,154 @@ function richFromHtml(html) {
   sanitize(parsed.body, allowed);
   return richSerialize(allowed);
 }
+function installChecklistDrag(editor) {
+  let gesture = null;
+  const scrollContainer = () => editor.closest(".description-edit-mode")
+    ? editor.closest(".detail-fields") : document.querySelector("#task-editor");
+  function decorate() {
+    for (const item of editor.querySelectorAll(".rich-checklist > li")) {
+      if (item.querySelector(":scope > .checklist-drag-handle")) continue;
+      const handle = document.createElement("span");
+      handle.className = "checklist-drag-handle";
+      handle.contentEditable = "false";
+      handle.setAttribute("role", "button");
+      handle.setAttribute("tabindex", "0");
+      handle.setAttribute("aria-label", "Перетягнути пункт чекліста");
+      item.append(handle);
+    }
+  }
+  function animateSiblings(list, before) {
+    if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    for (const item of list.children) {
+      if (item === gesture.item) continue;
+      const old = before.get(item);
+      if (!old) continue;
+      const delta = old.top - item.getBoundingClientRect().top;
+      if (Math.abs(delta) > 1) {
+        item.getAnimations().forEach(animation => animation.cancel());
+        item.animate([{ transform: `translateY(${delta}px)` }, { transform: "translateY(0)" }], { duration: 180, easing: "cubic-bezier(.2,.8,.2,1)" });
+      }
+    }
+  }
+  function updateOrder(y) {
+    const { list, item } = gesture;
+    const siblings = [...list.children].filter(candidate => candidate !== item);
+    const beforeItem = siblings.find(candidate => {
+      const rect = candidate.getBoundingClientRect();
+      return y < rect.top + rect.height / 2;
+    }) || null;
+    if (beforeItem === item.nextElementSibling || (!beforeItem && item === list.lastElementChild)) return;
+    const before = new Map(siblings.map(candidate => [candidate, candidate.getBoundingClientRect()]));
+    list.insertBefore(item, beforeItem);
+    gesture.moved = true;
+    animateSiblings(list, before);
+  }
+  function follow() {
+    if (!gesture?.dragging) return;
+    const rate = matchMedia("(prefers-reduced-motion: reduce)").matches ? 1 : .42;
+    gesture.x += (gesture.targetX - gesture.x) * rate;
+    gesture.y += (gesture.targetY - gesture.y) * rate;
+    gesture.preview.style.transform = `translate3d(${gesture.x}px,${gesture.y}px,0)`;
+    const scroller = scrollContainer();
+    const bounds = scroller.getBoundingClientRect();
+    const edge = 60;
+    const speed = gesture.lastY < bounds.top + edge ? -Math.min(12, (bounds.top + edge - gesture.lastY) / 4)
+      : gesture.lastY > bounds.bottom - edge ? Math.min(12, (gesture.lastY - bounds.bottom + edge) / 4) : 0;
+    if (speed) { scroller.scrollBy(0, speed); updateOrder(gesture.lastY); }
+    gesture.frame = requestAnimationFrame(follow);
+  }
+  function startDrag() {
+    if (!gesture) return;
+    const rect = gesture.item.getBoundingClientRect();
+    const preview = gesture.item.cloneNode(true);
+    preview.classList.add("checklist-drag-preview");
+    preview.style.width = `${rect.width}px`;
+    preview.style.left = `${rect.left}px`;
+    preview.style.top = `${rect.top}px`;
+    preview.setAttribute("aria-hidden", "true");
+    document.body.append(preview);
+    gesture.item.classList.add("checklist-drag-source");
+    gesture = { ...gesture, dragging: true, preview, x: 0, y: 0,
+      targetX: gesture.lastX - gesture.startX, targetY: gesture.lastY - gesture.startY };
+    gesture.frame = requestAnimationFrame(follow);
+  }
+  function finish(cancel = false) {
+    if (!gesture) return;
+    const finished = gesture;
+    gesture = null;
+    clearTimeout(finished.timer);
+    cancelAnimationFrame(finished.frame);
+    if (!finished.dragging) return;
+    if (cancel && finished.moved) finished.list.insertBefore(finished.item, finished.originalNext);
+    const restore = () => {
+      finished.preview.remove();
+      finished.item.classList.remove("checklist-drag-source");
+    };
+    if (cancel || matchMedia("(prefers-reduced-motion: reduce)").matches) restore();
+    else {
+      const rect = finished.item.getBoundingClientRect();
+      finished.preview.style.transition = "left 160ms ease, top 160ms ease, transform 160ms ease, opacity 160ms ease";
+      finished.preview.style.left = `${rect.left}px`;
+      finished.preview.style.top = `${rect.top}px`;
+      finished.preview.style.transform = "translate3d(0,0,0)";
+      finished.preview.style.opacity = ".65";
+      setTimeout(restore, 170);
+    }
+    if (finished.moved && !cancel) editor.dispatchEvent(new Event("input", { bubbles: true }));
+  }
+  editor.addEventListener("input", decorate);
+  editor.addEventListener("pointerdown", event => {
+    if (event.button > 0 || event.target.closest('input[type="checkbox"]')) return;
+    const item = event.target.closest(".rich-checklist > li");
+    if (!item || !editor.contains(item)) return;
+    if (gesture) finish(true);
+    const handle = event.target.closest(".checklist-drag-handle");
+    if (handle) event.preventDefault();
+    gesture = { item, list: item.parentElement, originalNext: item.nextSibling, pointerId: event.pointerId,
+      startX: event.clientX, startY: event.clientY, lastX: event.clientX, lastY: event.clientY,
+      previousY: event.clientY, dragging: false, moved: false };
+    item.setPointerCapture?.(event.pointerId);
+    gesture.timer = setTimeout(startDrag, 450);
+  });
+  window.addEventListener("pointermove", event => {
+    if (!gesture || event.pointerId !== gesture.pointerId) return;
+    gesture.lastX = event.clientX; gesture.lastY = event.clientY;
+    if (!gesture.dragging) {
+      if (Math.hypot(event.clientX - gesture.startX, event.clientY - gesture.startY) > 8) {
+        clearTimeout(gesture.timer);
+        if (event.pointerType === "touch" && Math.abs(event.clientY - gesture.startY) > Math.abs(event.clientX - gesture.startX)) {
+          event.preventDefault();
+          scrollContainer().scrollBy(0, gesture.previousY - event.clientY);
+        }
+      }
+      gesture.previousY = event.clientY;
+      return;
+    }
+    event.preventDefault();
+    gesture.targetX = event.clientX - gesture.startX;
+    gesture.targetY = event.clientY - gesture.startY;
+    updateOrder(event.clientY);
+  });
+  window.addEventListener("pointerup", event => { if (gesture?.pointerId === event.pointerId) finish(); });
+  window.addEventListener("pointercancel", event => { if (gesture?.pointerId === event.pointerId) finish(true); });
+  editor.addEventListener("keydown", event => {
+    const handle = event.target.closest(".checklist-drag-handle");
+    if (!handle || !["ArrowUp", "ArrowDown"].includes(event.key)) return;
+    event.preventDefault();
+    const item = handle.parentElement;
+    const sibling = event.key === "ArrowUp" ? item.previousElementSibling : item.nextElementSibling;
+    if (!sibling) return;
+    if (event.key === "ArrowUp") sibling.before(item); else sibling.after(item);
+    handle.focus();
+    editor.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  return decorate;
+}
 function installRichDescription(editor, titleInput) {
+  const decorateChecklist = editor.id === "task-description" ? installChecklistDrag(editor) : () => {};
   Object.defineProperty(editor, "value", {
     get: () => richSerialize(editor),
-    set: value => editor.replaceChildren(richMarkdownFragment(value))
+    set: value => { editor.replaceChildren(richMarkdownFragment(value)); decorateChecklist(); }
   });
   editor.addEventListener("paste", event => {
     event.preventDefault();
@@ -375,6 +538,32 @@ function installRichDescription(editor, titleInput) {
     holder.append(richMarkdownFragment(markdown));
     document.execCommand("insertHTML", false, holder.innerHTML);
     editor.querySelectorAll("a").forEach(richEnrichVideo);
+  });
+  editor.addEventListener("change", event => {
+    if (event.target.matches('.rich-checklist input[type="checkbox"]')) editor.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  editor.addEventListener("keydown", event => {
+    if (event.key !== "Enter" || event.shiftKey) return;
+    const selection = window.getSelection();
+    const item = selection?.anchorNode?.parentElement?.closest("li");
+    if (!item || !editor.contains(item) || !item.parentElement.classList.contains("rich-checklist")) return;
+    event.preventDefault();
+    if (!item.textContent.trim()) {
+      const paragraph = document.createElement("p"); paragraph.append(document.createElement("br"));
+      const list = item.parentElement;
+      list.after(paragraph); item.remove();
+      if (!list.children.length) list.remove();
+      selection.removeAllRanges(); const range = document.createRange();
+      range.selectNodeContents(paragraph); range.collapse(true); selection.addRange(range);
+    } else {
+      const next = document.createElement("li");
+      const box = document.createElement("input"); box.type = "checkbox"; box.contentEditable = "false"; box.setAttribute("aria-label", "Виконано");
+      next.append(box, document.createElement("br")); item.after(next);
+      decorateChecklist();
+      selection.removeAllRanges(); const range = document.createRange();
+      range.setStartBefore(next.querySelector(".checklist-drag-handle")); range.collapse(true); selection.addRange(range);
+    }
+    editor.dispatchEvent(new Event("input", { bubbles: true }));
   });
   editor.addEventListener("input", event => {
     const selection = window.getSelection();
@@ -408,7 +597,7 @@ function installRichDescription(editor, titleInput) {
     const inEditor = selection?.rangeCount && editor.contains(selection.anchorNode);
     for (const button of formatButtons) {
       const command = button.dataset.richCommand;
-      const active = inEditor && (command === "link"
+      const active = command === "checklist" ? false : inEditor && (command === "link"
         ? Boolean(selection.anchorNode?.parentElement?.closest("a"))
         : document.queryCommandState(command));
       button.setAttribute("aria-pressed", String(Boolean(active)));
@@ -435,6 +624,18 @@ function installRichDescription(editor, titleInput) {
           link.target = "_blank"; link.rel = "noopener noreferrer";
           richEnrichVideo(link);
         }
+      } else if (button.dataset.richCommand === "checklist") {
+        const list = document.createElement("ul"); list.className = "rich-checklist";
+        const item = document.createElement("li");
+        const box = document.createElement("input"); box.type = "checkbox"; box.contentEditable = "false"; box.setAttribute("aria-label", "Виконано");
+        item.append(box, document.createElement("br")); list.append(item);
+        const selection = window.getSelection();
+        const current = selection?.anchorNode?.parentElement?.closest("p,li");
+        if (current && editor.contains(current)) current.after(list);
+        else editor.append(list);
+        decorateChecklist();
+        const range = document.createRange(); range.setStartBefore(item.querySelector(".checklist-drag-handle")); range.collapse(true);
+        selection.removeAllRanges(); selection.addRange(range);
       } else document.execCommand(button.dataset.richCommand);
       editor.dispatchEvent(new Event("input", { bubbles: true }));
       updateFormatButtons();
@@ -931,8 +1132,13 @@ function renderTasks(tasks, selectedIds = new Set(), taskLists = [], taskProject
     row.querySelector(".task-text").textContent = task.title;
     const description = task.description?.trim();
     const preview = row.querySelector(".task-description-preview");
-    preview.hidden = !description;
-    preview.textContent = description ? richPreviewText(description) : "";
+    const checklist = [...(description || "").matchAll(/^\s*[-*+] \[([ xX])\](?: |$)/gm)];
+    const note = (description || "").split("\n").filter(line => !/^\s*[-*+] \[[ xX]\](?: |$)/.test(line)).join("\n").trim();
+    preview.hidden = !note;
+    preview.textContent = note ? richPreviewText(note) : "";
+    const progress = row.querySelector(".task-checklist-progress");
+    progress.hidden = checklist.length === 0;
+    progress.querySelector(".task-checklist-count").textContent = `${checklist.filter(match => match[1].toLowerCase() === "x").length}/${checklist.length}`;
     const taskDate = row.querySelector(".task-date");
     renderTaskDueDate(taskDate, task);
     const taskProject = taskProjects.find(project => project.id === task.projectId);

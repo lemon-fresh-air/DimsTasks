@@ -1,0 +1,65 @@
+const assert = require("node:assert/strict");
+const { openTestApp } = require("./e2e-helper");
+
+(async () => {
+  const { browser, page, errors } = await openTestApp();
+  try {
+    await page.locator("#add-task-btn").click();
+    await page.locator("#task-title").fill("Перевірити чекліст");
+    await page.locator("#task-editor-back").click();
+    const card = page.locator(".swipe-row").filter({ hasText: "Перевірити чекліст" }).first();
+    await card.waitFor({ state: "visible" });
+    await card.locator(".task-open").click();
+    await page.locator("#task-actions-trigger").click();
+    await page.locator("#task-add-checklist").click();
+    await page.locator("#task-description .rich-checklist input").waitFor();
+    await page.locator("#task-description .rich-checklist li").first().click();
+    await page.keyboard.type("Перший пункт");
+    await page.keyboard.press("Enter");
+    await page.keyboard.type("Другий пункт");
+    await page.locator("#task-description .rich-checklist input").first().check();
+    await page.locator("#description-edit-save").click();
+    await page.locator("#task-editor-back").click();
+    await card.locator(".task-checklist-count").waitFor({ state: "visible" });
+    assert.equal(await card.locator(".task-checklist-count").textContent(), "1/2");
+    assert.equal(await card.locator(".task-description-preview").isVisible(), false,
+      await card.locator(".task-description-preview").textContent());
+    await page.reload();
+    const restored = page.locator(".swipe-row").filter({ hasText: "Перевірити чекліст" }).first();
+    await restored.waitFor({ state: "visible" });
+    assert.equal(await restored.locator(".task-checklist-count").textContent(), "1/2");
+    const stored = await page.evaluate(async () => (await taskDb.all()).find(task => task.title === "Перевірити чекліст").description);
+    assert.match(stored, /- \[x\] Перший пункт\n- \[ \] Другий пункт/);
+    await restored.locator(".task-open").click();
+    assert.equal(await page.locator("#task-description .rich-checklist input:checked").count(), 1);
+    assert.equal(await page.locator("#task-description .rich-checklist li").count(), 2);
+    assert.equal(await page.locator("#task-description").evaluate(el => getComputedStyle(el).maxHeight), "none");
+    await page.locator("#task-description").click();
+    await page.keyboard.type("Тимчасовий текст");
+    assert.match(await page.locator("#task-description").innerText(), /Тимчасовий текст/);
+    await page.locator("#description-edit-overlay").click({ position: { x: 5, y: 5 } });
+    await page.locator("#description-save-confirm").waitFor({ state: "visible" });
+    await page.locator("#description-save-no").click();
+    assert.equal(await page.locator("#task-description .rich-checklist li").count(), 2);
+    assert.doesNotMatch(await page.locator("#task-description").innerText(), /Тимчасовий текст/);
+    await page.locator("#task-editor-back").click();
+    assert.equal(await restored.locator(".task-checklist-count").textContent(), "1/2");
+    await restored.locator(".task-open").click();
+    const firstHandle = page.locator("#task-description .rich-checklist li").first().locator(".checklist-drag-handle");
+    const handleBox = await firstHandle.boundingBox();
+    await page.mouse.move(handleBox.x + handleBox.width / 2, handleBox.y + handleBox.height / 2);
+    await page.mouse.down();
+    await page.locator("#task-description .checklist-drag-source").waitFor({ state: "attached" });
+    const secondBox = await page.locator("#task-description .rich-checklist li").nth(1).boundingBox();
+    await page.mouse.move(handleBox.x + handleBox.width / 2, secondBox.y + secondBox.height - 2, { steps: 5 });
+    await page.mouse.up();
+    await page.locator(".checklist-drag-preview").waitFor({ state: "detached" });
+    assert.match(await page.locator("#task-description .rich-checklist li").first().innerText(), /Другий пункт/);
+    await page.locator("#task-editor-back").click();
+    await page.reload();
+    const reordered = await page.evaluate(async () => (await taskDb.all()).find(task => task.title === "Перевірити чекліст").description);
+    assert.match(reordered, /- \[ \] Другий пункт\n- \[x\] Перший пункт/);
+    assert.deepEqual(errors, []);
+    console.log("Checklist scenario passed");
+  } finally { await browser.close(); }
+})().catch(error => { console.error(error); process.exitCode = 1; });

@@ -2188,6 +2188,11 @@ els.taskActionsTrigger.addEventListener("click", event => {
 els.taskActionsMenu.addEventListener("click", event => {
   if (event.target.closest("button")) closeTaskActionsMenu();
 });
+document.querySelector("#task-add-checklist").addEventListener("click", () => {
+  els.description.focus();
+  els.description.closest(".rich-description-shell").querySelector('[data-rich-command="checklist"]').click();
+  resizeDescription();
+});
 els.taskDelete.addEventListener("click", async () => {
   const id = els.editor.dataset.taskId;
   if (!id) return;
