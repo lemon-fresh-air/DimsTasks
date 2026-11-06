@@ -16,6 +16,12 @@ const { openTestApp } = require("./e2e-helper");
     await page.locator("#task-description .rich-checklist li").first().click();
     await page.keyboard.type("Перший пункт");
     await page.keyboard.press("Enter");
+    assert.equal(await page.locator("#task-description").evaluate(() => {
+      const selection = getSelection();
+      const anchor = selection.anchorNode;
+      const element = anchor.nodeType === Node.ELEMENT_NODE ? anchor : anchor.parentElement;
+      return element.closest(".checklist-item-text") === document.querySelector("#task-description .rich-checklist li:last-child .checklist-item-text");
+    }), true);
     await page.keyboard.type("Другий пункт");
     await page.locator("#task-description .rich-checklist input").first().check();
     await page.locator("#description-edit-save").click();

@@ -306,7 +306,11 @@ function richMarkdownFragment(value) {
         box.setAttribute("aria-label", "Виконано");
         box.contentEditable = "false";
         item.append(box);
-        richInline(item, check[2]);
+        const content = document.createElement("span");
+        content.className = "checklist-item-text";
+        richInline(content, check[2]);
+        if (!content.childNodes.length) content.append(document.createElement("br"));
+        item.append(content);
       } else {
         if (list.classList.contains("rich-checklist")) {
           list = document.createElement("ul"); root.append(list);
@@ -558,10 +562,11 @@ function installRichDescription(editor, titleInput) {
     } else {
       const next = document.createElement("li");
       const box = document.createElement("input"); box.type = "checkbox"; box.contentEditable = "false"; box.setAttribute("aria-label", "Виконано");
-      next.append(box, document.createElement("br")); item.after(next);
+      const content = document.createElement("span"); content.className = "checklist-item-text"; content.append(document.createElement("br"));
+      next.append(box, content); item.after(next);
       decorateChecklist();
       selection.removeAllRanges(); const range = document.createRange();
-      range.setStartBefore(next.querySelector(".checklist-drag-handle")); range.collapse(true); selection.addRange(range);
+      range.selectNodeContents(content); range.collapse(true); selection.addRange(range);
     }
     editor.dispatchEvent(new Event("input", { bubbles: true }));
   });
@@ -628,13 +633,14 @@ function installRichDescription(editor, titleInput) {
         const list = document.createElement("ul"); list.className = "rich-checklist";
         const item = document.createElement("li");
         const box = document.createElement("input"); box.type = "checkbox"; box.contentEditable = "false"; box.setAttribute("aria-label", "Виконано");
-        item.append(box, document.createElement("br")); list.append(item);
+        const content = document.createElement("span"); content.className = "checklist-item-text"; content.append(document.createElement("br"));
+        item.append(box, content); list.append(item);
         const selection = window.getSelection();
         const current = selection?.anchorNode?.parentElement?.closest("p,li");
         if (current && editor.contains(current)) current.after(list);
         else editor.append(list);
         decorateChecklist();
-        const range = document.createRange(); range.setStartBefore(item.querySelector(".checklist-drag-handle")); range.collapse(true);
+        const range = document.createRange(); range.selectNodeContents(content); range.collapse(true);
         selection.removeAllRanges(); selection.addRange(range);
       } else document.execCommand(button.dataset.richCommand);
       editor.dispatchEvent(new Event("input", { bubbles: true }));

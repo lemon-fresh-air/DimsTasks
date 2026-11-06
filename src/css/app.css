@@ -163,6 +163,7 @@ h1 { font-size:clamp(2.25rem,9vw,3.4rem); line-height:1; letter-spacing:-.05em; 
 .checklist-icon { display:inline-grid; place-items:center; min-width:18px; font-size:1rem; line-height:1; color:var(--muted); }
 .rich-checklist { list-style:none; padding-left:0; }
 .rich-checklist li { display:flex; align-items:center; gap:12px; min-height:32px; touch-action:none; }
+.rich-checklist .checklist-item-text { flex:1 1 auto; min-width:0; }
 .rich-checklist li + li { margin-top:14px; }
 .rich-checklist input { flex:0 0 26px; width:26px; height:26px; margin:0; accent-color:var(--success); cursor:pointer; }
 .rich-checklist li:has(input:checked) { color:var(--muted); text-decoration:line-through; }
