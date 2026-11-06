@@ -170,6 +170,12 @@ h1 { font-size:clamp(2.25rem,9vw,3.4rem); line-height:1; letter-spacing:-.05em; 
 .rich-checklist .checklist-drag-handle { flex:0 0 44px; width:44px; height:44px; margin:-6px -8px -6px auto; display:grid; place-items:center; color:var(--muted); cursor:grab; touch-action:none; user-select:none; -webkit-user-select:none; }
 .rich-checklist .checklist-drag-handle::before { content:""; width:12px; height:18px; background:radial-gradient(circle,currentColor 1.25px,transparent 1.5px) 0 0/6px 6px; opacity:.7; }
 .rich-checklist .checklist-drag-handle:focus-visible { outline:2px solid var(--accent); outline-offset:-3px; border-radius:8px; }
+.rich-checklist li.checklist-swiping { position:relative; isolation:isolate; overflow:hidden; border-radius:10px; background:var(--danger); user-select:none; -webkit-user-select:none; }
+.rich-checklist li.checklist-swiping::before { content:""; position:absolute; z-index:1; inset:0; background:var(--surface); transform:translateX(var(--checklist-swipe-x,0px)); }
+.rich-checklist li.checklist-swiping::after { content:"Видалити"; position:absolute; z-index:0; top:0; right:0; width:112px; height:100%; display:grid; place-items:center; color:white; font-size:.8rem; font-weight:700; }
+.rich-checklist li.checklist-swiping > * { position:relative; z-index:2; transform:translateX(var(--checklist-swipe-x,0px)); }
+.rich-checklist li.checklist-settling > *,.rich-checklist li.checklist-settling::before { transition:transform .26s var(--ease-swipe); }
+.rich-checklist li.checklist-deleting { transform:translateX(-110%); opacity:0; transition:transform .26s var(--ease-swipe),opacity .26s ease; }
 .rich-checklist .checklist-drag-source { visibility:hidden; }
 .checklist-drag-preview { position:fixed; z-index:90; display:flex; align-items:center; gap:12px; min-height:44px; padding:0 8px; border-radius:12px; background:var(--surface); box-shadow:0 12px 28px rgba(32,46,60,.22),inset 0 0 0 1px var(--line); pointer-events:none; will-change:transform; }
 .checklist-drag-preview input { flex:0 0 26px; width:26px; height:26px; margin:0; accent-color:var(--success); }
@@ -596,8 +602,13 @@ body.task-editor-open { overflow:hidden; }
 .detail-fields .rich-copy-actions { display:none; }
 .description-edit-actions { display:none; }
 .description-edit-overlay { position:fixed; z-index:5; inset:0; background:var(--overlay); }
+.description-edit-mode .description-edit-overlay { transition:opacity .22s ease; }
+.description-edit-entering .description-edit-overlay { opacity:0; }
 .description-edit-overlay[hidden],.description-save-confirm[hidden] { display:none; }
 .description-edit-mode #task-form { position:fixed; z-index:6; top:calc(var(--description-viewport-top,0px) + 12px); left:50%; width:min(calc(100vw - 24px),640px); height:auto; max-height:min(calc(var(--description-viewport-height,100dvh) - 24px),720px); min-height:0; margin:0; padding:14px; display:flex; flex-direction:column; gap:10px; border-radius:var(--radius); background:var(--bg); box-shadow:var(--shadow-sheet); transform:translateX(-50%); }
+.description-edit-mode #task-form { transition:opacity .22s ease,transform .22s cubic-bezier(.2,.8,.2,1); }
+.description-edit-entering #task-form { opacity:0; transform:translate(-50%,12px); }
+@media (prefers-reduced-motion:reduce) { .description-edit-mode #task-form,.description-edit-mode .description-edit-overlay { transition:none; } }
 .description-edit-mode #task-form > :is(.composer-actions,.task-attributes,#task-saved-steps) { display:none; }
 .description-edit-mode #task-form .task-title-row { flex:0 0 auto; max-height:25%; overflow-y:auto; padding:10px 12px; }
 .description-edit-mode #task-form .detail-fields { flex:0 1 auto; min-height:0; overflow-y:auto; margin:0; }

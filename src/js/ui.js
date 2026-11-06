@@ -461,7 +461,37 @@ function installChecklistDrag(editor) {
     gesture = null;
     clearTimeout(finished.timer);
     cancelAnimationFrame(finished.frame);
-    if (!finished.dragging) return;
+    if (finished.swiping) {
+      const item = finished.item;
+      if (!cancel && finished.swipeX <= -72) {
+        item.classList.add("checklist-deleting");
+        setTimeout(() => {
+          item.remove();
+          if (!finished.list.children.length) finished.list.remove();
+          editor.dispatchEvent(new Event("input", { bubbles: true }));
+        }, 260);
+      } else {
+        item.classList.add("checklist-settling");
+        item.style.setProperty("--checklist-swipe-x", "0px");
+        setTimeout(() => {
+          item.classList.remove("checklist-swiping", "checklist-settling");
+          item.style.removeProperty("--checklist-swipe-x");
+        }, 260);
+      }
+      return;
+    }
+    if (!finished.dragging) {
+      if (!cancel && !finished.scrolling && !finished.handle
+        && Math.hypot(finished.lastX - finished.startX, finished.lastY - finished.startY) <= 8) {
+        editor.focus();
+        if (finished.caret) {
+          const selection = window.getSelection();
+          selection.removeAllRanges();
+          selection.addRange(finished.caret);
+        }
+      }
+      return;
+    }
     if (cancel && finished.moved) finished.list.insertBefore(finished.item, finished.originalNext);
     const restore = () => {
       finished.preview.remove();
@@ -486,10 +516,17 @@ function installChecklistDrag(editor) {
     if (!item || !editor.contains(item)) return;
     if (gesture) finish(true);
     const handle = event.target.closest(".checklist-drag-handle");
-    if (handle) event.preventDefault();
+    const content = item.querySelector(".checklist-item-text");
+    let caret = document.caretRangeFromPoint?.(event.clientX, event.clientY) || null;
+    if (content && (!caret || !content.contains(caret.startContainer))) {
+      caret = document.createRange();
+      caret.selectNodeContents(content);
+      caret.collapse(false);
+    }
+    event.preventDefault();
     gesture = { item, list: item.parentElement, originalNext: item.nextSibling, pointerId: event.pointerId,
       startX: event.clientX, startY: event.clientY, lastX: event.clientX, lastY: event.clientY,
-      previousY: event.clientY, dragging: false, moved: false };
+      previousY: event.clientY, dragging: false, moved: false, handle: Boolean(handle), caret };
     item.setPointerCapture?.(event.pointerId);
     gesture.timer = setTimeout(startDrag, 450);
   });
@@ -497,12 +534,24 @@ function installChecklistDrag(editor) {
     if (!gesture || event.pointerId !== gesture.pointerId) return;
     gesture.lastX = event.clientX; gesture.lastY = event.clientY;
     if (!gesture.dragging) {
-      if (Math.hypot(event.clientX - gesture.startX, event.clientY - gesture.startY) > 8) {
+      const dx = event.clientX - gesture.startX;
+      const dy = event.clientY - gesture.startY;
+      if (!gesture.scrolling && (gesture.swiping || dx < -8 && Math.abs(dx) > Math.abs(dy))) {
         clearTimeout(gesture.timer);
-        if (event.pointerType === "touch" && Math.abs(event.clientY - gesture.startY) > Math.abs(event.clientX - gesture.startX)) {
+        event.preventDefault();
+        gesture.swiping = true;
+        gesture.swipeX = Math.max(-112, Math.min(0, dx));
+        gesture.item.classList.add("checklist-swiping");
+        gesture.item.style.setProperty("--checklist-swipe-x", `${gesture.swipeX}px`);
+      } else if (Math.abs(dy) > 8 && Math.abs(dy) > Math.abs(dx)) {
+        clearTimeout(gesture.timer);
+        gesture.scrolling = true;
+        if (event.pointerType === "touch") {
           event.preventDefault();
           scrollContainer().scrollBy(0, gesture.previousY - event.clientY);
         }
+      } else if (Math.hypot(dx, dy) > 8) {
+        clearTimeout(gesture.timer);
       }
       gesture.previousY = event.clientY;
       return;
