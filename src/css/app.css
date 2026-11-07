@@ -70,7 +70,7 @@ h1 { font-size:clamp(2.25rem,9vw,3.4rem); line-height:1; letter-spacing:-.05em; 
 #task-list { list-style:none; margin:0; padding:0; display:grid; gap:6px; overflow:clip; border-radius:var(--radius); }
 #task-list.dragging { overflow:visible; }
 .today-group { --group-tint:color-mix(in srgb,var(--group-color) 11%,var(--surface)); min-width:0; padding:8px 8px 8px 12px; border-left:5px solid var(--group-color); border-radius:16px; background:var(--group-tint); }
-.today-group-heading { display:flex; align-items:center; gap:8px; margin:2px 4px 9px; color:var(--text); font-size:1rem; font-weight:650; line-height:1.32; }
+.today-group-heading { display:flex; align-items:center; gap:8px; margin:2px 4px 9px; color:var(--text); font-size:1rem; font-weight:650; line-height:1.32; transition:margin-bottom .26s cubic-bezier(.22,1,.36,1); }
 .today-group-count { color:var(--group-color); }
 .today-group.selected { box-shadow:inset 0 0 0 2px var(--group-color); }
 .today-group.drag-source { display:none; }
@@ -894,6 +894,13 @@ body.project-editor-open .projects-overview { visibility:hidden; }
 .project-copy-menu button { min-height:44px; padding:8px; text-align:left; border:0; background:transparent; color:var(--text); font:inherit; }
 .project-settings-dialog { position:fixed; top:var(--project-dialog-top,0px); bottom:var(--project-dialog-bottom,0px); width:min(540px,calc(100% - 24px)); max-height:calc(var(--project-dialog-height,100dvh) - 24px); box-sizing:border-box; margin:auto; padding:20px; overflow-y:auto; border:1px solid var(--line); border-radius:20px; background:var(--bg); color:var(--text); box-shadow:var(--shadow-sheet); }
 .project-settings-dialog::backdrop { background:var(--overlay); }
+@keyframes modal-backdrop-in { from { opacity:0; } }
+@keyframes modal-content-in { from { opacity:0; transform:translateY(14px) scale(.98); } }
+:is(.project-delete-dialog-backdrop,.project-complete-dialog-backdrop,.project-attach-backdrop,.date-picker-backdrop,.time-dialog-backdrop,.description-save-confirm):not([hidden]) { animation:modal-backdrop-in .24s ease-out; }
+:is(.project-delete-dialog-backdrop,.project-complete-dialog-backdrop,.project-attach-backdrop,.date-picker-backdrop,.time-dialog-backdrop,.description-save-confirm):not([hidden]) > [role="dialog"] { animation:modal-content-in .26s cubic-bezier(.22,1,.36,1); }
+:is(.clear-data-dialog,.project-settings-dialog)[open] { animation:modal-content-in .26s cubic-bezier(.22,1,.36,1); }
+:is(.clear-data-dialog,.project-settings-dialog)[open]::backdrop { animation:modal-backdrop-in .24s ease-out; }
+@media (prefers-reduced-motion:reduce) { :is(.project-delete-dialog-backdrop,.project-complete-dialog-backdrop,.project-attach-backdrop,.date-picker-backdrop,.time-dialog-backdrop,.description-save-confirm):not([hidden]),:is(.project-delete-dialog-backdrop,.project-complete-dialog-backdrop,.project-attach-backdrop,.date-picker-backdrop,.time-dialog-backdrop,.description-save-confirm):not([hidden]) > [role="dialog"],:is(.clear-data-dialog,.project-settings-dialog)[open],:is(.clear-data-dialog,.project-settings-dialog)[open]::backdrop { animation:none; } }
 .project-settings-dialog header { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:16px; }
 .project-settings-dialog h3 { margin:0; font-size:1.1rem; }
 .project-settings-dialog header button { min-height:44px; border:0; padding:8px; border-radius:10px; background:transparent; color:var(--accent); font:650 .94rem system-ui,sans-serif; }

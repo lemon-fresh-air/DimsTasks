@@ -2933,7 +2933,19 @@ els.list.addEventListener("click", async event => {
       const collapsed = !group.collapsed;
       await changeTodayLayout((layout, visible, date) =>
         setTodayGroupCollapsed(layout, visible, date, groupId, collapsed));
-      wrapper.querySelector(".today-group-tasks").hidden = collapsed;
+       const members = wrapper.querySelector(".today-group-tasks");
+       if (!matchMedia("(prefers-reduced-motion: reduce)").matches && members?.animate) {
+         if (!collapsed) members.hidden = false;
+         const height = members.scrollHeight;
+         members.style.overflow = "hidden";
+         const animation = members.animate([
+           { height: collapsed ? `${height}px` : "0px", opacity: collapsed ? 1 : 0 },
+           { height: collapsed ? "0px" : `${height}px`, opacity: collapsed ? 0 : 1 }
+         ], { duration: 260, easing: "cubic-bezier(.22,1,.36,1)" });
+         await animation.finished.catch(() => {});
+         members.style.removeProperty("overflow");
+       }
+       members.hidden = collapsed;
       groupToggle.setAttribute("aria-expanded", String(!collapsed));
       groupToggle.setAttribute("aria-label", `${collapsed ? "Розгорнути" : "Згорнути"} групу «${group.title || TODAY_GROUP_NAMES.get(group.color)}»`);
     } catch (_error) {
