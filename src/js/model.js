@@ -38,7 +38,7 @@ function createSection(values = {}) {
   return { ...baseRecord(values), ...values, listId: values.listId, title: String(values.title || "").trim(), description: values.description || "", position: Number.isFinite(values.position) ? values.position : 0, collapsed: values.collapsed === true };
 }
 function createProject(values = {}) {
-  return { ...baseRecord(values), ...values, title: String(values.title || "").trim(), goal: values.goal || "", description: values.description || "", status: values.status === "completed" ? "completed" : "active", dueDate: values.dueDate || null, dueTime: values.dueDate && values.dueTime ? values.dueTime : null, showCountdown: values.showCountdown === true, lastListId: typeof values.lastListId === "string" ? values.lastListId : null, defaultListId: typeof values.defaultListId === "string" ? values.defaultListId : null, addNewTasksFirst: values.addNewTasksFirst === true, unsectionedCollapsed: values.unsectionedCollapsed === true, projectSections: Array.isArray(values.projectSections) ? values.projectSections : [], completedAt: values.completedAt || null, position: Number.isFinite(values.position) ? values.position : 0 };
+  return { ...baseRecord(values), ...values, title: String(values.title || "").trim(), goal: values.goal || "", description: values.description || "", status: values.status === "completed" ? "completed" : "active", dueDate: values.dueDate || null, dueTime: values.dueDate && values.dueTime ? values.dueTime : null, showCountdown: values.showCountdown === true, lastListId: typeof values.lastListId === "string" ? values.lastListId : null, defaultListId: typeof values.defaultListId === "string" ? values.defaultListId : null, addNewTasksFirst: values.addNewTasksFirst === true, unsectionedCollapsed: values.unsectionedCollapsed === true, unsectionedHidden: values.unsectionedHidden === true, projectSections: Array.isArray(values.projectSections) ? values.projectSections : [], completedAt: values.completedAt || null, position: Number.isFinite(values.position) ? values.position : 0 };
 }
 function projectFromTask(task, projectRecords) {
   if (task.status !== "active") throw new Error("Лише активне завдання можна перетворити на проєкт");
@@ -384,7 +384,7 @@ function createTodayGroup(layout, visible, date, color, selectedIds, groupId) {
   return { date, groups: [...current.groups, { id: groupId, color, title: null, collapsed: false, taskIds }], items };
 }
 
-function assignTodayGroupTasks(layout, visible, date, groupId, selectedIds) {
+function assignTodayGroupTasks(layout, visible, date, groupId, selectedIds, prepend = false) {
   const current = normalizeTodayGroups(layout, visible, date);
   if (!current) throw new Error("Немає денних груп");
   const target = current.groups.find(group => group.id === groupId);
@@ -395,7 +395,7 @@ function assignTodayGroupTasks(layout, visible, date, groupId, selectedIds) {
   const ordered = current.items.flatMap(item => item.type === "task" ? [item.id]
     : current.groups.find(group => group.id === item.id).taskIds).filter(id => selected.has(id) && !target.taskIds.includes(id));
   return normalizeTodayGroups({ date, groups: current.groups.map(group => ({ ...group, taskIds: group.id === groupId
-    ? [...group.taskIds, ...ordered] : group.taskIds.filter(id => !selected.has(id)) })),
+    ? prepend ? [...ordered, ...group.taskIds] : [...group.taskIds, ...ordered] : group.taskIds.filter(id => !selected.has(id)) })),
     items: current.items.filter(item => item.type !== "task" || !selected.has(item.id)) }, visible, date);
 }
 

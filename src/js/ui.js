@@ -397,8 +397,14 @@ function richFromHtml(html) {
 }
 function installChecklistDrag(editor) {
   let gesture = null;
-  const scrollContainer = () => editor.closest(".description-edit-mode")
-    ? editor.closest(".detail-fields") : document.querySelector("#task-editor");
+  const scrollContainer = () => {
+    if (editor.closest(".description-edit-mode")) {
+      if (editor.scrollHeight > editor.clientHeight) return editor;
+      const fields = editor.closest(".detail-fields");
+      if (fields.scrollHeight > fields.clientHeight) return fields;
+    }
+    return document.querySelector("#task-editor");
+  };
   function decorate() {
     for (const item of editor.querySelectorAll(".rich-checklist > li")) {
       const content = item.querySelector(".checklist-item-text");
@@ -472,7 +478,11 @@ function installChecklistDrag(editor) {
     if (!gesture) return;
     const finished = gesture;
     gesture = null;
-    if (finished.handle) setTimeout(() => { delete editor.dataset.checklistHandleActive; }, 0);
+    if (finished.handle) {
+      window.getSelection()?.removeAllRanges();
+      if (document.activeElement?.classList.contains("checklist-drag-handle")) document.activeElement.blur();
+      setTimeout(() => { delete editor.dataset.checklistHandleActive; }, 0);
+    }
     clearTimeout(finished.timer);
     cancelAnimationFrame(finished.frame);
     if (finished.swiping) {
@@ -537,28 +547,34 @@ function installChecklistDrag(editor) {
   editor.addEventListener("input", decorate);
   editor.addEventListener("pointerdown", event => {
     if (event.button > 0 || event.target.closest('input[type="checkbox"]')) return;
+    const handle = event.target.closest(".checklist-drag-handle");
     const item = event.target.closest(".rich-checklist > li");
     if (!item || !editor.contains(item)) return;
     if (gesture) finish(true);
-    const handle = event.target.closest(".checklist-drag-handle");
-    if (handle) editor.dataset.checklistHandleActive = "true";
-    const content = item.querySelector(".checklist-item-text");
-    let caret = document.caretRangeFromPoint?.(event.clientX, event.clientY) || null;
-    if (content && (!caret || !content.contains(caret.startContainer))) {
-      caret = document.createRange();
-      caret.selectNodeContents(content);
-      caret.collapse(false);
-    }
-    event.preventDefault();
     if (handle) {
+      event.preventDefault();
+      editor.dataset.checklistHandleActive = "true";
       window.getSelection()?.removeAllRanges();
       handle.focus({ preventScroll: true });
+    }
+    const content = item.querySelector(".checklist-item-text");
+    let caret = null;
+    if (!handle) {
+      caret = document.caretRangeFromPoint?.(event.clientX, event.clientY) || null;
+      if (content && (!caret || !content.contains(caret.startContainer))) {
+        caret = document.createRange();
+        caret.selectNodeContents(content);
+        caret.collapse(false);
+      }
+      event.preventDefault();
+      item.setPointerCapture?.(event.pointerId);
     }
     gesture = { item, list: item.parentElement, originalNext: item.nextSibling, pointerId: event.pointerId,
       startX: event.clientX, startY: event.clientY, lastX: event.clientX, lastY: event.clientY,
       previousY: event.clientY, dragging: false, moved: false, handle: Boolean(handle), caret };
-    item.setPointerCapture?.(event.pointerId);
-    gesture.timer = setTimeout(startDrag, 450);
+  });
+  editor.addEventListener("selectstart", event => {
+    if (gesture?.handle) event.preventDefault();
   });
   editor.addEventListener("click", event => {
     if (event.target.closest(".checklist-drag-handle")) event.preventDefault();
@@ -569,33 +585,29 @@ function installChecklistDrag(editor) {
     if (gesture.handle && !gesture.dragging) {
       event.preventDefault();
       if (Math.hypot(event.clientX - gesture.startX, event.clientY - gesture.startY) > 4) {
-        clearTimeout(gesture.timer);
         startDrag();
       }
     }
-    if (!gesture.dragging) {
+    if (!gesture.dragging && !gesture.handle) {
       const dx = event.clientX - gesture.startX;
       const dy = event.clientY - gesture.startY;
       if (!gesture.scrolling && (gesture.swiping || dx < -8 && Math.abs(dx) > Math.abs(dy))) {
-        clearTimeout(gesture.timer);
         event.preventDefault();
         gesture.swiping = true;
         gesture.swipeX = Math.max(-112, Math.min(0, dx));
         gesture.item.classList.add("checklist-swiping");
         gesture.item.style.setProperty("--checklist-swipe-x", `${gesture.swipeX}px`);
       } else if (Math.abs(dy) > 8 && Math.abs(dy) > Math.abs(dx)) {
-        clearTimeout(gesture.timer);
         gesture.scrolling = true;
         if (event.pointerType === "touch") {
           event.preventDefault();
           scrollContainer().scrollBy(0, gesture.previousY - event.clientY);
         }
-      } else if (Math.hypot(dx, dy) > 8) {
-        clearTimeout(gesture.timer);
       }
       gesture.previousY = event.clientY;
       return;
     }
+    if (!gesture.dragging) return;
     event.preventDefault();
     gesture.targetX = event.clientX - gesture.startX;
     gesture.targetY = event.clientY - gesture.startY;
@@ -1241,6 +1253,12 @@ function renderTasks(tasks, selectedIds = new Set(), taskLists = [], taskProject
   const active = tasks.filter(task => !isTaskCompleted(task));
   const groupSelection = selectedGroupIds.size > 0;
   const selectionMode = selectedIds.size > 0 || groupSelection;
+  const groupedToday = contextList?.kind === "today" && layout?.groups?.length > 0;
+  const animateSelectionShift = groupedToday && selectionMode !== els.list.classList.contains("selection-mode")
+    && !matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const taskSection = animateSelectionShift ? els.list.closest(".task-section") : null;
+  const previousSectionTop = taskSection?.getBoundingClientRect().top;
+  taskSection?.getAnimations().forEach(animation => animation.cancel());
   els.shell.classList.toggle("selection-active", selectionMode);
   els.normalHeader.hidden = selectionMode;
   els.selectionToolbar.hidden = !selectionMode;
@@ -1249,7 +1267,6 @@ function renderTasks(tasks, selectedIds = new Set(), taskLists = [], taskProject
   els.selectedGroupActions.hidden = !groupSelection;
   els.renameSelectedGroup.disabled = selectedGroupIds.size !== 1;
   els.recolorSelectedGroup.disabled = selectedGroupIds.size !== 1;
-  const groupedToday = contextList?.kind === "today" && layout?.groups?.length > 0;
   els.groupSelected.hidden = contextList?.kind !== "today" || !selectedIds.size;
   els.todayOrderHint.hidden = !groupedToday || !selectionMode;
   const allSelected = active.length > 0 && active.every(task => selectedIds.has(task.id));
@@ -1394,6 +1411,13 @@ function renderTasks(tasks, selectedIds = new Set(), taskLists = [], taskProject
   els.count.textContent = groupSelection ? `Вибрано груп: ${selectedGroupIds.size}` : selectionMode
     ? `Вибрано: ${selectedIds.size}`
     : `${active.length} ${oneToFour ? "завдання" : "завдань"}`;
+  if (taskSection) {
+    const shift = previousSectionTop - taskSection.getBoundingClientRect().top;
+    if (Math.abs(shift) > 1) taskSection.animate([
+      { transform: `translateY(${shift}px)` },
+      { transform: "translateY(0)" }
+    ], { duration: 280, easing: "cubic-bezier(.22,1,.36,1)" });
+  }
 }
 
 function showTaskEditor() {

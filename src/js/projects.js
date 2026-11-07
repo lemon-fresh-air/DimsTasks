@@ -74,6 +74,8 @@ const projectEls = {
   deleteSelected: document.querySelector("#project-delete-selected"),
   back: document.querySelector("#project-back"),
   editOpen: document.querySelector("#project-edit-open"),
+  rootVisibility: document.querySelector("#project-root-visibility"),
+  hideRoot: document.querySelector("#project-hide-root"),
   editClose: document.querySelector("#project-edit-close"),
   editor: document.querySelector("#project-editor"),
   heading: document.querySelector("#project-screen-title"),
@@ -346,6 +348,9 @@ function renderOpenProject() {
   projectEls.steps.dataset.previewProjectId = project.id;
   projectEls.selectAll.setAttribute("aria-pressed", String(steps.length > 0 && steps.every(task => selectedHere.has(task.id))));
   projectEls.addNewFirst.checked = project.addNewTasksFirst === true;
+  projectEls.hideRoot.checked = project.unsectionedHidden === true;
+  projectEls.rootVisibility.setAttribute("aria-pressed", String(project.unsectionedHidden === true));
+  projectEls.rootVisibility.setAttribute("aria-label", `${project.unsectionedHidden ? "Показати" : "Приховати"} звичайні кроки`);
   projectEls.complete.textContent = project.status === "completed" ? "Повернути в активні" : "Завершити проєкт";
   projectEls.convertTask.hidden = project.status === "completed";
   projectEls.mainComplete.textContent = projectEls.complete.textContent;
@@ -354,10 +359,12 @@ function renderOpenProject() {
   const validSectionIds = new Set(projectSections.map(section => section.id));
   const unsectioned = activeSteps.filter(task => !validSectionIds.has(task.projectSectionId));
   const rootSection = { id: PROJECT_ROOT_SECTION_ID, title: "Звичайні кроки", collapsed: project.unsectionedCollapsed === true };
-  const rootTarget = renderProjectSectionHeading(rootSection, unsectioned.length, true);
-  if (!rootSection.collapsed || unsectioned.some(task => selectedHere.has(task.id))) {
-    rootTarget.hidden = false;
-    unsectioned.forEach(task => renderProjectTask(task, rootTarget));
+  if (!project.unsectionedHidden) {
+    const rootTarget = renderProjectSectionHeading(rootSection, unsectioned.length, true);
+    if (!rootSection.collapsed || unsectioned.some(task => selectedHere.has(task.id))) {
+      rootTarget.hidden = false;
+      unsectioned.forEach(task => renderProjectTask(task, rootTarget));
+    }
   }
   for (const section of projectSections) {
     const members = activeSteps.filter(task => task.projectSectionId === section.id);
@@ -1265,6 +1272,24 @@ document.addEventListener("keydown", event => {
 });
 projectEls.back.addEventListener("click", closeProject);
 projectEls.editOpen.addEventListener("click", openProjectEditor);
+async function setProjectRootHidden(hidden) {
+  const project = projects.find(item => item.id === activeProjectId);
+  if (!project || project.unsectionedHidden === hidden) return;
+  const updated = createProject({ ...project, unsectionedHidden: hidden, updatedAt: new Date().toISOString() });
+  try {
+    await projectDb.put(updated);
+    projects = projects.map(item => item.id === updated.id ? updated : item);
+    renderOpenProject();
+  } catch (_error) {
+    projectEls.hideRoot.checked = project.unsectionedHidden === true;
+    toast("Не вдалося змінити видимість секції");
+  }
+}
+projectEls.rootVisibility.addEventListener("click", () => {
+  const project = projects.find(item => item.id === activeProjectId);
+  if (project) setProjectRootHidden(!project.unsectionedHidden);
+});
+projectEls.hideRoot.addEventListener("change", () => setProjectRootHidden(projectEls.hideRoot.checked));
 projectEls.editClose.addEventListener("click", () => saveProjectFields({ closeAfter: true }));
 projectEls.tasksExpand.addEventListener("click", toggleProjectTasks);
 projectEls.mainComplete.addEventListener("click", toggleProjectStatus);

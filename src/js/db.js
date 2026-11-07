@@ -159,6 +159,48 @@ const appDb = {
       stores.lists.put({ id: INBOX_LIST_ID, entityVersion: 1, title: "Інбокс", description: "", kind: "inbox", position: 0, customFields: {}, createdAt: now, updatedAt: now });
     }
   }),
+  clearUserData: selection => transact(STORE_NAMES, "readwrite", (_tx, stores) => {
+    const now = new Date().toISOString();
+    const taskRequest = stores.tasks.openCursor();
+    taskRequest.onsuccess = () => {
+      const cursor = taskRequest.result;
+      if (!cursor) return;
+      const task = cursor.value;
+      const completed = task.status === "completed" || task.done === true;
+      if ((completed && selection.completed) || (!completed && selection.active)) cursor.delete();
+      else if (selection.lists || selection.projects) cursor.update({ ...task,
+        ...(selection.lists ? { listId: INBOX_LIST_ID, sectionId: null } : {}),
+        ...(selection.projects ? { projectId: null, projectSectionId: null, projectPosition: null } : {}),
+        updatedAt: now });
+      cursor.continue();
+    };
+    if (selection.lists) {
+      stores.sections.clear();
+      stores.lists.clear();
+      stores.lists.put({ id: INBOX_LIST_ID, entityVersion: 1, title: "Інбокс", description: "", kind: "inbox", position: 0, customFields: {}, createdAt: now, updatedAt: now });
+      stores.settings.delete(TASK_DEFAULTS_SETTINGS_ID);
+    }
+    if (selection.projects) stores.projects.clear();
+    else if (selection.lists) {
+      const projectRequest = stores.projects.openCursor();
+      projectRequest.onsuccess = () => {
+        const cursor = projectRequest.result;
+        if (!cursor) return;
+        cursor.update({ ...cursor.value, lastListId: null, defaultListId: null, updatedAt: now });
+        cursor.continue();
+      };
+    }
+    if (selection.settings) stores.settings.clear();
+    else if (selection.active) {
+      const settingsRequest = stores.settings.openCursor();
+      settingsRequest.onsuccess = () => {
+        const cursor = settingsRequest.result;
+        if (!cursor) return;
+        if (cursor.key === TODAY_LAYOUT_SETTINGS_ID || String(cursor.key).startsWith("day-plan:")) cursor.delete();
+        cursor.continue();
+      };
+    }
+  }),
   mergeAll: async (incoming, merge) => {
     const db = await openDatabase();
     return new Promise((resolve, reject) => {

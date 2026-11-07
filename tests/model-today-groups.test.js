@@ -50,6 +50,16 @@ test("assignment, removal, and ungrouping preserve positions and return baseline
   assert.deepEqual(plain(second.groups[0].taskIds), ["b", "d"]);
 });
 
+test("quick additions prepend to an existing group on both day plans", () => {
+  for (const day of [date, "2026-10-24"]) {
+    const group = m.createTodayGroup(null, tasks, day, "#2D9E6B", ["b", "d"], "green");
+    const added = { id: "new", todayPosition: 0, createdAt: `${day}T10:00:00Z` };
+    const updated = m.assignTodayGroupTasks(group, [...tasks, added], day, "green", ["new"], true);
+    assert.deepEqual(plain(updated.groups[0].taskIds), ["new", "b", "d"]);
+    assert.deepEqual(plain(m.normalizeTodayGroups(updated, [...tasks, added], day).groups[0].taskIds), ["new", "b", "d"]);
+  }
+});
+
 test("removing the final member removes its group and the final group restores baseline", () => {
   const first = m.createTodayGroup(null, tasks, date, "#3A7BD5", ["b"], "blue");
   const second = m.createTodayGroup(first, tasks, date, "#E05A3A", ["d"], "orange");

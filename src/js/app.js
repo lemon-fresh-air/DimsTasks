@@ -1956,6 +1956,18 @@ quickChecklist.results.addEventListener("click", event => {
 });
 let addPress = null;
 let suppressAddClickUntil = 0;
+const fabCreateMenu = document.querySelector("#fab-create-menu");
+function closeFabCreateMenu({ restoreFocus = false } = {}) {
+  if (fabCreateMenu.hidden) return;
+  fabCreateMenu.hidden = true;
+  els.add.setAttribute("aria-expanded", "false");
+  if (restoreFocus) els.add.focus();
+}
+function openFabCreateMenu() {
+  fabCreateMenu.hidden = false;
+  els.add.setAttribute("aria-expanded", "true");
+  document.querySelector("#fab-create-checklist").focus();
+}
 els.add.addEventListener("pointerdown", event => {
   if (!event.isPrimary || (event.pointerType === "mouse" && event.button !== 0)) return;
   addPress = { id: event.pointerId, x: event.clientX, y: event.clientY };
@@ -1963,7 +1975,7 @@ els.add.addEventListener("pointerdown", event => {
     if (!addPress || addPress.id !== event.pointerId) return;
     addPress = null;
     suppressAddClickUntil = Date.now() + 800;
-    openQuickChecklist();
+    openFabCreateMenu();
   }, 500);
 });
 window.addEventListener("pointermove", event => {
@@ -1978,10 +1990,23 @@ for (const type of ["pointerup", "pointercancel"]) window.addEventListener(type,
 els.add.addEventListener("contextmenu", event => event.preventDefault());
 els.add.addEventListener("click", () => {
   if (Date.now() < suppressAddClickUntil) { suppressAddClickUntil = 0; return; }
+  if (!fabCreateMenu.hidden) { closeFabCreateMenu(); return; }
   openNewTaskEditor(
   isDayList() ? validTodayDefaultListId() : activeListId,
   activeListId
   );
+});
+document.querySelector("#fab-create-checklist").addEventListener("click", () => { closeFabCreateMenu(); openQuickChecklist(); });
+document.querySelector("#fab-create-project").addEventListener("click", () => {
+  closeFabCreateMenu();
+  openProjects();
+  projectEls.add.click();
+});
+document.addEventListener("pointerdown", event => {
+  if (!fabCreateMenu.hidden && !fabCreateMenu.contains(event.target) && event.target !== els.add && !els.add.contains(event.target)) closeFabCreateMenu();
+});
+fabCreateMenu.addEventListener("keydown", event => {
+  if (event.key === "Escape") { event.preventDefault(); closeFabCreateMenu({ restoreFocus: true }); }
 });
 document.querySelector("#quick-checklist-cancel").addEventListener("click", closeQuickChecklist);
 quickChecklist.backdrop.addEventListener("click", event => { if (event.target === quickChecklist.backdrop) closeQuickChecklist(); });
@@ -2003,6 +2028,65 @@ quickChecklist.form.addEventListener("submit", async event => {
 els.navToday.addEventListener("click", () => openList(TODAY_LIST_ID));
 els.navInbox.addEventListener("click", () => openList(INBOX_LIST_ID));
 els.navProjects.addEventListener("click", openProjects);
+const clearDataDialog = document.querySelector("#clear-data-dialog");
+const clearDataPhrase = document.querySelector("#clear-data-phrase");
+const clearDataConfirm = document.querySelector("#clear-data-confirm");
+let clearDataSnapshot = null;
+function resetClearDataDialog() {
+  document.querySelector("#clear-data-form").reset();
+  document.querySelector("#clear-data-error").hidden = true;
+  clearDataConfirm.disabled = true;
+}
+document.querySelector("#clear-data-open").addEventListener("click", () => {
+  resetClearDataDialog();
+  clearDataDialog.showModal();
+  clearDataPhrase.focus();
+});
+document.querySelector("#clear-data-cancel").addEventListener("click", () => clearDataDialog.close());
+document.querySelectorAll('#clear-data-form input[type="checkbox"]').forEach(input => input.addEventListener("change", () => {
+  clearDataConfirm.disabled = !document.querySelector('#clear-data-form input[type="checkbox"]:checked')
+    || clearDataPhrase.value.trim().toLocaleLowerCase("uk-UA").replace(/\s+/g, " ") !== "так, видалити";
+}));
+clearDataPhrase.addEventListener("input", () => {
+  clearDataConfirm.disabled = !document.querySelector('#clear-data-form input[type="checkbox"]:checked')
+    || clearDataPhrase.value.trim().toLocaleLowerCase("uk-UA").replace(/\s+/g, " ") !== "так, видалити";
+  document.querySelector("#clear-data-error").hidden = true;
+});
+document.querySelector("#clear-data-form").addEventListener("submit", async event => {
+  event.preventDefault();
+  if (clearDataConfirm.disabled) { document.querySelector("#clear-data-error").hidden = false; return; }
+  clearDataConfirm.disabled = true;
+  const selection = { completed: document.querySelector("#clear-completed").checked,
+    active: document.querySelector("#clear-active").checked,
+    lists: document.querySelector("#clear-lists").checked,
+    projects: document.querySelector("#clear-projects").checked,
+    settings: document.querySelector("#clear-settings").checked };
+  try {
+    const snapshot = await appDb.exportAll();
+    await appDb.clearUserData(selection);
+    clearDataSnapshot = snapshot;
+    clearDataDialog.close();
+    await initializeApp();
+    toast(selection.completed && !selection.active && !selection.lists && !selection.projects && !selection.settings ? "Історію видалено" : "Вибрані дані видалено", { duration: 3000, action: async () => {
+      if (!clearDataSnapshot) return;
+      const saved = clearDataSnapshot;
+      clearDataSnapshot = null;
+      try {
+        await appDb.replaceAll(saved);
+        await initializeApp();
+        toast("Очищення скасовано");
+      } catch (_error) {
+        clearDataSnapshot = saved;
+        toast("Не вдалося відновити дані");
+      }
+    } });
+    setTimeout(() => { if (clearDataSnapshot === snapshot) clearDataSnapshot = null; }, 3000);
+  } catch (_error) {
+    clearDataConfirm.disabled = false;
+    toast("Не вдалося очистити дані");
+  }
+});
+clearDataDialog.addEventListener("click", event => { if (event.target === clearDataDialog) clearDataDialog.close(); });
 [els.navUpcoming].forEach(button => button.addEventListener("click", () => {
   toast(`Розділ «${button.querySelector("span:last-child").textContent}» з’явиться згодом`);
 }));
@@ -2791,7 +2875,7 @@ els.quickTaskForm.addEventListener("submit", async event => {
         .map(item => ({ ...item, position: item.position + 1 }));
       await taskDb.putMany([task, ...shifted]);
       if (target.kind === "group") await changeTodayLayout((layout, visible, currentDate) =>
-        assignTodayGroupTasks(layout, visible.concat(task), currentDate, target.id, [task.id]));
+        assignTodayGroupTasks(layout, visible.concat(task), currentDate, target.id, [task.id], true));
     }
     closeQuickTask();
     await refresh();
