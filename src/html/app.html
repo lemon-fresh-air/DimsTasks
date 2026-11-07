@@ -94,8 +94,9 @@
       <h2 id="quick-checklist-heading">Новий пункт чекліста</h2>
       <label for="quick-checklist-title">Пункт</label>
       <input id="quick-checklist-title" maxlength="200" required>
-      <label for="quick-checklist-task">Завдання з чеклістом</label>
-      <select id="quick-checklist-task" required></select>
+      <label for="quick-checklist-search">Завдання з чеклістом</label>
+      <input id="quick-checklist-search" type="search" placeholder="Пошук завдання" autocomplete="off">
+      <div id="quick-checklist-tasks" class="task-merge-results" role="listbox" aria-label="Завдання з чеклістом"></div>
       <p id="quick-checklist-empty" hidden>Немає незавершених завдань із чеклістом. Створіть чекліст у завданні, щоб додавати сюди пункти.</p>
       <div class="quick-task-actions"><button id="quick-checklist-cancel" type="button">Скасувати</button><button id="quick-checklist-save" type="submit">Додати</button></div>
     </form>
@@ -373,6 +374,7 @@
     <button id="task-actions-trigger" class="task-actions-trigger" type="button" aria-label="Додаткові дії із завданням" aria-haspopup="menu" aria-expanded="false" aria-controls="task-actions-menu" hidden><span aria-hidden="true"></span></button>
     <div id="task-actions-menu" class="task-actions-menu" role="menu" aria-label="Додаткові дії із завданням" hidden>
       <button id="task-add-checklist" class="project-attribute" type="button" role="menuitem"><span class="checklist-icon" aria-hidden="true">☑</span><span>Додати чекліст</span></button>
+      <button id="task-merge-checklist" class="project-attribute" type="button" role="menuitem" hidden><span class="checklist-icon" aria-hidden="true">☑</span><span>Злити чекліст із завданням</span></button>
       <button id="task-attach-project" class="project-attribute" type="button" role="menuitem" hidden><span class="projects-icon" aria-hidden="true"></span><span>Додати до проєкту</span></button>
       <button id="task-convert-project" class="project-attribute" type="button" role="menuitem" aria-label="Перетворити завдання на проєкт" hidden><span class="projects-icon" aria-hidden="true"></span><span class="task-convert-copy"><strong>Перетворити на проєкт</strong><small id="task-convert-steps-count" hidden></small></span></button>
       <button id="task-detach-project" class="project-attribute" type="button" role="menuitem" aria-label="Змінити зв’язок завдання з проєктом" hidden><span class="projects-icon project-detach-icon" aria-hidden="true"></span><span>Від’єднати від проєкту</span></button>
@@ -454,6 +456,17 @@
     </div>
     <label id="project-date-countdown" class="project-countdown-toggle" hidden><input id="project-show-countdown" type="checkbox"><span>Показувати зворотний відлік</span></label>
     <button id="date-picker-save" class="date-picker-save" type="button">Зберегти</button>
+  </section>
+</div>
+<div id="task-merge-backdrop" class="project-delete-dialog-backdrop keyboard-dialog-backdrop" hidden>
+  <section class="quick-task-dialog" role="dialog" aria-modal="true" aria-labelledby="task-merge-heading">
+    <h2 id="task-merge-heading">Злити чекліст із завданням</h2>
+    <p>Пункти чекліста буде додано до вибраного завдання.</p>
+    <label for="task-merge-search">Знайти завдання</label>
+    <input id="task-merge-search" type="search" placeholder="Пошук завдання" autocomplete="off">
+    <div id="task-merge-results" class="task-merge-results" role="listbox" aria-label="Завдання для злиття"></div>
+    <p id="task-merge-empty" hidden>Завдань не знайдено</p>
+    <div class="quick-task-actions"><button id="task-merge-cancel" type="button">Скасувати</button></div>
   </section>
 </div>
 <div id="time-dialog-backdrop" class="time-dialog-backdrop" hidden>

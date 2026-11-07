@@ -95,6 +95,15 @@ h1 { font-size:clamp(2.25rem,9vw,3.4rem); line-height:1; letter-spacing:-.05em; 
 .quick-task-dialog input,.quick-task-dialog textarea { width:100%; box-sizing:border-box; padding:12px; border:1px solid var(--line); border-radius:10px; background:var(--bg); color:var(--text); font:inherit; }
 .quick-task-dialog select { width:100%; min-height:48px; box-sizing:border-box; padding:10px 12px; border:1px solid var(--line); border-radius:10px; background:var(--bg); color:var(--text); font:inherit; }
 #quick-checklist-empty { margin:0; color:var(--muted); line-height:1.4; }
+#quick-checklist-backdrop,.keyboard-dialog-backdrop { top:var(--keyboard-dialog-top,0px); bottom:auto; height:var(--keyboard-dialog-height,100dvh); box-sizing:border-box; }
+.keyboard-dialog-backdrop .quick-task-dialog { display:grid; gap:10px; }
+.keyboard-dialog-backdrop .quick-task-dialog p { margin:0; color:var(--muted); line-height:1.4; }
+.keyboard-dialog-backdrop .quick-task-dialog label { font-weight:600; }
+.keyboard-dialog-backdrop .quick-task-dialog input { width:100%; box-sizing:border-box; padding:12px; border:1px solid var(--line); border-radius:10px; background:var(--bg); color:var(--text); font:inherit; }
+.task-merge-results { min-height:48px; max-height:min(38dvh,280px); overflow-y:auto; display:grid; align-content:start; gap:4px; padding:4px; border:1px solid var(--line); border-radius:12px; background:var(--bg); }
+.task-merge-option { min-height:44px; width:100%; padding:9px 12px; border:0; border-radius:9px; background:transparent; color:var(--text); text-align:left; font:500 1rem system-ui,sans-serif; overflow-wrap:anywhere; }
+.task-merge-option:hover,.task-merge-option:focus-visible,.task-merge-option[aria-selected="true"] { background:var(--control-strong); outline:none; }
+.task-merge-option[aria-selected="true"] { color:var(--accent); font-weight:700; }
 #quick-task-title { resize:none; }
 .quick-task-actions { display:flex; justify-content:flex-end; gap:10px; margin-top:8px; }
 .quick-task-actions button { min-height:44px; padding:0 16px; border:0; border-radius:10px; font:inherit; cursor:pointer; }

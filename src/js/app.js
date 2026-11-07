@@ -1911,7 +1911,8 @@ const quickChecklist = {
   backdrop: document.querySelector("#quick-checklist-backdrop"),
   form: document.querySelector("#quick-checklist-form"),
   title: document.querySelector("#quick-checklist-title"),
-  task: document.querySelector("#quick-checklist-task"),
+  search: document.querySelector("#quick-checklist-search"),
+  results: document.querySelector("#quick-checklist-tasks"),
   empty: document.querySelector("#quick-checklist-empty"),
   save: document.querySelector("#quick-checklist-save")
 };
@@ -1919,20 +1920,40 @@ function closeQuickChecklist() {
   quickChecklist.backdrop.hidden = true;
   quickChecklist.form.reset();
 }
-function openQuickChecklist() {
-  const candidates = tasks.filter(task => task.status === "active" && /^\s*[-*+] \[[ xX]\](?: |$)/m.test(task.description || ""));
-  quickChecklist.task.replaceChildren();
+function checklistTasks() {
+  return tasks.filter(task => task.status === "active" && /^\s*[-*+] \[[ xX]\](?: |$)/m.test(task.description || ""));
+}
+function renderQuickChecklistTasks() {
+  const query = quickChecklist.search.value.trim().toLocaleLowerCase("uk-UA");
+  const candidates = checklistTasks().filter(task => task.title.toLocaleLowerCase("uk-UA").includes(query));
+  quickChecklist.results.replaceChildren();
   for (const task of candidates) {
-    const option = document.createElement("option");
-    option.value = task.id;
-    option.textContent = task.title;
-    quickChecklist.task.append(option);
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "task-merge-option";
+    button.dataset.taskId = task.id;
+    button.textContent = task.title;
+    button.setAttribute("aria-selected", String(task.id === quickChecklist.results.dataset.selectedId));
+    quickChecklist.results.append(button);
   }
+  if (!candidates.some(task => task.id === quickChecklist.results.dataset.selectedId)) quickChecklist.results.dataset.selectedId = "";
   quickChecklist.empty.hidden = candidates.length > 0;
-  quickChecklist.save.disabled = candidates.length === 0;
+  quickChecklist.save.disabled = !quickChecklist.results.dataset.selectedId;
+}
+function openQuickChecklist() {
+  quickChecklist.results.dataset.selectedId = "";
+  renderQuickChecklistTasks();
   quickChecklist.backdrop.hidden = false;
+  syncKeyboardDialogs();
   quickChecklist.title.focus();
 }
+quickChecklist.search.addEventListener("input", renderQuickChecklistTasks);
+quickChecklist.results.addEventListener("click", event => {
+  const button = event.target.closest("[data-task-id]");
+  if (!button) return;
+  quickChecklist.results.dataset.selectedId = button.dataset.taskId;
+  renderQuickChecklistTasks();
+});
 let addPress = null;
 let suppressAddClickUntil = 0;
 els.add.addEventListener("pointerdown", event => {
@@ -1968,7 +1989,7 @@ quickChecklist.backdrop.addEventListener("keydown", event => { if (event.key ===
 quickChecklist.form.addEventListener("submit", async event => {
   event.preventDefault();
   const title = quickChecklist.title.value.trim();
-  const task = tasks.find(item => item.id === quickChecklist.task.value && item.status === "active" && /^\s*[-*+] \[[ xX]\](?: |$)/m.test(item.description || ""));
+  const task = checklistTasks().find(item => item.id === quickChecklist.results.dataset.selectedId);
   if (!title || !task) return;
   const description = `${task.description.trimEnd()}\n- [ ] ${title.replaceAll("\n", " ")}`;
   quickChecklist.save.disabled = true;
@@ -2248,6 +2269,7 @@ function closeTaskActionsMenu({ returnFocus = false } = {}) {
   if (returnFocus) els.taskActionsTrigger.focus();
 }
 els.taskActionsTrigger.addEventListener("click", event => {
+  document.querySelector("#task-merge-checklist").hidden = !els.editor.dataset.taskId || !/^\s*[-*+] \[[ xX]\](?: |$)/m.test(els.description.value || "");
   const opening = els.taskActionsMenu.hidden;
   els.taskActionsMenu.hidden = !opening;
   els.taskActionsTrigger.setAttribute("aria-expanded", String(opening));
@@ -2260,6 +2282,55 @@ document.querySelector("#task-add-checklist").addEventListener("click", () => {
   els.description.focus();
   els.description.closest(".rich-description-shell").querySelector('[data-rich-command="checklist"]').click();
   resizeDescription();
+});
+const taskMerge = {
+  backdrop: document.querySelector("#task-merge-backdrop"),
+  search: document.querySelector("#task-merge-search"),
+  results: document.querySelector("#task-merge-results"),
+  empty: document.querySelector("#task-merge-empty")
+};
+function closeTaskMerge() { taskMerge.backdrop.hidden = true; taskMerge.search.value = ""; }
+function renderTaskMergeResults() {
+  const query = taskMerge.search.value.trim().toLocaleLowerCase("uk-UA");
+  const candidates = tasks.filter(task => task.status === "active" && task.id !== els.editor.dataset.taskId
+    && task.title.toLocaleLowerCase("uk-UA").includes(query));
+  taskMerge.results.replaceChildren();
+  for (const task of candidates) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "task-merge-option";
+    button.dataset.taskId = task.id;
+    button.textContent = task.title;
+    taskMerge.results.append(button);
+  }
+  taskMerge.empty.hidden = candidates.length > 0;
+}
+document.querySelector("#task-merge-checklist").addEventListener("click", () => {
+  renderTaskMergeResults();
+  taskMerge.backdrop.hidden = false;
+  syncKeyboardDialogs();
+  taskMerge.search.focus();
+});
+taskMerge.search.addEventListener("input", renderTaskMergeResults);
+document.querySelector("#task-merge-cancel").addEventListener("click", closeTaskMerge);
+taskMerge.backdrop.addEventListener("click", event => { if (event.target === taskMerge.backdrop) closeTaskMerge(); });
+taskMerge.backdrop.addEventListener("keydown", event => { if (event.key === "Escape") closeTaskMerge(); });
+taskMerge.results.addEventListener("click", async event => {
+  const button = event.target.closest("[data-task-id]");
+  if (!button) return;
+  const source = tasks.find(task => task.id === els.editor.dataset.taskId && task.status === "active");
+  const target = tasks.find(task => task.id === button.dataset.taskId && task.status === "active");
+  const sourceDescription = els.description.value.trim();
+  const checklistLines = sourceDescription.split("\n").filter(line => /^\s*[-*+] \[[ xX]\](?: |$)/.test(line));
+  if (!source || !target || !checklistLines.length) return;
+  button.disabled = true;
+  try {
+    const description = [target.description.trimEnd(), checklistLines.join("\n")].filter(Boolean).join("\n");
+    await taskDb.put({ ...target, description, updatedAt: new Date().toISOString() });
+    closeTaskMerge();
+    await refresh();
+    toast("Чекліст додано до завдання");
+  } finally { button.disabled = false; }
 });
 els.taskDelete.addEventListener("click", async () => {
   const id = els.editor.dataset.taskId;
@@ -2652,6 +2723,17 @@ function syncQuickTaskViewport() {
   els.quickTaskBackdrop.style.setProperty("--quick-task-viewport-top", `${viewport?.offsetTop || 0}px`);
   els.quickTaskBackdrop.style.setProperty("--quick-task-viewport-height", `${viewport?.height || window.innerHeight}px`);
 }
+function syncKeyboardDialogs() {
+  const viewport = window.visualViewport;
+  for (const backdrop of [quickChecklist.backdrop, taskMerge.backdrop]) {
+    if (backdrop.hidden) continue;
+    backdrop.style.setProperty("--keyboard-dialog-top", `${viewport?.offsetTop || 0}px`);
+    backdrop.style.setProperty("--keyboard-dialog-height", `${viewport?.height || window.innerHeight}px`);
+  }
+}
+window.visualViewport?.addEventListener("resize", syncKeyboardDialogs);
+window.visualViewport?.addEventListener("scroll", syncKeyboardDialogs);
+window.addEventListener("resize", syncKeyboardDialogs);
 window.visualViewport?.addEventListener("resize", syncQuickTaskViewport);
 window.visualViewport?.addEventListener("scroll", syncQuickTaskViewport);
 window.addEventListener("resize", syncQuickTaskViewport);

@@ -1408,7 +1408,9 @@ function showTaskEditor() {
 function syncTaskActionsMenu() {
   els.taskActionsMenu.hidden = true;
   els.taskActionsTrigger.setAttribute("aria-expanded", "false");
-  els.taskActionsTrigger.hidden = [els.taskAttachProject, els.taskConvertProject, els.taskDetachProject, els.taskDelete].every(button => button.hidden);
+  const merge = document.querySelector("#task-merge-checklist");
+  merge.hidden = !els.editor.dataset.taskId || !/^\s*[-*+] \[[ xX]\](?: |$)/m.test(els.description.value || "");
+  els.taskActionsTrigger.hidden = [els.taskAttachProject, els.taskConvertProject, els.taskDetachProject, els.taskDelete, merge].every(button => button.hidden);
 }
 
 function hideTaskEditor() {
@@ -1488,13 +1490,13 @@ function openTaskDetails(task) {
   els.taskConvertProject.hidden = task.status !== "active" || Boolean(task.projectId);
   els.taskDetachProject.hidden = task.status !== "active" || !project;
   els.taskDelete.hidden = false;
-  syncTaskActionsMenu();
   els.taskProjectLink.dataset.projectId = project?.id || "";
   els.taskProjectValue.textContent = project?.title || "";
   setTaskEditorListUI(task.listId || INBOX_LIST_ID);
   setTaskEditorSectionUI(task.listId || INBOX_LIST_ID, task.sectionId);
   els.input.value = task.title;
   els.description.value = task.description || "";
+  syncTaskActionsMenu();
   const snapshot = Array.isArray(task.savedSteps) ? task.savedSteps : [];
   els.savedSteps.hidden = snapshot.length === 0;
   els.savedSteps.open = false;
