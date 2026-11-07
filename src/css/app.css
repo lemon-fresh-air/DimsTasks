@@ -93,6 +93,8 @@ h1 { font-size:clamp(2.25rem,9vw,3.4rem); line-height:1; letter-spacing:-.05em; 
 .quick-task-dialog h2 { margin:0 0 4px; font-size:1.2rem; }
 .quick-task-dialog label { font-weight:600; }
 .quick-task-dialog input,.quick-task-dialog textarea { width:100%; box-sizing:border-box; padding:12px; border:1px solid var(--line); border-radius:10px; background:var(--bg); color:var(--text); font:inherit; }
+.quick-task-dialog select { width:100%; min-height:48px; box-sizing:border-box; padding:10px 12px; border:1px solid var(--line); border-radius:10px; background:var(--bg); color:var(--text); font:inherit; }
+#quick-checklist-empty { margin:0; color:var(--muted); line-height:1.4; }
 #quick-task-title { resize:none; }
 .quick-task-actions { display:flex; justify-content:flex-end; gap:10px; margin-top:8px; }
 .quick-task-actions button { min-height:44px; padding:0 16px; border:0; border-radius:10px; font:inherit; cursor:pointer; }

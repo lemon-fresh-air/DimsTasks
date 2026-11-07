@@ -1907,10 +1907,78 @@ async function completeTask(task, changes = {}, toggle) {
   });
 }
 
-els.add.addEventListener("click", () => openNewTaskEditor(
+const quickChecklist = {
+  backdrop: document.querySelector("#quick-checklist-backdrop"),
+  form: document.querySelector("#quick-checklist-form"),
+  title: document.querySelector("#quick-checklist-title"),
+  task: document.querySelector("#quick-checklist-task"),
+  empty: document.querySelector("#quick-checklist-empty"),
+  save: document.querySelector("#quick-checklist-save")
+};
+function closeQuickChecklist() {
+  quickChecklist.backdrop.hidden = true;
+  quickChecklist.form.reset();
+}
+function openQuickChecklist() {
+  const candidates = tasks.filter(task => task.status === "active" && /^\s*[-*+] \[[ xX]\](?: |$)/m.test(task.description || ""));
+  quickChecklist.task.replaceChildren();
+  for (const task of candidates) {
+    const option = document.createElement("option");
+    option.value = task.id;
+    option.textContent = task.title;
+    quickChecklist.task.append(option);
+  }
+  quickChecklist.empty.hidden = candidates.length > 0;
+  quickChecklist.save.disabled = candidates.length === 0;
+  quickChecklist.backdrop.hidden = false;
+  quickChecklist.title.focus();
+}
+let addPress = null;
+let suppressAddClickUntil = 0;
+els.add.addEventListener("pointerdown", event => {
+  if (!event.isPrimary || (event.pointerType === "mouse" && event.button !== 0)) return;
+  addPress = { id: event.pointerId, x: event.clientX, y: event.clientY };
+  addPress.timer = setTimeout(() => {
+    if (!addPress || addPress.id !== event.pointerId) return;
+    addPress = null;
+    suppressAddClickUntil = Date.now() + 800;
+    openQuickChecklist();
+  }, 500);
+});
+window.addEventListener("pointermove", event => {
+  if (addPress?.id === event.pointerId && Math.hypot(event.clientX - addPress.x, event.clientY - addPress.y) > 12) {
+    clearTimeout(addPress.timer);
+    addPress = null;
+  }
+});
+for (const type of ["pointerup", "pointercancel"]) window.addEventListener(type, event => {
+  if (addPress?.id === event.pointerId) { clearTimeout(addPress.timer); addPress = null; }
+});
+els.add.addEventListener("contextmenu", event => event.preventDefault());
+els.add.addEventListener("click", () => {
+  if (Date.now() < suppressAddClickUntil) { suppressAddClickUntil = 0; return; }
+  openNewTaskEditor(
   isDayList() ? validTodayDefaultListId() : activeListId,
   activeListId
-));
+  );
+});
+document.querySelector("#quick-checklist-cancel").addEventListener("click", closeQuickChecklist);
+quickChecklist.backdrop.addEventListener("click", event => { if (event.target === quickChecklist.backdrop) closeQuickChecklist(); });
+quickChecklist.backdrop.addEventListener("keydown", event => { if (event.key === "Escape") closeQuickChecklist(); });
+quickChecklist.form.addEventListener("submit", async event => {
+  event.preventDefault();
+  const title = quickChecklist.title.value.trim();
+  const task = tasks.find(item => item.id === quickChecklist.task.value && item.status === "active" && /^\s*[-*+] \[[ xX]\](?: |$)/m.test(item.description || ""));
+  if (!title || !task) return;
+  const description = `${task.description.trimEnd()}\n- [ ] ${title.replaceAll("\n", " ")}`;
+  quickChecklist.save.disabled = true;
+  try {
+    await taskDb.put({ ...task, description, updatedAt: new Date().toISOString() });
+    closeQuickChecklist();
+    await refresh();
+    toast("Пункт додано");
+  } finally { quickChecklist.save.disabled = false; }
+});
 els.navToday.addEventListener("click", () => openList(TODAY_LIST_ID));
 els.navInbox.addEventListener("click", () => openList(INBOX_LIST_ID));
 els.navProjects.addEventListener("click", openProjects);

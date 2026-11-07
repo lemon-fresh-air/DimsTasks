@@ -61,7 +61,7 @@
     <details id="completed-projects" class="completed-projects" hidden><summary>Завершені <span id="completed-projects-count">0</span></summary><div id="completed-project-list" class="project-grid"></div></details>
     <div id="projects-swipe-zone" class="projects-swipe-zone" aria-hidden="true"></div>
   </section>
-  <button id="add-task-btn" class="fab" aria-label="Додати завдання"><span aria-hidden="true">＋</span></button>
+  <button id="add-task-btn" class="fab" aria-label="Додати завдання; утримуйте для пункту чекліста"><span aria-hidden="true">＋</span></button>
   <nav class="bottom-nav" aria-label="Основна навігація"><div class="bottom-nav-inner">
     <button id="nav-today" class="nav-item" type="button" data-nav="today"><span class="nav-icon-field" aria-hidden="true"><span class="sun-icon"></span></span><span>Сьогодні</span></button>
     <button id="nav-upcoming" class="nav-item" type="button" data-nav="upcoming" aria-label="Скоро — розділ у розробці"><span class="nav-icon-field" aria-hidden="true"><span class="upcoming-icon"></span></span><span>Скоро</span></button>
@@ -85,6 +85,19 @@
       <label for="quick-task-description">Опис</label>
       <textarea id="quick-task-description" rows="3"></textarea>
       <div class="quick-task-actions"><button id="quick-task-cancel" type="button">Скасувати</button><button type="submit">Додати</button></div>
+    </form>
+  </section>
+</div>
+<div id="quick-checklist-backdrop" class="project-delete-dialog-backdrop" hidden>
+  <section class="quick-task-dialog" role="dialog" aria-modal="true" aria-labelledby="quick-checklist-heading">
+    <form id="quick-checklist-form" autocomplete="off">
+      <h2 id="quick-checklist-heading">Новий пункт чекліста</h2>
+      <label for="quick-checklist-title">Пункт</label>
+      <input id="quick-checklist-title" maxlength="200" required>
+      <label for="quick-checklist-task">Завдання з чеклістом</label>
+      <select id="quick-checklist-task" required></select>
+      <p id="quick-checklist-empty" hidden>Немає незавершених завдань із чеклістом. Створіть чекліст у завданні, щоб додавати сюди пункти.</p>
+      <div class="quick-task-actions"><button id="quick-checklist-cancel" type="button">Скасувати</button><button id="quick-checklist-save" type="submit">Додати</button></div>
     </form>
   </section>
 </div>
