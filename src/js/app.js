@@ -191,6 +191,38 @@ function renderListMenu() {
   const menuLists = lists.slice();
   menuLists.splice(inboxIndex < 0 ? 0 : inboxIndex + 1, 0, todayList);
   renderMainMenuLists(menuLists, activeListId, selectedListIds, tasks);
+  const desktopLists = document.querySelector("#desktop-nav-lists");
+  const desktopSelection = document.querySelector("#desktop-list-selection");
+  desktopSelection.hidden = selectedListIds.size === 0;
+  document.querySelector("#desktop-list-selection-count").textContent = `Вибрано: ${selectedListIds.size}`;
+  desktopLists.classList.toggle("selection-mode", selectedListIds.size > 0);
+  const counts = taskCountsByList(tasks);
+  desktopLists.replaceChildren(...lists.filter(list => list.kind === "regular").map(list => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "nav-item desktop-list-item";
+    button.dataset.listId = list.id;
+    button.dataset.listKind = list.kind;
+    button.classList.toggle("active", list.id === activeListId && !els.shell.classList.contains("projects-mode"));
+    button.classList.toggle("selected", selectedListIds.has(list.id));
+    button.setAttribute("aria-selected", String(selectedListIds.has(list.id)));
+    if (button.classList.contains("active")) button.setAttribute("aria-current", "page");
+    const icon = document.createElement("span");
+    icon.className = "nav-icon-field";
+    icon.setAttribute("aria-hidden", "true");
+    const glyph = document.createElement("span");
+    glyph.className = "list-menu-icon";
+    icon.append(glyph);
+    const label = document.createElement("span");
+    label.className = "desktop-list-label";
+    label.textContent = displayListTitle(list);
+    const count = document.createElement("span");
+    count.className = "desktop-list-count";
+    count.textContent = String(counts.get(list.id) || 0);
+    count.setAttribute("aria-label", `Завдань: ${count.textContent}`);
+    button.append(icon, label, count);
+    return button;
+  }));
   renderTaskListOptions(lists);
 }
 
@@ -946,7 +978,8 @@ function clearListSelection() {
 function closeSelectedListsDeleteDialog() {
   els.listSelectionDeleteBackdrop.hidden = true;
   document.body.classList.remove("project-delete-dialog-open");
-  els.mainMenuDeleteSelected.focus({ preventScroll: true });
+  (matchMedia("(min-width: 760px)").matches && els.mainMenu.hidden
+    ? document.querySelector("#desktop-list-delete-selected") : els.mainMenuDeleteSelected).focus({ preventScroll: true });
 }
 
 async function deleteSelectedLists() {
@@ -2028,6 +2061,72 @@ quickChecklist.form.addEventListener("submit", async event => {
 els.navToday.addEventListener("click", () => openList(TODAY_LIST_ID));
 els.navInbox.addEventListener("click", () => openList(INBOX_LIST_ID));
 els.navProjects.addEventListener("click", openProjects);
+document.querySelector("#desktop-nav-lists").addEventListener("click", event => {
+  const button = event.target.closest("[data-list-id]");
+  const container = document.querySelector("#desktop-nav-lists");
+  if (container.dataset.suppressListClick === button?.dataset.listId) {
+    return;
+  }
+  delete container.dataset.suppressListClick;
+  if (!button) return;
+  if (selectedListIds.size) toggleListSelection(button.dataset.listId);
+  else openList(button.dataset.listId);
+});
+document.querySelector("#desktop-nav-lists").addEventListener("contextmenu", event => {
+  const button = event.target.closest("[data-list-id]");
+  if (!button) return;
+  event.preventDefault();
+  if (!selectedListIds.has(button.dataset.listId)) selectList(button.dataset.listId);
+});
+document.querySelector("#desktop-list-selection-close").addEventListener("click", clearListSelection);
+document.querySelector("#desktop-settings-open").addEventListener("click", openSettings);
+const desktopNewListOpen = document.querySelector("#desktop-new-list-open");
+const desktopNewListForm = document.querySelector("#desktop-new-list-form");
+const desktopNewListTitle = document.querySelector("#desktop-new-list-title");
+function closeDesktopNewList() {
+  desktopNewListForm.hidden = true;
+  desktopNewListOpen.hidden = false;
+  desktopNewListOpen.setAttribute("aria-expanded", "false");
+  desktopNewListTitle.value = "";
+  desktopNewListOpen.focus({ preventScroll: true });
+}
+desktopNewListOpen.addEventListener("click", () => {
+  desktopNewListOpen.hidden = true;
+  desktopNewListForm.hidden = false;
+  desktopNewListOpen.setAttribute("aria-expanded", "true");
+  desktopNewListTitle.focus();
+});
+document.querySelector("#desktop-new-list-cancel").addEventListener("click", closeDesktopNewList);
+desktopNewListForm.addEventListener("keydown", event => {
+  if (event.key === "Escape") { event.preventDefault(); closeDesktopNewList(); }
+});
+desktopNewListForm.addEventListener("submit", async event => {
+  event.preventDefault();
+  const created = await addList(desktopNewListTitle.value, { fromMainMenu: false });
+  if (created) { closeDesktopNewList(); openList(created.id); }
+  else desktopNewListTitle.focus();
+});
+const desktopNavToggle = document.querySelector("#desktop-nav-toggle");
+const desktopNav = document.querySelector("#primary-nav");
+const desktopNavMedia = matchMedia("(min-width: 760px)");
+function syncDesktopNav() {
+  const collapsed = document.body.classList.contains("desktop-nav-collapsed");
+  desktopNavToggle.setAttribute("aria-expanded", String(!collapsed));
+  desktopNavToggle.setAttribute("aria-label", collapsed ? "Розгорнути бічну навігацію" : "Згорнути бічну навігацію");
+  desktopNav.inert = desktopNavMedia.matches && collapsed;
+}
+desktopNavToggle.addEventListener("click", () => {
+  document.body.classList.toggle("desktop-nav-collapsed");
+  syncDesktopNav();
+});
+desktopNavMedia.addEventListener("change", syncDesktopNav);
+document.addEventListener("keydown", event => {
+  if (!desktopNavMedia.matches || event.code !== "KeyM" || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey || event.isComposing || event.repeat) return;
+  if (event.target.closest("input,textarea,select,[contenteditable], [role='dialog'], dialog")) return;
+  event.preventDefault();
+  desktopNavToggle.click();
+});
+syncDesktopNav();
 const clearDataDialog = document.querySelector("#clear-data-dialog");
 const clearDataPhrase = document.querySelector("#clear-data-phrase");
 const clearDataConfirm = document.querySelector("#clear-data-confirm");
@@ -2099,12 +2198,14 @@ els.mainMenuClose.addEventListener("click", () => {
   closeMainMenu();
 });
 els.mainMenuSelectionClose.addEventListener("click", clearListSelection);
-els.mainMenuDeleteSelected.addEventListener("click", () => {
+function openSelectedListsDeleteDialog() {
   els.listSelectionDeleteTitle.textContent = selectedListIds.size === 1 ? "Видалити список?" : `Видалити списки (${selectedListIds.size})?`;
   els.listSelectionDeleteBackdrop.hidden = false;
   document.body.classList.add("project-delete-dialog-open");
   requestAnimationFrame(() => els.listSelectionDeleteDialog.focus());
-});
+}
+els.mainMenuDeleteSelected.addEventListener("click", openSelectedListsDeleteDialog);
+document.querySelector("#desktop-list-delete-selected").addEventListener("click", openSelectedListsDeleteDialog);
 els.listSelectionDeleteCancel.addEventListener("click", closeSelectedListsDeleteDialog);
 els.listSelectionDeleteConfirm.addEventListener("click", deleteSelectedLists);
 els.listSelectionDeleteBackdrop.addEventListener("click", event => { if (event.target === els.listSelectionDeleteBackdrop) closeSelectedListsDeleteDialog(); });
@@ -2275,6 +2376,15 @@ enableHorizontalSwipe(els.mainMenu.querySelector(".main-menu-panel"), {
   onSwipe: closeMainMenu
 });
 enableListReordering({
+  onReorder: reorderTaskLists,
+  isSelectionMode: () => selectedListIds.size > 0,
+  isSelected: id => selectedListIds.has(id),
+  onLongPress: selectList,
+  onSelectOnly: selectList,
+  getSelectedIds: () => new Set(selectedListIds)
+});
+enableListReordering({
+  container: document.querySelector("#desktop-nav-lists"),
   onReorder: reorderTaskLists,
   isSelectionMode: () => selectedListIds.size > 0,
   isSelected: id => selectedListIds.has(id),

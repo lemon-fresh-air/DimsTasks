@@ -167,6 +167,9 @@ function renderProjectCard(project, container) {
 
 function renderProjects() {
   const active = projects.filter(project => project.status !== "completed").sort(compareProjects);
+  const desktopCount = document.querySelector("#nav-projects .desktop-primary-count");
+  desktopCount.textContent = String(active.length);
+  desktopCount.setAttribute("aria-label", `Проєктів: ${active.length}`);
   const completed = projects.filter(project => project.status === "completed").sort((a, b) => String(b.completedAt || b.updatedAt).localeCompare(String(a.completedAt || a.updatedAt)));
   projectEls.activeList.replaceChildren();
   projectEls.completedList.replaceChildren();

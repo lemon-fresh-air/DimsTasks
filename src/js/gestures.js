@@ -23,9 +23,9 @@ function enableHorizontalSwipe(element, { direction, onSwipe, canStart = () => t
   window.addEventListener("pointercancel", cancel);
 }
 
-function enableListReordering({ onReorder, isSelectionMode, isSelected, onLongPress, onSelectOnly, getSelectedIds }) {
+function enableListReordering({ container = els.mainMenuLists, onReorder, isSelectionMode, isSelected, onLongPress, onSelectOnly, getSelectedIds }) {
   let gesture = null;
-  const container = els.mainMenuLists;
+  const pointerTarget = container === els.mainMenuLists ? container : window;
 
   function capturePositions() {
     return new Map([...container.querySelectorAll("[data-list-id]")].map(item => [item.dataset.listId, item.getBoundingClientRect().top]));
@@ -109,8 +109,9 @@ function enableListReordering({ onReorder, isSelectionMode, isSelected, onLongPr
   container.addEventListener("pointerdown", event => {
     const item = event.target.closest('[data-list-kind="regular"]');
     if (!item || !event.isPrimary || (event.pointerType === "mouse" && event.button !== 0)) return;
+    if (container !== els.mainMenuLists) delete container.dataset.suppressListClick;
     gesture = { item, id: item.dataset.listId, pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, lastY: event.clientY, ready: event.pointerType === "mouse", scrolling: false, dragging: false };
-    item.setPointerCapture?.(event.pointerId);
+    if (container === els.mainMenuLists || event.pointerType !== "mouse") item.setPointerCapture?.(event.pointerId);
     gesture.longPressTimer = setTimeout(() => {
       if (!gesture || gesture.pointerId !== event.pointerId) return;
       gesture.ready = true;
@@ -121,7 +122,7 @@ function enableListReordering({ onReorder, isSelectionMode, isSelected, onLongPr
     }, 450);
   });
 
-  container.addEventListener("pointermove", event => {
+  pointerTarget.addEventListener("pointermove", event => {
     if (!gesture || gesture.pointerId !== event.pointerId) return;
     const distance = Math.hypot(event.clientX - gesture.startX, event.clientY - gesture.startY);
     if (gesture.dragging) {
@@ -171,8 +172,8 @@ function enableListReordering({ onReorder, isSelectionMode, isSelected, onLongPr
     if (!cancelled && finished.moved) onReorder({ selectedIds: finished.selectedIds, beforeId: finished.lastBeforeId });
   }
 
-  container.addEventListener("pointerup", event => finish(event));
-  container.addEventListener("pointercancel", event => finish(event, true));
+  pointerTarget.addEventListener("pointerup", event => finish(event));
+  pointerTarget.addEventListener("pointercancel", event => finish(event, true));
 }
 
 function enableTaskGestures({ container = els.list, onDelete, isSelectionMode, isSelected, onLongPress, onSelectOnly, getSelectedIds, onReorder, requireSelectionForDrag = false, canDragRow = () => true, sectionDragEnabled = () => false }) {

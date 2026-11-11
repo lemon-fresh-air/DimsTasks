@@ -947,9 +947,19 @@ function renderMainMenuLists(lists, activeListId, selectedIds = new Set(), tasks
 
 function updateMainMenuTaskCounts(tasks) {
   const counts = taskCountsByList(tasks);
+  for (const [selector, listId] of [["#nav-today", TODAY_LIST_ID], ["#nav-inbox", INBOX_LIST_ID]]) {
+    const count = document.querySelector(`${selector} .desktop-primary-count`);
+    count.textContent = String(counts.get(listId) || 0);
+    count.setAttribute("aria-label", `Завдань: ${count.textContent}`);
+  }
   for (const item of els.mainMenuLists.querySelectorAll("[data-list-id]")) {
     const count = item.querySelector(".main-menu-count");
     if (!count) continue;
+    count.textContent = String(counts.get(item.dataset.listId) || 0);
+    count.setAttribute("aria-label", `Завдань: ${count.textContent}`);
+  }
+  for (const item of document.querySelectorAll("#desktop-nav-lists [data-list-id]")) {
+    const count = item.querySelector(".desktop-list-count");
     count.textContent = String(counts.get(item.dataset.listId) || 0);
     count.setAttribute("aria-label", `Завдань: ${count.textContent}`);
   }
@@ -969,6 +979,12 @@ function setActiveListUI(list) {
 function setActivePrimaryNav(name) {
   for (const item of document.querySelectorAll(".bottom-nav [data-nav]")) {
     const active = item.dataset.nav === name;
+    item.classList.toggle("active", active);
+    if (active) item.setAttribute("aria-current", "page");
+    else item.removeAttribute("aria-current");
+  }
+  for (const item of document.querySelectorAll("#desktop-nav-lists [data-list-id]")) {
+    const active = name === "overview" && item.dataset.listId === activeListId;
     item.classList.toggle("active", active);
     if (active) item.setAttribute("aria-current", "page");
     else item.removeAttribute("aria-current");
@@ -1200,6 +1216,7 @@ function openSettings() {
   els.settingsScreen.hidden = false;
   els.settingsScreen.classList.remove("is-open");
   els.settingsOpen.setAttribute("aria-expanded", "true");
+  document.querySelector("#desktop-settings-open").setAttribute("aria-expanded", "true");
   document.body.classList.add("settings-open");
   settingsOpenFrame = requestAnimationFrame(() => {
     settingsOpenFrame = requestAnimationFrame(() => {
@@ -1215,10 +1232,12 @@ function closeSettings({ fromHistory = false } = {}) {
   cancelAnimationFrame(settingsOpenFrame);
   els.settingsScreen.classList.remove("is-open");
   els.settingsOpen.setAttribute("aria-expanded", "false");
+  document.querySelector("#desktop-settings-open").setAttribute("aria-expanded", "false");
   document.body.classList.remove("settings-open");
   settingsCloseTimer = setTimeout(() => {
     els.settingsScreen.hidden = true;
-    els.settingsOpen.focus({ preventScroll: true });
+    (matchMedia("(min-width: 760px)").matches && els.mainMenu.hidden
+      ? document.querySelector("#desktop-settings-open") : els.settingsOpen).focus({ preventScroll: true });
   }, matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 240);
   if (!mobileNavigationEnabled() && !fromHistory && history.state?.settings) history.back();
 }

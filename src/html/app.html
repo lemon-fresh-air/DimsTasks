@@ -66,12 +66,32 @@
     <button id="fab-create-project" type="button" role="menuitem"><span class="projects-icon" aria-hidden="true"></span><span>Створити новий проєкт</span></button>
   </div>
   <button id="add-task-btn" class="fab" aria-label="Додати завдання; утримуйте для інших дій" aria-haspopup="menu" aria-expanded="false" aria-controls="fab-create-menu"><span aria-hidden="true">＋</span></button>
-  <nav class="bottom-nav" aria-label="Основна навігація"><div class="bottom-nav-inner">
-    <button id="nav-today" class="nav-item" type="button" data-nav="today"><span class="nav-icon-field" aria-hidden="true"><span class="sun-icon"></span></span><span>Сьогодні</span></button>
+  <button id="desktop-nav-toggle" class="desktop-nav-toggle" type="button" aria-label="Згорнути бічну навігацію" aria-controls="primary-nav" aria-expanded="true"><span class="desktop-nav-toggle-icon" aria-hidden="true"></span></button>
+  <nav id="primary-nav" class="bottom-nav" aria-label="Основна навігація"><div class="bottom-nav-inner">
+    <button id="nav-today" class="nav-item" type="button" data-nav="today"><span class="nav-icon-field" aria-hidden="true"><span class="sun-icon"></span></span><span>Сьогодні</span><span class="desktop-primary-count" aria-label="Завдань: 0">0</span></button>
     <button id="nav-upcoming" class="nav-item" type="button" data-nav="upcoming" aria-label="Скоро — розділ у розробці"><span class="nav-icon-field" aria-hidden="true"><span class="upcoming-icon"></span></span><span>Скоро</span></button>
-    <button id="nav-projects" class="nav-item" type="button" data-nav="projects"><span class="nav-icon-field" aria-hidden="true"><span class="projects-icon"></span></span><span>Проєкти</span></button>
-    <button id="nav-inbox" class="nav-item active" type="button" data-nav="inbox" aria-current="page"><span class="nav-icon-field" aria-hidden="true"><span class="inbox-icon"></span></span><span>Нові</span></button>
+    <button id="nav-projects" class="nav-item" type="button" data-nav="projects"><span class="nav-icon-field" aria-hidden="true"><span class="projects-icon"></span></span><span>Проєкти</span><span class="desktop-primary-count" aria-label="Проєктів: 0">0</span></button>
+    <button id="nav-inbox" class="nav-item active" type="button" data-nav="inbox" aria-current="page"><span class="nav-icon-field" aria-hidden="true"><span class="inbox-icon"></span></span><span>Нові</span><span class="desktop-primary-count" aria-label="Завдань: 0">0</span></button>
     <button id="main-menu-open" class="nav-item" type="button" data-nav="overview" aria-label="Відкрити огляд" aria-controls="main-menu" aria-expanded="false"><span class="nav-icon-field" aria-hidden="true"><span class="overview-icon"></span></span><span>Огляд</span></button>
+    <div class="desktop-nav-list-header desktop-nav-only">
+      <div class="desktop-nav-divider" role="separator"></div>
+      <div id="desktop-list-selection" class="desktop-list-selection" hidden>
+        <button id="desktop-list-selection-close" type="button" aria-label="Завершити виділення">×</button>
+        <span id="desktop-list-selection-count"></span>
+        <button id="desktop-list-delete-selected" type="button" aria-label="Видалити вибрані списки"><span class="trash-icon" aria-hidden="true"></span></button>
+      </div>
+    </div>
+    <div id="desktop-nav-lists" class="desktop-nav-lists desktop-nav-only" aria-label="Мої списки"></div>
+    <div class="desktop-nav-actions desktop-nav-only">
+      <button id="desktop-new-list-open" class="nav-item" type="button" aria-controls="desktop-new-list-form" aria-expanded="false"><span class="nav-icon-field" aria-hidden="true"><span class="add-list-icon"></span></span><span>Додати список</span></button>
+      <button id="desktop-settings-open" class="nav-item" type="button" aria-label="Відкрити налаштування" aria-controls="settings-screen" aria-expanded="false"><span class="nav-icon-field" aria-hidden="true">⚙</span></button>
+    </div>
+    <form id="desktop-new-list-form" class="desktop-new-list-form desktop-nav-only" hidden>
+      <label class="sr-only" for="desktop-new-list-title">Назва нового списку</label>
+      <input id="desktop-new-list-title" type="text" maxlength="80" autocomplete="off" placeholder="Назва списку" required>
+      <button type="submit" aria-label="Створити список">✓</button>
+      <button id="desktop-new-list-cancel" type="button" aria-label="Скасувати створення списку">×</button>
+    </form>
   </div></nav>
 </div>
 <div id="day-change-backdrop" class="project-delete-dialog-backdrop" hidden>
@@ -276,7 +296,7 @@
       </div>
       <button id="clear-data-open" class="settings-row clear-data-open" type="button" aria-haspopup="dialog" aria-controls="clear-data-dialog"><span class="trash-icon" aria-hidden="true"></span><span class="settings-copy"><strong>Очистити дані</strong><small>Завдання, списки, проєкти й налаштування</small></span><span aria-hidden="true">›</span></button>
     </div>
-    <p class="settings-version"><span>Версія 0.27 · 7 листопада 2026</span><button id="check-app-update" type="button">Перевірити оновлення</button></p>
+    <p class="settings-version"><span>Версія 0.28 · 12 листопада 2026</span><button id="check-app-update" type="button">Перевірити оновлення</button></p>
   </div>
 </section>
 <dialog id="clear-data-dialog" class="clear-data-dialog" aria-labelledby="clear-data-title">
