@@ -3179,7 +3179,7 @@ function closeTaskProjectDropdown({ returnFocus = false } = {}) {
 els.taskProjectTrigger.addEventListener("click", () => {
   if (!els.taskProjectOptions.hidden) { closeTaskProjectDropdown(); return; }
   const currentId = els.taskProjectLink.dataset.projectId;
-  const available = projects.filter(project => project.status === "active");
+  const available = projects.filter(project => project.status === "active").sort(compareProjects);
   els.taskProjectOptions.replaceChildren(...available.map(project => {
     const option = document.createElement("button");
     option.type = "button";
@@ -3230,21 +3230,67 @@ els.taskProjectOptions.addEventListener("click", async event => {
 });
 
 function closeTaskAttachDialog() {
+  els.taskAttachProjectOptions.hidden = true;
+  els.taskAttachProjectTrigger.setAttribute("aria-expanded", "false");
   els.taskAttachDialogBackdrop.hidden = true;
   els.taskAttachProject.focus();
 }
 
 els.taskAttachProject.addEventListener("click", () => {
-  const available = projects.filter(project => project.status === "active");
-  els.taskAttachProjectSelect.replaceChildren(...available.map(project => {
-    const option = document.createElement("option");
-    option.value = project.id;
-    option.textContent = project.title;
+  const available = projects.filter(project => project.status === "active").sort(compareProjects);
+  els.taskAttachProjectOptions.replaceChildren(...available.map(project => {
+    const option = document.createElement("button");
+    option.type = "button";
+    option.dataset.projectId = project.id;
+    option.setAttribute("role", "option");
+    option.setAttribute("aria-selected", String(project.id === available[0].id));
+    const icon = document.createElement("span");
+    icon.className = "projects-icon";
+    icon.setAttribute("aria-hidden", "true");
+    const title = document.createElement("span");
+    title.textContent = project.title;
+    option.append(icon, title);
     return option;
   }));
   if (!available.length) return;
+  els.taskAttachProjectTrigger.dataset.projectId = available[0].id;
+  els.taskAttachProjectValue.textContent = available[0].title;
+  els.taskAttachProjectOptions.hidden = true;
+  els.taskAttachProjectTrigger.setAttribute("aria-expanded", "false");
   els.taskAttachDialogBackdrop.hidden = false;
-  requestAnimationFrame(() => els.taskAttachProjectSelect.focus());
+  requestAnimationFrame(() => els.taskAttachProjectTrigger.focus());
+});
+els.taskAttachProjectTrigger.addEventListener("click", () => {
+  const open = els.taskAttachProjectOptions.hidden;
+  els.taskAttachProjectOptions.hidden = !open;
+  els.taskAttachProjectTrigger.setAttribute("aria-expanded", String(open));
+  if (open) els.taskAttachProjectOptions.querySelector(`[data-project-id="${CSS.escape(els.taskAttachProjectTrigger.dataset.projectId)}"]`)?.focus();
+});
+els.taskAttachProjectOptions.addEventListener("click", event => {
+  const option = event.target.closest("[data-project-id]");
+  if (!option) return;
+  els.taskAttachProjectTrigger.dataset.projectId = option.dataset.projectId;
+  els.taskAttachProjectValue.textContent = option.textContent;
+  els.taskAttachProjectOptions.querySelectorAll("[data-project-id]").forEach(item => item.setAttribute("aria-selected", String(item === option)));
+  els.taskAttachProjectOptions.hidden = true;
+  els.taskAttachProjectTrigger.setAttribute("aria-expanded", "false");
+  els.taskAttachProjectTrigger.focus();
+});
+els.taskAttachProjectOptions.addEventListener("keydown", event => {
+  const options = [...els.taskAttachProjectOptions.querySelectorAll("[data-project-id]")];
+  const index = options.indexOf(document.activeElement);
+  if (event.key === "Escape") {
+    event.preventDefault();
+    event.stopPropagation();
+    els.taskAttachProjectOptions.hidden = true;
+    els.taskAttachProjectTrigger.setAttribute("aria-expanded", "false");
+    els.taskAttachProjectTrigger.focus();
+  } else if (["ArrowUp", "ArrowDown", "Home", "End"].includes(event.key)) {
+    event.preventDefault();
+    const next = event.key === "Home" ? 0 : event.key === "End" ? options.length - 1
+      : (index + (event.key === "ArrowDown" ? 1 : -1) + options.length) % options.length;
+    options[next]?.focus();
+  }
 });
 els.taskAttachCancel.addEventListener("click", closeTaskAttachDialog);
 els.taskAttachDialogBackdrop.addEventListener("click", event => {
@@ -3255,7 +3301,7 @@ els.taskAttachDialog.addEventListener("keydown", event => {
 });
 els.taskAttachConfirm.addEventListener("click", async () => {
   const task = tasks.find(item => item.id === els.editor.dataset.taskId);
-  const projectId = els.taskAttachProjectSelect.value;
+  const projectId = els.taskAttachProjectTrigger.dataset.projectId;
   if (!task) {
     const project = projects.find(item => item.id === projectId && item.status === "active");
     if (!project) return;

@@ -63,7 +63,9 @@ const els = {
   taskAttachProject: document.querySelector("#task-attach-project"),
   taskAttachDialogBackdrop: document.querySelector("#task-attach-dialog-backdrop"),
   taskAttachDialog: document.querySelector("#task-attach-dialog"),
-  taskAttachProjectSelect: document.querySelector("#task-attach-project-select"),
+  taskAttachProjectTrigger: document.querySelector("#task-attach-project-trigger"),
+  taskAttachProjectValue: document.querySelector("#task-attach-project-value"),
+  taskAttachProjectOptions: document.querySelector("#task-attach-project-options"),
   taskAttachCancel: document.querySelector("#task-attach-cancel"),
   taskAttachConfirm: document.querySelector("#task-attach-confirm"),
   taskConvertProject: document.querySelector("#task-convert-project"),
@@ -545,6 +547,25 @@ function installChecklistDrag(editor) {
     if (finished.moved && !cancel) editor.dispatchEvent(new Event("input", { bubbles: true }));
   }
   editor.addEventListener("input", decorate);
+  editor.addEventListener("keydown", event => {
+    const handle = event.target.closest(".checklist-drag-handle");
+    if (!handle || !matchMedia("(min-width: 760px)").matches || !["ArrowUp", "ArrowDown"].includes(event.key)
+      || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+    const item = handle.closest("li");
+    const list = item?.parentElement;
+    if (!list?.classList.contains("rich-checklist")) return;
+    const neighbor = event.key === "ArrowUp" ? item.previousElementSibling : item.nextElementSibling;
+    if (!neighbor) return;
+    event.preventDefault();
+    const previous = new Map([...list.children].map(row => [row, row.getBoundingClientRect().top]));
+    if (event.key === "ArrowUp") neighbor.before(item); else neighbor.after(item);
+    if (!matchMedia("(prefers-reduced-motion: reduce)").matches) for (const row of list.children) {
+      const delta = previous.get(row) - row.getBoundingClientRect().top;
+      if (Math.abs(delta) > 1) row.animate([{ transform: `translateY(${delta}px)` }, { transform: "translateY(0)" }], { duration: 180, easing: "cubic-bezier(.2,.8,.2,1)" });
+    }
+    handle.focus({ preventScroll: true });
+    editor.dispatchEvent(new Event("input", { bubbles: true }));
+  });
   editor.addEventListener("pointerdown", event => {
     if (event.button > 0 || event.target.closest('input[type="checkbox"]')) return;
     const handle = event.target.closest(".checklist-drag-handle");

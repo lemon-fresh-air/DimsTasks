@@ -593,8 +593,11 @@
 <div id="task-attach-dialog-backdrop" class="project-delete-dialog-backdrop" hidden>
   <section id="task-attach-dialog" class="project-delete-dialog" role="dialog" aria-modal="true" aria-labelledby="task-attach-dialog-title" tabindex="-1">
     <h2 id="task-attach-dialog-title">Додати до проєкту</h2>
-    <label for="task-attach-project-select">Проєкт</label>
-    <select id="task-attach-project-select"></select>
+    <span class="task-attach-label">Проєкт</span>
+    <div class="task-attach-picker">
+      <button id="task-attach-project-trigger" type="button" aria-haspopup="listbox" aria-expanded="false" aria-controls="task-attach-project-options"><span class="projects-icon" aria-hidden="true"></span><span id="task-attach-project-value"></span><span class="dropdown-chevron" aria-hidden="true"></span></button>
+      <div id="task-attach-project-options" role="listbox" aria-label="Проєкт" hidden></div>
+    </div>
     <footer><button id="task-attach-cancel" type="button">Скасувати</button><button id="task-attach-confirm" type="button">Додати</button></footer>
   </section>
 </div>

@@ -23,6 +23,54 @@ function enableHorizontalSwipe(element, { direction, onSwipe, canStart = () => t
   window.addEventListener("pointercancel", cancel);
 }
 
+function enableKeyboardReorder({ container, items, idOf, selectedIds, reorder }) {
+  let pending = Promise.resolve();
+  document.addEventListener("keydown", event => {
+    if (!matchMedia("(min-width: 760px)").matches || !["ArrowUp", "ArrowDown"].includes(event.key)
+      || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey || event.isComposing
+      || !container.getClientRects().length || document.querySelector("dialog:modal, #task-editor:not([hidden]), #settings-screen:not([hidden]), #main-menu:not([hidden]), .project-delete-dialog-backdrop:not([hidden])")
+      || event.target.closest("input,textarea,select,[contenteditable],dialog,[role='dialog']")) return;
+    if (!selectedIds().size) return;
+    const direction = event.key;
+    event.preventDefault();
+    pending = pending.catch(() => {}).then(async () => {
+      const selected = selectedIds();
+      const ordered = items().filter(item => item.getClientRects().length);
+      const moving = ordered.filter(item => selected.has(idOf(item)));
+      if (!moving.length) return;
+      const first = ordered.indexOf(moving[0]);
+      const last = ordered.indexOf(moving.at(-1));
+      const neighbor = direction === "ArrowUp"
+        ? ordered.slice(0, first).reverse().find(item => !selected.has(idOf(item)))
+        : ordered.slice(last + 1).find(item => !selected.has(idOf(item)));
+      if (!neighbor) return;
+      const remaining = ordered.filter(item => !selected.has(idOf(item)));
+      const neighborIndex = remaining.indexOf(neighbor);
+      const before = direction === "ArrowUp" ? neighbor : remaining[neighborIndex + 1] || null;
+      const positions = new Map(ordered.map(item => [idOf(item), item.getBoundingClientRect().top]));
+      let animated = false;
+      function animatePositions() {
+        if (animated || matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+        let moved = false;
+        for (const item of items()) {
+          const top = positions.get(idOf(item));
+          if (top === undefined) continue;
+          const delta = top - item.getBoundingClientRect().top;
+          if (Math.abs(delta) > 1) {
+            item.animate([{ transform: `translateY(${delta}px)` }, { transform: "translateY(0)" }], { duration: 240, easing: "cubic-bezier(.2,.8,.2,1)" });
+            moved = true;
+          }
+        }
+        if (moved) animated = true;
+      }
+      const observer = new MutationObserver(() => animatePositions());
+      observer.observe(container, { childList: true, subtree: true });
+      try { await reorder({ selectedIds: selected, before, neighbor, moving, remaining, direction }); }
+      finally { observer.disconnect(); animatePositions(); }
+    });
+  });
+}
+
 function enableListReordering({ container = els.mainMenuLists, onReorder, isSelectionMode, isSelected, onLongPress, onSelectOnly, getSelectedIds }) {
   let gesture = null;
   const pointerTarget = container === els.mainMenuLists ? container : window;
@@ -174,6 +222,10 @@ function enableListReordering({ container = els.mainMenuLists, onReorder, isSele
 
   pointerTarget.addEventListener("pointerup", event => finish(event));
   pointerTarget.addEventListener("pointercancel", event => finish(event, true));
+  enableKeyboardReorder({ container,
+    items: () => [...container.querySelectorAll('[data-list-kind="regular"]')],
+    idOf: item => item.dataset.listId, selectedIds: getSelectedIds,
+    reorder: ({ selectedIds, before }) => onReorder({ selectedIds, beforeId: before?.dataset.listId || null }) });
 }
 
 function enableTaskGestures({ container = els.list, onDelete, isSelectionMode, isSelected, onLongPress, onSelectOnly, getSelectedIds, onReorder, requireSelectionForDrag = false, canDragRow = () => true, sectionDragEnabled = () => false }) {
@@ -473,6 +525,36 @@ function enableTaskGestures({ container = els.list, onDelete, isSelectionMode, i
 
   container.addEventListener("pointerup", finishGesture);
   container.addEventListener("pointercancel", cancelGesture);
+  enableKeyboardReorder({ container,
+    items: () => {
+      const selected = getSelectedIds();
+      const first = [...container.querySelectorAll(".swipe-row[data-id]")].find(row => selected.has(row.dataset.id) && canDragRow(row));
+      if (!first) return [];
+      if (sectionDragEnabled()) return [...container.querySelectorAll(".swipe-row[data-id], .list-section")]
+        .filter(row => row.matches(".list-section") || canDragRow(row));
+      return [...first.parentElement.children].filter(row => row.dataset.groupId || row.dataset.id && canDragRow(row));
+    },
+    idOf: row => row.dataset.groupId ? `group:${row.dataset.groupId}`
+      : row.matches(".list-section") ? `section:${row.dataset.sectionId}` : row.dataset.id, selectedIds: getSelectedIds,
+    reorder: ({ before, neighbor, moving, remaining, direction }) => {
+      let section = neighbor?.matches(".list-section") ? neighbor : neighbor?.closest(".list-section") || null;
+      let beforeRow = before;
+      if (neighbor?.matches(".list-section")) {
+        if (direction === "ArrowUp") {
+          const preceding = remaining.slice(0, remaining.indexOf(neighbor)).reverse().find(item => item.matches(".list-section"));
+          section = preceding || null;
+          beforeRow = container === els.list ? null : remaining.slice(remaining.indexOf(neighbor) + 1).find(item => item.dataset.id) || null;
+        } else beforeRow = remaining.slice(remaining.indexOf(neighbor) + 1).find(item => item.dataset.id
+          && (container !== els.list || item.closest(".list-section") === neighbor)) || null;
+      }
+      const group = moving[0].closest(".today-group") || null;
+      const beforeInSection = container !== els.list || !section || beforeRow?.closest(".list-section") === section;
+      return onReorder({ beforeType: beforeRow?.dataset.groupId ? "group" : "task",
+        beforeId: beforeInSection ? beforeRow?.dataset.groupId || beforeRow?.dataset.id || null : null,
+        groupId: group?.dataset.groupId || null,
+        sectionId: section?.dataset.sectionId || null,
+        movedIds: sectionDragEnabled() ? moving.map(row => row.dataset.id) : null });
+    } });
 }
 
 function enableTodayGroupReordering({ isSelected, onSelect, onReorder }) {
@@ -588,6 +670,12 @@ function enableTodayGroupReordering({ isSelected, onSelect, onReorder }) {
   }
   window.addEventListener("pointerup", event => finish(event));
   window.addEventListener("pointercancel", event => finish(event, true));
+  enableKeyboardReorder({ container,
+    items: () => [...container.children].filter(item => item.dataset.groupId || item.dataset.id),
+    idOf: item => item.dataset.groupId ? `group:${item.dataset.groupId}` : `task:${item.dataset.id}`,
+    selectedIds: () => new Set([...container.children].filter(item => item.dataset.groupId && isSelected(item.dataset.groupId)).map(item => `group:${item.dataset.groupId}`)),
+    reorder: ({ before, moving }) => onReorder(before?.dataset.groupId ? "group" : before ? "task" : null,
+      before?.dataset.groupId || before?.dataset.id || null, moving[0].dataset.groupId) });
 }
 
 function enableProjectCardReorder({ container, isSelectionMode, isSelected, onLongPress, onSelectOnly, getSelectedIds, onReorder, cardSelector = ".project-card", idKey = "projectId", scrollElement = window, requireSelectionForDrag = false, handleSelector = null, insertionSelector = null }) {
@@ -684,23 +772,27 @@ function enableProjectCardReorder({ container, isSelectionMode, isSelected, onLo
     if (handleSelector && !event.target.closest(handleSelector)) return;
     const card = event.target.closest(cardSelector);
     if (!card || event.button > 0) return;
-    gesture = { card, id: card.dataset[idKey], pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, lastY: event.clientY, ready: (!requireSelectionForDrag && event.pointerType === "mouse") || isSelected(card.dataset[idKey]), scrolling: false, dragging: false };
+    gesture = { card, id: card.dataset[idKey], pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, lastY: event.clientY,
+      selectionPress: event.pointerType !== "mouse" && !isSelectionMode(),
+      ready: (!requireSelectionForDrag && event.pointerType === "mouse") || isSelected(card.dataset[idKey]), scrolling: false, dragging: false };
     const captureTarget = handleSelector ? event.target.closest(handleSelector) : card;
     captureTarget.setPointerCapture?.(event.pointerId);
     gesture.longPressTimer = setTimeout(() => {
       if (!gesture || gesture.pointerId !== event.pointerId) return;
-      gesture.ready = true;
+      gesture.ready = !gesture.selectionPress;
       onLongPress(gesture.id);
+      if (gesture.selectionPress) gesture.selectedOnPress = true;
       gesture.card = [...container.children].find(card => card.dataset[idKey] === gesture.id);
       if (gesture.card) {
         gesture.card.dataset.longPressed = "true";
-        gesture.card.classList.add("lifted");
+        if (!gesture.selectionPress) gesture.card.classList.add("lifted");
       }
     }, 450);
   });
 
   container.addEventListener("pointermove", event => {
     if (!gesture || gesture.pointerId !== event.pointerId) return;
+    if (gesture.selectedOnPress) { event.preventDefault(); return; }
     const distance = Math.hypot(event.clientX - gesture.startX, event.clientY - gesture.startY);
     if (gesture.dragging) {
       event.preventDefault();
@@ -710,7 +802,7 @@ function enableProjectCardReorder({ container, isSelectionMode, isSelected, onLo
       updateInsertion(event.clientY);
       return;
     }
-    if ((gesture.ready || isSelectionMode()) && distance > 6) {
+    if (!gesture.selectionPress && (gesture.ready || isSelectionMode()) && distance > 6) {
       event.preventDefault();
       startDrag(event);
       updateInsertion(event.clientY);
@@ -749,4 +841,8 @@ function enableProjectCardReorder({ container, isSelectionMode, isSelected, onLo
     gesture = null;
     cleanup(finished);
   });
+  enableKeyboardReorder({ container,
+    items: () => [...container.children].filter(card => card.matches(cardSelector) && card.dataset[idKey]),
+    idOf: card => card.dataset[idKey], selectedIds: getSelectedIds,
+    reorder: ({ selectedIds, before }) => onReorder({ selectedIds, beforeId: before?.dataset[idKey] || null }) });
 }
