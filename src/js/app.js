@@ -2120,6 +2120,57 @@ desktopNavToggle.addEventListener("click", () => {
   syncDesktopNav();
 });
 desktopNavMedia.addEventListener("change", syncDesktopNav);
+const keyboardShortcutsDialog = document.querySelector("#keyboard-shortcuts-dialog");
+let keyboardShortcutsReturnFocus;
+function closeKeyboardShortcuts() {
+  keyboardShortcutsDialog.close();
+  keyboardShortcutsReturnFocus?.focus({ preventScroll: true });
+}
+document.querySelector("#keyboard-shortcuts-close").addEventListener("click", closeKeyboardShortcuts);
+keyboardShortcutsDialog.addEventListener("cancel", event => { event.preventDefault(); closeKeyboardShortcuts(); });
+let navigationShortcutPending = false;
+let navigationShortcutTimer;
+document.addEventListener("keydown", event => {
+  if (event.key === "Escape") {
+    navigationShortcutPending = false;
+    clearTimeout(navigationShortcutTimer);
+    if (keyboardShortcutsDialog.open) { event.preventDefault(); closeKeyboardShortcuts(); }
+    return;
+  }
+  if (event.isComposing || event.repeat || event.altKey || event.metaKey) return;
+  const editable = event.target.closest("input,textarea,select,[contenteditable]");
+  if (event.ctrlKey) {
+    if (event.code === "KeyZ" && !event.shiftKey && !editable && toastAction && els.toast.classList.contains("undoable")) {
+      event.preventDefault();
+      els.toastAction.click();
+    }
+    return;
+  }
+  if (editable || event.target.closest("[role='dialog']:not([hidden]),dialog[open]") || document.querySelector("dialog:modal, .project-delete-dialog-backdrop:not([hidden]), .date-picker-backdrop:not([hidden]), .time-dialog-backdrop:not([hidden]), .project-attach-backdrop:not([hidden])") || !els.editor.hidden || !els.listEditor.hidden || !els.settingsScreen.hidden || !els.mainMenu.hidden) return;
+  if (navigationShortcutPending) {
+    navigationShortcutPending = false;
+    clearTimeout(navigationShortcutTimer);
+    if (["KeyI", "KeyT", "KeyP"].includes(event.code) && !event.shiftKey) {
+      event.preventDefault();
+      if (event.code === "KeyI") openList(INBOX_LIST_ID);
+      else if (event.code === "KeyT") openList(TODAY_LIST_ID);
+      else openProjects();
+      return;
+    }
+  }
+  if (event.code === "KeyG" && !event.shiftKey) {
+    event.preventDefault();
+    navigationShortcutPending = true;
+    navigationShortcutTimer = setTimeout(() => { navigationShortcutPending = false; }, 1500);
+  } else if ((event.key === "?" || event.code === "Slash" && event.shiftKey) && !keyboardShortcutsDialog.open) {
+    event.preventDefault();
+    keyboardShortcutsReturnFocus = document.activeElement;
+    keyboardShortcutsDialog.showModal();
+  } else if (event.code === "KeyQ" && !event.shiftKey) {
+    event.preventDefault();
+    els.add.click();
+  }
+});
 document.addEventListener("keydown", event => {
   if (!desktopNavMedia.matches || event.code !== "KeyM" || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey || event.isComposing || event.repeat) return;
   if (event.target.closest("input,textarea,select,[contenteditable], [role='dialog'], dialog")) return;
