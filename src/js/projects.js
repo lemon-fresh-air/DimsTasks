@@ -1482,6 +1482,10 @@ projectEls.listSelected.addEventListener("click", () => {
   projectEls.listOptions.hidden = !projectEls.listOptions.hidden;
   projectEls.listOptions.scrollLeft = 0;
   projectEls.listSelected.setAttribute("aria-expanded", String(!projectEls.listOptions.hidden));
+  if (!projectEls.listOptions.hidden && matchMedia("(max-width: 759px)").matches) {
+    positionListDropdownForKeyboard(projectEls.listOptions);
+    requestAnimationFrame(() => projectEls.listOptions.querySelector(".list-dropdown-search")?.focus({ preventScroll: true }));
+  }
 });
 projectEls.listOptions.addEventListener("click", event => {
   const option = event.target.closest("[data-list-id]");
