@@ -173,7 +173,7 @@ function renderCurrentTasks() {
     sections);
   syncListSectionSelection();
   updateMainMenuTaskCounts(tasks);
-  renderSelectedListOptions(lists, activeListId);
+  renderSelectedListOptions(lists, selectedTasksListId(tasks, selectedTaskIds));
   renderProjects();
   els.daySwitch.hidden = !isDayList();
   els.daySwitch.textContent = activeListId === TOMORROW_LIST_ID ? "← Сьогодні" : "Завтра →";
@@ -2145,6 +2145,26 @@ document.addEventListener("keydown", event => {
       els.toastAction.click();
     }
     return;
+  }
+  if (!navigationShortcutPending && !event.shiftKey && (event.code === "KeyT" || event.code === "KeyV")
+    && !editable && !event.target.closest("[role='dialog']:not([hidden]),dialog[open]")
+    && !document.querySelector("dialog:modal, .project-delete-dialog-backdrop:not([hidden]), .date-picker-backdrop:not([hidden]), .time-dialog-backdrop:not([hidden]), .project-attach-backdrop:not([hidden])")
+    && els.editor.hidden && els.listEditor.hidden && els.settingsScreen.hidden && els.mainMenu.hidden
+    && selectedTaskIds.size && !selectedTodayGroupIds.size && !selectedListSectionIds.size && !selectedProjectSectionIds.size) {
+    const button = projectEls.screen.hidden
+      ? event.code === "KeyT" ? els.dateSelected : els.listSelected
+      : event.code === "KeyT" ? projectEls.dateSelected : projectEls.listSelected;
+    if (!(projectEls.screen.hidden ? els.selectionToolbar : projectEls.selectionToolbar).hidden && !button.hidden && !button.disabled) {
+      event.preventDefault();
+      navigationShortcutPending = false;
+      clearTimeout(navigationShortcutTimer);
+      button.click();
+      if (event.code === "KeyV") {
+        const options = projectEls.screen.hidden ? els.selectedListOptions : projectEls.listOptions;
+        if (!options.hidden) requestAnimationFrame(() => options.querySelector(".list-dropdown-search")?.focus());
+      }
+      return;
+    }
   }
   if (editable || event.target.closest("[role='dialog']:not([hidden]),dialog[open]") || document.querySelector("dialog:modal, .project-delete-dialog-backdrop:not([hidden]), .date-picker-backdrop:not([hidden]), .time-dialog-backdrop:not([hidden]), .project-attach-backdrop:not([hidden])") || !els.editor.hidden || !els.listEditor.hidden || !els.settingsScreen.hidden || !els.mainMenu.hidden) return;
   if (navigationShortcutPending) {

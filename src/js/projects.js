@@ -386,7 +386,13 @@ function renderOpenProject() {
   projectEls.selectionCount.textContent = `Вибрано: ${selectedHere.size}`;
   projectEls.selectionMore.hidden = project.status !== "active";
   if (!selectedHere.size) closeProjectSelectionMore();
-  projectEls.listOptions.replaceChildren(...lists.map(createListDropdownOption));
+  projectEls.listOptions.replaceChildren(...createListDropdownSearch(), ...lists.map(createListDropdownOption));
+  const currentListId = selectedTasksListId(tasks, selectedHere);
+  for (const option of projectEls.listOptions.querySelectorAll("[data-list-id]")) {
+    const selected = option.dataset.listId === currentListId;
+    option.classList.toggle("is-selected", selected);
+    option.setAttribute("aria-selected", String(selected));
+  }
   projectEls.sectionsOpen.hidden = project.status !== "active";
   syncProjectSectionSelection();
 }
@@ -1472,6 +1478,7 @@ projectEls.selectAll.addEventListener("click", () => {
 });
 projectEls.dateSelected.addEventListener("click", openSelectedTaskDatePicker);
 projectEls.listSelected.addEventListener("click", () => {
+  if (!projectEls.listOptions.hidden) resetListDropdownKeyboard(projectEls.listOptions);
   projectEls.listOptions.hidden = !projectEls.listOptions.hidden;
   projectEls.listOptions.scrollLeft = 0;
   projectEls.listSelected.setAttribute("aria-expanded", String(!projectEls.listOptions.hidden));
@@ -1479,6 +1486,7 @@ projectEls.listSelected.addEventListener("click", () => {
 projectEls.listOptions.addEventListener("click", event => {
   const option = event.target.closest("[data-list-id]");
   if (!option) return;
+  resetListDropdownKeyboard(projectEls.listOptions);
   projectEls.listOptions.hidden = true;
   projectEls.listSelected.setAttribute("aria-expanded", "false");
   moveSelectedTasksToList(option.dataset.listId);

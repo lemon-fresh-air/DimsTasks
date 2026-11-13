@@ -1027,6 +1027,82 @@ function createListDropdownOption(list) {
     return option;
 }
 
+function createListDropdownSearch() {
+  const input = document.createElement("input");
+  input.type = "search";
+  input.className = "list-dropdown-search";
+  input.placeholder = "Пошук списку";
+  input.setAttribute("aria-label", "Пошук списку");
+  input.autocomplete = "off";
+  input.addEventListener("input", () => {
+    input.parentElement.querySelectorAll(".list-dropdown-keyboard-active").forEach(option => option.classList.remove("list-dropdown-keyboard-active"));
+    const query = input.value.trim().toLocaleLowerCase("uk-UA");
+    const options = input.parentElement.querySelectorAll("[data-list-id]");
+    let visible = 0;
+    for (const option of options) {
+      option.hidden = !option.textContent.toLocaleLowerCase("uk-UA").includes(query);
+      if (!option.hidden) visible++;
+    }
+    input.parentElement.querySelector(".list-dropdown-empty").hidden = visible > 0;
+  });
+  input.addEventListener("keydown", event => {
+    if (!["ArrowDown", "ArrowUp", "Enter"].includes(event.key) || event.isComposing) return;
+    const options = [...input.parentElement.querySelectorAll("[data-list-id]")].filter(option => !option.hidden);
+    if (!options.length) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const current = options.findIndex(option => option.classList.contains("list-dropdown-keyboard-active"));
+    if (event.key === "Enter") {
+      (options[current < 0 ? 0 : current]).click();
+      return;
+    }
+    const next = current < 0 ? event.key === "ArrowDown" ? 0 : options.length - 1
+      : (current + (event.key === "ArrowDown" ? 1 : -1) + options.length) % options.length;
+    options.forEach(option => option.classList.remove("list-dropdown-keyboard-active"));
+    options[next].classList.add("list-dropdown-keyboard-active");
+    options[next].scrollIntoView({ block: "nearest" });
+  });
+  input.addEventListener("focus", () => positionListDropdownForKeyboard(input.parentElement));
+  const close = document.createElement("button");
+  close.type = "button";
+  close.className = "list-dropdown-search-close";
+  close.setAttribute("aria-label", "Закрити вибір списку");
+  close.textContent = "×";
+  close.addEventListener("click", () => {
+    const container = close.parentElement;
+    if (container === els.selectedListOptions) closeSelectedListDropdown();
+    else if (container === els.taskListOptions) closeTaskListDropdown();
+    else {
+      resetListDropdownKeyboard(container);
+      container.hidden = true;
+      projectEls.listSelected.setAttribute("aria-expanded", "false");
+    }
+  });
+  const empty = document.createElement("span");
+  empty.className = "list-dropdown-empty";
+  empty.textContent = "Списків не знайдено";
+  empty.hidden = true;
+  return [input, close, empty];
+}
+
+function positionListDropdownForKeyboard(container) {
+  if (matchMedia("(min-width: 760px)").matches || container.hidden) return;
+  const viewport = window.visualViewport;
+  const top = (viewport?.offsetTop || 0) + 8;
+  const height = (viewport?.height || window.innerHeight) - 16;
+  container.style.setProperty("--list-search-top", `${top}px`);
+  container.style.setProperty("--list-search-height", `${Math.max(120, height)}px`);
+  container.classList.add("list-dropdown-keyboard");
+}
+
+function resetListDropdownKeyboard(container) {
+  container.classList.remove("list-dropdown-keyboard");
+  container.querySelector(".list-dropdown-search")?.blur();
+}
+
+window.visualViewport?.addEventListener("resize", () => document.querySelectorAll(".list-dropdown-keyboard").forEach(positionListDropdownForKeyboard));
+window.visualViewport?.addEventListener("scroll", () => document.querySelectorAll(".list-dropdown-keyboard").forEach(positionListDropdownForKeyboard));
+
 function createListDropdownCreator(context) {
   const wrapper = document.createElement("span");
   wrapper.className = "list-dropdown-create";
@@ -1085,7 +1161,7 @@ function hideDropdownListCreator(container, { returnFocus = true } = {}) {
 function renderTaskListOptions(lists) {
   const selectedListId = els.taskListSelect.value;
   const selectedSectionId = els.taskSectionSelect.value;
-  els.taskListOptions.replaceChildren(...lists.map(createListDropdownOption), createListDropdownCreator("task"));
+  els.taskListOptions.replaceChildren(...createListDropdownSearch(), ...lists.map(createListDropdownOption), createListDropdownCreator("task"));
   for (const option of els.taskListOptions.querySelectorAll("[data-list-id]")) {
     if (sections.some(section => section.listId === option.dataset.listId))
       option.querySelector("span:nth-child(2)").textContent += "…";
@@ -1095,9 +1171,15 @@ function renderTaskListOptions(lists) {
   setTaskEditorSectionUI(els.taskListSelect.value, selectedSectionId);
 }
 
+function selectedTasksListId(tasks, selectedIds) {
+  const selected = tasks.filter(task => selectedIds.has(task.id));
+  return selected.length && selected.every(task => task.listId === selected[0].listId)
+    ? selected[0].listId : null;
+}
+
 function renderSelectedListOptions(lists, currentListId) {
-  els.selectedListOptions.replaceChildren(...lists.map(createListDropdownOption), createListDropdownCreator("selection"));
-  for (const option of els.selectedListOptions.children) {
+  els.selectedListOptions.replaceChildren(...createListDropdownSearch(), ...lists.map(createListDropdownOption), createListDropdownCreator("selection"));
+  for (const option of els.selectedListOptions.querySelectorAll("[data-list-id]")) {
     const selected = option.dataset.listId === currentListId;
     option.classList.toggle("is-selected", selected);
     option.setAttribute("aria-selected", String(selected));
@@ -1105,6 +1187,7 @@ function renderSelectedListOptions(lists, currentListId) {
 }
 
 function closeSelectedListDropdown({ returnFocus = false } = {}) {
+  resetListDropdownKeyboard(els.selectedListOptions);
   els.selectedListOptions.hidden = true;
   els.listSelected.setAttribute("aria-expanded", "false");
   if (returnFocus) els.listSelected.focus({ preventScroll: true });
@@ -1173,6 +1256,7 @@ function closeTaskSectionDropdown({ returnFocus = false } = {}) {
 }
 
 function closeTaskListDropdown({ returnFocus = false } = {}) {
+  resetListDropdownKeyboard(els.taskListOptions);
   els.taskListOptions.hidden = true;
   els.taskListTrigger.setAttribute("aria-expanded", "false");
   if (returnFocus) els.taskListTrigger.focus({ preventScroll: true });

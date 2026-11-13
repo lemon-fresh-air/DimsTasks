@@ -737,9 +737,16 @@ body.task-editor-open { overflow:hidden; }
 .list-dropdown-options.project-dropdown-options { left:0; right:0; top:calc(100% + 4px); box-sizing:border-box; max-width:100%; }
 .project-dropdown-options .list-dropdown-option span:last-child { min-width:0; overflow-wrap:anywhere; white-space:normal; }
 .list-dropdown-options[hidden] { display:none; }
+.list-dropdown-search { position:sticky; z-index:1; top:0; width:100%; min-height:42px; box-sizing:border-box; padding:8px 42px 8px 12px; border:1px solid var(--line); border-radius:10px; background:var(--bg); color:var(--text); font:inherit; }
+.list-dropdown-search-close { position:sticky; z-index:2; top:2px; justify-self:end; width:38px; height:38px; margin-top:-42px; border:0; border-radius:9px; background:transparent; color:var(--muted); font:1.5rem system-ui,sans-serif; }
+.list-dropdown-search:focus-visible { outline:2px solid var(--accent); outline-offset:-2px; }
+.list-dropdown-empty { padding:12px; color:var(--muted); }
+.list-dropdown-option[hidden], .list-dropdown-empty[hidden] { display:none; }
+@media (max-width:759px) { .list-dropdown-options.list-dropdown-keyboard, #project-list-options.list-dropdown-keyboard { position:fixed; z-index:40; top:var(--list-search-top); left:12px; right:12px; width:auto; max-width:none; max-height:var(--list-search-height); box-sizing:border-box; overflow-y:auto; } }
 .list-dropdown-option { width:100%; min-height:52px; display:grid; grid-template-columns:24px minmax(0,1fr) 20px; align-items:center; gap:10px; border:0; border-radius:11px; padding:8px 10px; background:transparent; color:var(--text); text-align:left; font:680 1rem/1.25 system-ui,sans-serif; }
 .list-dropdown-option:hover,.list-dropdown-option:focus-visible { background:color-mix(in srgb,var(--accent) 8%,transparent); outline:0; }
 .list-dropdown-option.is-selected { background:color-mix(in srgb,var(--accent) 14%,var(--surface)); color:var(--accent); }
+.list-dropdown-option.list-dropdown-keyboard-active { background:var(--control-strong); outline:2px solid var(--accent); outline-offset:-2px; }
 .list-dropdown-option::after { content:""; justify-self:end; width:10px; height:6px; margin-right:4px; border-left:2px solid currentColor; border-bottom:2px solid currentColor; opacity:0; transform:rotate(-45deg); }
 .list-dropdown-option.is-selected::after { opacity:1; }
 .list-dropdown-option .list-menu-icon,.list-dropdown-option .inbox-icon { justify-self:center; }
@@ -889,6 +896,7 @@ body:has(.app-update:not([hidden])) .toast { bottom:calc(152px + env(safe-area-i
 @media (max-width:480px) { .selection-toolbar { grid-template-columns:48px minmax(0,1fr); grid-template-rows:auto auto; gap:4px 8px; } .selection-toolbar > .toolbar-action { grid-column:1; grid-row:1; } .selection-toolbar > p { grid-column:2; grid-row:1; } .selection-controls { grid-column:2; grid-row:2; display:flex; align-items:center; gap:8px; padding-bottom:4px; } .selection-controls > .selection-actions { gap:6px; } .selection-toolbar .toolbar-action { width:44px; height:44px; } }
 @media (min-width:760px) { .app-shell { padding-inline:28px; } .page-header { padding-top:14px; padding-bottom:20px; } .fab { right:max(32px,calc((100vw - 700px)/2)); } .task-editor-form { padding-inline:28px; } .list-attribute { min-width:280px; } .desktop-save-task { display:inline-flex; align-items:center; min-height:44px; margin-left:auto; padding:0 18px; border:0; border-radius:14px; background:var(--accent); color:var(--on-accent); font-weight:760; } .desktop-save-task:disabled { background:var(--control-disabled); color:var(--control-disabled-text); cursor:default; } .desktop-save-task:active:not(:disabled) { transform:translateY(1px); } .date-picker-backdrop { align-items:center; padding:24px; } .date-picker { border-radius:28px; max-height:calc(100dvh - 48px); } }
 @media (min-width:760px) {
+  .bulk-list-options { max-height:min(600px,calc(100dvh - 280px)); }
   body { padding-left:300px; transition:padding-left .24s var(--ease-swipe); }
   body.desktop-nav-collapsed { padding-left:0; }
   .app-shell { padding-bottom:40px; }
