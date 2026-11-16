@@ -159,7 +159,7 @@ function activeList() {
 function visibleTasks() {
   if (isDayList()) {
     const date = activePlanDate();
-    return visibleProjectTasks(tasks, projects).filter(task => isTaskDueToday(task, date)).sort(compareDayTasks);
+    return visibleProjectTasks(tasks, projects).filter(task => isTaskInDayPlan(task, date, localDateValue())).sort(compareDayTasks);
   }
   return visibleListTasks(tasks, activeListId, projects).sort(compareTasks);
 }
@@ -336,7 +336,7 @@ async function loadAndNormalizeTaskOrder() {
 }
 
 function visibleTodayLayoutTasks(date) {
-  return visibleProjectTasks(tasks, projects).filter(task => isTaskDueToday(task, date))
+  return visibleProjectTasks(tasks, projects).filter(task => isTaskInDayPlan(task, date, localDateValue()))
     .map(task => ({ ...task, todayPosition: null }));
 }
 
@@ -1392,7 +1392,7 @@ async function restoreDeletedTasks(deletedTasks, snapshot, toGroup) {
       items.push({ type: "task", id: task.id });
     }
     const restored = [...tasks, ...deletedTasks];
-    const visible = visibleProjectTasks(restored, projects).filter(task => isTaskDueToday(task, snapshot.date));
+    const visible = visibleProjectTasks(restored, projects).filter(task => isTaskInDayPlan(task, snapshot.date, localDateValue()));
     const plan = normalizeDayPlan({ date: snapshot.date, groups, items }, visible, snapshot.date);
     await settingsDb.saveTodayLayout(plan, snapshot.date);
   }
@@ -1913,6 +1913,39 @@ async function deleteTask(id) {
     renderCurrentTasks();
     toast("Не вдалося видалити завдання");
   }
+}
+
+async function setTaskToday(id, added, { undoOnRemove = false } = {}) {
+  if (!ensureCurrentDay()) return;
+  const task = tasks.find(item => item.id === id);
+  if (!task || task.status !== "active") return;
+  const date = localDateValue();
+  if (added && isTaskDueToday(task, date)) { toast("Завдання вже у «Сьогодні» за терміном"); return; }
+  const updated = setTaskAddedToToday(task, date, added);
+  if (updated === task) return;
+  try {
+    await taskDb.put(updated);
+    await refresh();
+    if (els.editor.dataset.taskId === id) openTaskDetails(updated);
+    if (!projectEls.screen.hidden) renderOpenProject();
+    if (!added && undoOnRemove) toast(task.dueDate === date ? "Знято ручне додавання" : "Прибрано зі «Сьогодні»", { duration: 3000, action: async () => {
+      if (!ensureCurrentDay()) return;
+      const current = tasks.find(item => item.id === id);
+      if (!current || current.status !== "active" || current.addedToTodayDate) return;
+      try {
+        await taskDb.put(setTaskAddedToToday(current, date, true));
+        await refresh();
+        if (!projectEls.screen.hidden) renderOpenProject();
+        toast(task.dueDate === date ? "Ручне додавання відновлено" : "Повернуто до «Сьогодні»");
+      } catch (_error) { toast("Не вдалося скасувати дію"); }
+    } });
+    else toast(added ? "Додано до «Сьогодні»" : "Ручне додавання знято");
+  } catch (_error) { toast("Не вдалося змінити «Сьогодні»"); }
+}
+function swipeTaskToday(id) {
+  const task = tasks.find(item => item.id === id);
+  if (!task) return;
+  return setTaskToday(id, task.addedToTodayDate !== localDateValue(), { undoOnRemove: true });
 }
 
 async function completeTask(task, changes = {}, toggle) {
@@ -2547,6 +2580,10 @@ document.querySelector("#task-add-checklist").addEventListener("click", () => {
   els.description.focus();
   els.description.closest(".rich-description-shell").querySelector('[data-rich-command="checklist"]').click();
   resizeDescription();
+});
+els.taskAddToday.addEventListener("click", async () => {
+  const task = tasks.find(item => item.id === els.editor.dataset.taskId);
+  if (task) await setTaskToday(task.id, task.addedToTodayDate !== localDateValue());
 });
 const taskMerge = {
   backdrop: document.querySelector("#task-merge-backdrop"),
@@ -3363,6 +3400,9 @@ els.taskDetachDialog.addEventListener("keydown", event => {
 
 enableTaskGestures({
   onDelete: deleteTask,
+  onAddToday: swipeTaskToday,
+  canAddToday: id => tasks.some(task => task.id === id && task.status === "active"
+    && (task.dueDate !== localDateValue() || task.addedToTodayDate === localDateValue())),
   isSelectionMode: () => selectedTaskIds.size > 0,
   isSelected: id => selectedTaskIds.has(id),
   onLongPress: selectTask,

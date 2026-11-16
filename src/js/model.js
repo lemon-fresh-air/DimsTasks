@@ -100,7 +100,7 @@ function projectCountdown(dueDate, today) {
   return { text: `Лишилося ${days} днів`, overdue: false };
 }
 function createTask(values = {}) {
-  return { ...baseRecord(values), ...values, listId: values.listId || INBOX_LIST_ID, sectionId: values.sectionId || null, projectId: values.projectId || null, projectSectionId: values.projectId ? values.projectSectionId || null : null, title: String(values.title || "").trim(), description: values.description || "", status: values.status || "active", completedAt: values.completedAt || null, dueDate: values.dueDate || null, dueTime: values.dueDate && values.dueTime ? values.dueTime : null, position: Number.isFinite(values.position) ? values.position : 0, todayPosition: Number.isSafeInteger(values.todayPosition) && values.todayPosition >= 0 ? values.todayPosition : null, projectPosition: Number.isFinite(values.projectPosition) ? values.projectPosition : null, returnedToInboxAt: values.returnedToInboxAt || null, savedSteps: values.savedSteps ?? [] };
+  return { ...baseRecord(values), ...values, listId: values.listId || INBOX_LIST_ID, sectionId: values.sectionId || null, projectId: values.projectId || null, projectSectionId: values.projectId ? values.projectSectionId || null : null, title: String(values.title || "").trim(), description: values.description || "", status: values.status || "active", completedAt: values.completedAt || null, dueDate: values.dueDate || null, dueTime: values.dueDate && values.dueTime ? values.dueTime : null, addedToTodayDate: values.addedToTodayDate || null, position: Number.isFinite(values.position) ? values.position : 0, todayPosition: Number.isSafeInteger(values.todayPosition) && values.todayPosition >= 0 ? values.todayPosition : null, projectPosition: Number.isFinite(values.projectPosition) ? values.projectPosition : null, returnedToInboxAt: values.returnedToInboxAt || null, savedSteps: values.savedSteps ?? [] };
 }
 function validSavedSteps(value) {
   return Array.isArray(value) && value.every(step => step && typeof step === "object" && !Array.isArray(step)
@@ -172,6 +172,16 @@ function isTaskOverdue(task, localDate, localTime) {
 }
 function isTaskDueToday(task, localDate) {
   return task.dueDate === localDate && task.status === "active" && !isTaskCompleted(task);
+}
+function isTaskInDayPlan(task, date, currentDate) {
+  return isTaskDueToday(task, date) || date === currentDate && task.addedToTodayDate === date
+    && task.status === "active" && !isTaskCompleted(task);
+}
+function setTaskAddedToToday(task, date, added, updatedAt = nowIso()) {
+  if (task.status !== "active" || isTaskCompleted(task)) return task;
+  const value = added ? date : null;
+  if ((task.addedToTodayDate || null) === value) return task;
+  return { ...task, addedToTodayDate: value, updatedAt };
 }
 function compareOverdueTasks(a, b) {
   return String(a.dueDate || "").localeCompare(String(b.dueDate || ""))
@@ -594,8 +604,8 @@ function carryTodayProjectGroup(plan, records, completedTask, date, projectRecor
   if (!group) return null;
   const updated = records.map(task => task.id === completedTask.id ? completedTask : task);
   const next = currentProjectTask(updated, completedTask.projectId, projectRecords);
-  if (!next || !isTaskDueToday(next, date)) return null;
-  const visible = visibleProjectTasks(updated, projectRecords).filter(task => isTaskDueToday(task, date));
+  if (!next || !isTaskInDayPlan(next, date, date)) return null;
+  const visible = visibleProjectTasks(updated, projectRecords).filter(task => isTaskInDayPlan(task, date, date));
   if (plan.groups.some(item => item.taskIds.includes(next.id))) return null;
   return normalizeTodayGroups({ ...plan, groups: plan.groups.map(item => item.id === group.id
     ? { ...item, taskIds: item.taskIds.map(id => id === completedTask.id ? next.id : id) }

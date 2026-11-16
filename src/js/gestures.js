@@ -228,12 +228,13 @@ function enableListReordering({ container = els.mainMenuLists, onReorder, isSele
     reorder: ({ selectedIds, before }) => onReorder({ selectedIds, beforeId: before?.dataset.listId || null }) });
 }
 
-function enableTaskGestures({ container = els.list, onDelete, isSelectionMode, isSelected, onLongPress, onSelectOnly, getSelectedIds, onReorder, requireSelectionForDrag = false, canDragRow = () => true, sectionDragEnabled = () => false }) {
+function enableTaskGestures({ container = els.list, onDelete, onAddToday, canAddToday = () => true, isSelectionMode, isSelected, onLongPress, onSelectOnly, getSelectedIds, onReorder, requireSelectionForDrag = false, canDragRow = () => true, sectionDragEnabled = () => false }) {
   let gesture = null;
   const maxReveal = 112;
   const deleteThreshold = 72;
   const settleDuration = 260;
-  const deleteDuration = 300;
+  const todayDuration = 640;
+  const deleteDuration = 340;
   let momentumFrame = null;
 
   container.addEventListener("pointerdown", event => {
@@ -439,14 +440,16 @@ function enableTaskGestures({ container = els.list, onDelete, isSelectionMode, i
       gesture.lastY = event.clientY;
       return;
     }
-    if (gesture.canDrag || dx >= 0 && !gesture.horizontal) return;
+    if (gesture.canDrag || dx > 0 && !canAddToday(gesture.id)) return;
     if (Math.abs(dx) > 8) {
       gesture.horizontal = true;
+      gesture.row.dataset.swiped = "true";
     }
     if (!gesture.horizontal) return;
     event.preventDefault();
-    gesture.dx = Math.max(-maxReveal, Math.min(0, dx));
+    gesture.dx = Math.max(-maxReveal, Math.min(maxReveal, dx));
     gesture.row.classList.add("swiping");
+    gesture.row.classList.toggle("swiping-today", gesture.dx > 0);
     gesture.card.style.transform = `translateX(${gesture.dx}px)`;
   });
 
@@ -487,7 +490,25 @@ function enableTaskGestures({ container = els.list, onDelete, isSelectionMode, i
       momentumFrame = requestAnimationFrame(coast);
     }
     if (longPress || scrolling) return;
-    if (!isSelectionMode() && horizontal && Math.abs(dx) >= deleteThreshold) {
+    if (!isSelectionMode() && horizontal && dx >= deleteThreshold && canAddToday(row.dataset.id)) {
+      row.style.setProperty("--swipe-release-start", `${dx}px`);
+      row.classList.remove("swiping");
+      row.classList.add("adding-today");
+      row.dataset.swiped = "true";
+      setTimeout(async () => {
+        try { await onAddToday(row.dataset.id); }
+        finally {
+          if (!row.isConnected) return;
+          row.classList.remove("adding-today", "swiping-today");
+          row.classList.add("settling");
+          card.style.transform = "translateX(0)";
+          setTimeout(() => row.classList.remove("settling"), settleDuration);
+        }
+      }, todayDuration);
+      return;
+    }
+    if (!isSelectionMode() && horizontal && dx <= -deleteThreshold) {
+      row.style.setProperty("--swipe-release-start", `${dx}px`);
       row.classList.remove("swiping");
       row.classList.add("deleting");
       row.dataset.swiped = "true";
@@ -495,6 +516,7 @@ function enableTaskGestures({ container = els.list, onDelete, isSelectionMode, i
       return;
     }
     row.classList.remove("swiping");
+    row.classList.remove("swiping-today");
     row.classList.add("settling");
     card.style.transform = "translateX(0)";
     setTimeout(() => row.classList.remove("settling"), settleDuration);
@@ -518,6 +540,7 @@ function enableTaskGestures({ container = els.list, onDelete, isSelectionMode, i
       return;
     }
     row.classList.remove("swiping");
+    row.classList.remove("swiping-today");
     row.classList.add("settling");
     card.style.transform = "translateX(0)";
     setTimeout(() => row.classList.remove("settling"), settleDuration);

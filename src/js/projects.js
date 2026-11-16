@@ -113,6 +113,7 @@ const projectEls = {
   descriptionOpen: document.querySelector("#project-description-open"),
   descriptionDialog: document.querySelector("#project-description-dialog"),
   complete: document.querySelector("#project-complete"),
+  deleteCompletedTasks: document.querySelector("#project-delete-completed-tasks"),
   delete: document.querySelector("#project-delete")
 };
 let attachSelectedIds = new Set();
@@ -214,6 +215,8 @@ function renderProjectTask(task, target = projectEls.taskList) {
   const list = lists.find(item => item.id === (task.listId || INBOX_LIST_ID))
     || lists.find(item => item.kind === "inbox");
   row.dataset.id = task.id;
+  row.querySelector(".today-reveal span:last-child").textContent = task.addedToTodayDate === localDateValue()
+    ? task.dueDate === localDateValue() ? "Зняти сонце" : "Із «Сьогодні»" : "До «Сьогодні»";
   const selected = selectedTaskIds.has(task.id);
   const completed = isTaskCompleted(task);
   row.classList.toggle("selected", selected);
@@ -232,6 +235,7 @@ function renderProjectTask(task, target = projectEls.taskList) {
   description.hidden = !task.description;
   const date = row.querySelector(".task-date");
   renderTaskDueDate(date, task);
+  renderTaskTodayIndicator(row.querySelector(".task-today-indicator"), task);
   const projectBadge = row.querySelector(".task-project");
   projectBadge.hidden = !project || task.projectId === activeProjectId;
   row.querySelector(".task-project-name").textContent = project?.title || "";
@@ -355,6 +359,7 @@ function renderOpenProject() {
   projectEls.rootVisibility.setAttribute("aria-pressed", String(project.unsectionedHidden === true));
   projectEls.rootVisibility.setAttribute("aria-label", `${project.unsectionedHidden ? "Показати" : "Приховати"} звичайні кроки`);
   projectEls.complete.textContent = project.status === "completed" ? "Повернути в активні" : "Завершити проєкт";
+  projectEls.deleteCompletedTasks.hidden = completedCount === 0;
   projectEls.convertTask.hidden = project.status === "completed";
   projectEls.mainComplete.textContent = projectEls.complete.textContent;
   projectEls.taskList.replaceChildren();
@@ -955,6 +960,31 @@ async function deleteProject() {
   toast(detachTasks ? "Проєкт видалено, завдання збережено" : "Проєкт і його завдання видалено");
 }
 
+async function deleteCompletedProjectTasks() {
+  const projectId = activeProjectId;
+  if (!projects.some(project => project.id === projectId)) return;
+  const deleted = tasks.filter(task => task.projectId === projectId && isTaskCompleted(task));
+  if (!deleted.length) return;
+  const ids = new Set(deleted.map(task => task.id));
+  projectEls.deleteCompletedTasks.disabled = true;
+  try {
+    await taskDb.deleteMany([...ids]);
+    selectedTaskIds = new Set([...selectedTaskIds].filter(id => !ids.has(id)));
+    await refresh();
+    renderOpenProject();
+    toast(`Видалено завершених завдань: ${deleted.length}`, { duration: 3000, action: async () => {
+      if (!projects.some(project => project.id === projectId)) { toast("Проєкт уже видалено"); return; }
+      try {
+        await taskDb.putMany(deleted);
+        await refresh();
+        renderOpenProject();
+        toast("Завершені завдання відновлено");
+      } catch (_error) { toast("Не вдалося відновити завдання"); }
+    } });
+  } catch (_error) { toast("Не вдалося видалити завершені завдання"); }
+  finally { projectEls.deleteCompletedTasks.disabled = false; }
+}
+
 function closeProjectConvertDialog() {
   projectEls.convertDialogBackdrop.hidden = true;
   document.body.classList.remove("project-delete-dialog-open");
@@ -1444,6 +1474,7 @@ async function runProjectMenuAction(action) {
 }
 projectEls.complete.addEventListener("click", () => runProjectMenuAction(toggleProjectStatus));
 projectEls.delete.addEventListener("click", () => runProjectMenuAction(deleteProject));
+projectEls.deleteCompletedTasks.addEventListener("click", () => runProjectMenuAction(deleteCompletedProjectTasks));
 projectEls.convertTask.addEventListener("click", () => runProjectMenuAction(openProjectConvertDialog));
 projectEls.convertCancel.addEventListener("click", closeProjectConvertDialog);
 projectEls.convertConfirm.addEventListener("click", convertOpenProjectToTask);
@@ -1525,6 +1556,9 @@ projectEls.createFromStepsBackdrop.addEventListener("click", event => {
 enableTaskGestures({
   container: projectEls.taskList,
   onDelete: deleteTask,
+  onAddToday: swipeTaskToday,
+  canAddToday: id => tasks.some(task => task.id === id && task.status === "active"
+    && (task.dueDate !== localDateValue() || task.addedToTodayDate === localDateValue())),
   isSelectionMode: () => selectedTaskIds.size > 0,
   isSelected: id => selectedTaskIds.has(id),
   onLongPress: selectTask,

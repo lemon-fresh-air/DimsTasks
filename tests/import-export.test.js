@@ -29,6 +29,17 @@ const data = {
   settings: [{ ...base("appearance"), theme: "dark", useSystemTheme: false }, { ...base("workflow"), returnOverdueToInbox: true }, { ...base("navigation"), startScreen: "projects" }]
 };
 
+test("manual Today date survives backup and older format defaults safely", async () => {
+  const current = structuredClone(data);
+  current.tasks[0].addedToTodayDate = "2026-11-16";
+  const payload = { format: "local-first-pwa-backup", appId: "dims-tasks", formatVersion: BACKUP_FORMAT_VERSION, data: current };
+  assert.equal((await parseBackup(file(payload))).tasks[0].addedToTodayDate, "2026-11-16");
+  current.tasks[0].addedToTodayDate = "bad-date";
+  await assert.rejects(parseBackup(file(payload)), /Некоректне завдання/);
+  delete current.tasks[0].addedToTodayDate;
+  assert.equal((await parseBackup(file({ ...payload, formatVersion: 23 }))).tasks[0].addedToTodayDate, null);
+});
+
 test("project root visibility survives backup and older backups default to visible", async () => {
   const current = structuredClone(data);
   current.projects.push({ ...base("project"), title: "Проєкт", goal: "", description: "", status: "active", dueDate: null, dueTime: null, showCountdown: false, lastListId: null, defaultListId: null, addNewTasksFirst: false, unsectionedCollapsed: false, unsectionedHidden: true, projectSections: [], completedAt: null, position: 0 });

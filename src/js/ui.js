@@ -72,6 +72,7 @@ const els = {
   taskConvertStepsCount: document.querySelector("#task-convert-steps-count"),
   taskDetachProject: document.querySelector("#task-detach-project"),
   taskActionsTrigger: document.querySelector("#task-actions-trigger"),
+  taskAddToday: document.querySelector("#task-add-today"),
   taskActionsMenu: document.querySelector("#task-actions-menu"),
   taskDelete: document.querySelector("#task-delete"),
   taskDetachDialogBackdrop: document.querySelector("#task-detach-dialog-backdrop"),
@@ -649,6 +650,86 @@ function installChecklistDrag(editor) {
   });
   return decorate;
 }
+const richLinkDialog = document.querySelector("#rich-link-dialog");
+const richLinkForm = document.querySelector("#rich-link-form");
+const richLinkText = document.querySelector("#rich-link-text");
+const richLinkUrl = document.querySelector("#rich-link-url");
+const richLinkError = document.querySelector("#rich-link-error");
+let pendingRichLink = null;
+function openRichLinkDialog(editor, range, trigger) {
+  const validRange = range && editor.contains(range.commonAncestorContainer) ? range.cloneRange() : null;
+  const start = validRange?.startContainer;
+  const existing = (start?.nodeType === Node.ELEMENT_NODE ? start : start?.parentElement)?.closest("a");
+  pendingRichLink = { editor, range: validRange, trigger, existing: existing && editor.contains(existing) ? existing : null };
+  richLinkText.value = validRange?.toString() || pendingRichLink.existing?.textContent || "";
+  richLinkUrl.value = pendingRichLink.existing?.href || "";
+  richLinkError.hidden = true;
+  richLinkDialog.showModal();
+  (richLinkText.value ? richLinkUrl : richLinkText).focus();
+}
+richLinkForm.addEventListener("submit", event => {
+  event.preventDefault();
+  const pending = pendingRichLink;
+  if (!pending) return;
+  const url = richSafeUrl(richLinkUrl.value.trim());
+  if (!url) { richLinkError.hidden = false; richLinkUrl.focus(); return; }
+  const label = richLinkText.value.trim() || new URL(url).hostname;
+  const link = richLink(url, label, label === new URL(url).hostname);
+  richLinkDialog.close();
+  pending.editor.focus();
+  const range = pending.range;
+  if (pending.existing?.isConnected && (range?.collapsed || range?.toString() === pending.existing.textContent)) pending.existing.replaceWith(link);
+  else if (range && pending.editor.contains(range.commonAncestorContainer)) {
+    range.deleteContents();
+    range.insertNode(link);
+  } else pending.editor.append(link);
+  const caret = document.createRange();
+  caret.setStartAfter(link); caret.collapse(true);
+  const selection = window.getSelection();
+  selection.removeAllRanges(); selection.addRange(caret);
+  pending.editor.dispatchEvent(new Event("input", { bubbles: true }));
+});
+richLinkDialog.addEventListener("close", () => { pendingRichLink = null; });
+document.querySelector("#rich-link-cancel").addEventListener("click", () => richLinkDialog.close());
+const richLinkPreview = document.querySelector("#rich-link-preview");
+const richLinkPreviewOpen = document.querySelector("#rich-link-preview-open");
+const richLinkPreviewFavicon = document.querySelector("#rich-link-preview-favicon");
+const richLinkPreviewIcon = richLinkPreview.querySelector(".rich-external-icon");
+richLinkPreviewFavicon.addEventListener("load", () => { richLinkPreviewFavicon.hidden = false; richLinkPreviewIcon.hidden = true; });
+richLinkPreviewFavicon.addEventListener("error", () => { richLinkPreviewFavicon.hidden = true; richLinkPreviewIcon.hidden = false; });
+function closeRichLinkPreview() {
+  if (richLinkPreview.matches(":popover-open")) richLinkPreview.hidePopover();
+}
+function showRichLinkPreview(link) {
+  const url = richSafeUrl(link.href);
+  if (!url) return;
+  const parsed = new URL(url);
+  richLinkPreviewOpen.href = url;
+  document.querySelector("#rich-link-preview-label").textContent = link.textContent.trim() || parsed.hostname;
+  document.querySelector("#rich-link-preview-host").textContent = parsed.hostname;
+  richLinkPreviewFavicon.hidden = true;
+  richLinkPreviewIcon.hidden = false;
+  richLinkPreviewFavicon.src = `${parsed.origin}/favicon.ico`;
+  if (!richLinkPreview.matches(":popover-open")) richLinkPreview.showPopover();
+  const rect = link.getBoundingClientRect();
+  const width = richLinkPreview.offsetWidth;
+  const height = richLinkPreview.offsetHeight;
+  richLinkPreview.style.left = `${Math.max(12, Math.min(rect.left, window.innerWidth - width - 12))}px`;
+  richLinkPreview.style.top = `${rect.top >= height + 12 ? rect.top - height - 8 : Math.min(rect.bottom + 8, window.innerHeight - height - 12)}px`;
+}
+document.addEventListener("click", event => {
+  if (!richLinkPreview.matches(":popover-open") || richLinkPreview.contains(event.target)
+    || event.target.closest?.(".rich-description a")) return;
+  event.preventDefault();
+  event.stopPropagation();
+  closeRichLinkPreview();
+}, true);
+document.addEventListener("click", event => {
+  const link = event.target.closest?.(".rich-description a");
+  if (link) { event.preventDefault(); showRichLinkPreview(link); return; }
+  if (!richLinkPreview.contains(event.target)) closeRichLinkPreview();
+});
+document.addEventListener("keydown", event => { if (event.key === "Escape") closeRichLinkPreview(); });
 function installRichDescription(editor, titleInput) {
   const decorateChecklist = editor.id === "task-description" ? installChecklistDrag(editor) : () => {};
   Object.defineProperty(editor, "value", {
@@ -757,9 +838,11 @@ function installRichDescription(editor, titleInput) {
   });
   const shell = editor.closest(".rich-description-shell");
   const formatButtons = [...shell.querySelectorAll("[data-rich-command]")];
+  let savedRichRange = null;
   function updateFormatButtons() {
     const selection = window.getSelection();
     const inEditor = selection?.rangeCount && editor.contains(selection.anchorNode);
+    if (inEditor) savedRichRange = selection.getRangeAt(0).cloneRange();
     for (const button of formatButtons) {
       const command = button.dataset.richCommand;
       const active = command === "checklist" ? false : inEditor && (command === "link"
@@ -774,22 +857,14 @@ function installRichDescription(editor, titleInput) {
   shell.querySelectorAll("[data-rich-command]").forEach(button => {
     button.addEventListener("pointerdown", event => event.preventDefault());
     button.addEventListener("click", () => {
-      editor.focus();
       if (button.dataset.richCommand === "link") {
         const selection = window.getSelection();
-        const range = selection?.rangeCount ? selection.getRangeAt(0).cloneRange() : null;
-        const raw = prompt("Вставте адресу посилання (https://…)");
-        const url = richSafeUrl(raw);
-        if (!url) return;
-        editor.focus();
-        if (range) { selection.removeAllRanges(); selection.addRange(range); }
-        if (selection?.isCollapsed) document.execCommand("insertHTML", false, richLink(url, new URL(url).hostname).outerHTML);
-        else document.execCommand("createLink", false, url);
-        for (const link of editor.querySelectorAll("a")) if (link.href === url) {
-          link.target = "_blank"; link.rel = "noopener noreferrer";
-          richEnrichVideo(link);
-        }
-      } else if (button.dataset.richCommand === "checklist") {
+        const current = selection?.rangeCount && editor.contains(selection.anchorNode) ? selection.getRangeAt(0) : savedRichRange;
+        openRichLinkDialog(editor, current, button);
+        return;
+      }
+      editor.focus();
+      if (button.dataset.richCommand === "checklist") {
         const list = document.createElement("ul"); list.className = "rich-checklist";
         const item = document.createElement("li");
         const box = document.createElement("input"); box.type = "checkbox"; box.contentEditable = "false"; box.setAttribute("aria-label", "Виконано");
@@ -882,6 +957,9 @@ function renderTaskDueDate(element, task) {
   if (hasDueDate) applyDateTone(element, task.dueDate, task.dueTime);
   else delete element.dataset.dateTone;
 }
+function renderTaskTodayIndicator(element, task) {
+  element.hidden = task.status !== "active" || task.addedToTodayDate !== localDateValue();
+}
 
 function editorState() {
   return JSON.stringify({ title: els.input.value, description: els.description.value, dueDate: els.date.value, dueTime: els.time.value, listId: els.taskListSelect.value, sectionId: els.taskSectionSelect.value, projectSectionId: els.taskProjectSectionSelect.value });
@@ -926,7 +1004,7 @@ function taskCountsByList(tasks) {
     if (isTaskCompleted(task)) continue;
     const listId = task.listId || INBOX_LIST_ID;
     counts.set(listId, (counts.get(listId) || 0) + 1);
-    if (isTaskDueToday(task, today)) todayCount += 1;
+    if (isTaskInDayPlan(task, today, today)) todayCount += 1;
   }
   counts.set(TODAY_LIST_ID, todayCount);
   counts.set(TOMORROW_LIST_ID, visibleProjectTasks(tasks, projects).filter(task => isTaskDueToday(task, nextLocalDate())).length);
@@ -1410,6 +1488,8 @@ function renderTasks(tasks, selectedIds = new Set(), taskLists = [], taskProject
   const rows = new Map(active.map(task => {
     const row = els.template.content.firstElementChild.cloneNode(true);
     row.dataset.id = task.id;
+    row.querySelector(".today-reveal span:last-child").textContent = task.addedToTodayDate === localDateValue()
+      ? task.dueDate === localDateValue() ? "Зняти сонце" : "Із «Сьогодні»" : "До «Сьогодні»";
     const selected = selectedIds.has(task.id);
     row.classList.toggle("selected", selected);
     row.setAttribute("aria-selected", String(selected));
@@ -1425,6 +1505,7 @@ function renderTasks(tasks, selectedIds = new Set(), taskLists = [], taskProject
     progress.querySelector(".task-checklist-count").textContent = `${checklist.filter(match => match[1].toLowerCase() === "x").length}/${checklist.length}`;
     const taskDate = row.querySelector(".task-date");
     renderTaskDueDate(taskDate, task);
+    renderTaskTodayIndicator(row.querySelector(".task-today-indicator"), task);
     const taskProject = taskProjects.find(project => project.id === task.projectId);
     const projectBadge = row.querySelector(".task-project");
     projectBadge.hidden = !taskProject;
@@ -1441,8 +1522,9 @@ function renderTasks(tasks, selectedIds = new Set(), taskLists = [], taskProject
     taskListBadge.title = listLabel;
     const taskListIcon = taskListBadge.querySelector(".inbox-icon");
     taskListIcon.className = taskList?.kind === "regular" ? "list-menu-icon" : "inbox-icon";
-    row.querySelector(".task-meta-primary").hidden = !task.dueDate && !showTaskList;
-    row.querySelector(".task-meta").hidden = !task.dueDate && !taskProject && !showTaskList;
+    const manualToday = task.status === "active" && task.addedToTodayDate === localDateValue();
+    row.querySelector(".task-meta-primary").hidden = !task.dueDate && !manualToday && !showTaskList;
+    row.querySelector(".task-meta").hidden = !task.dueDate && !manualToday && !taskProject && !showTaskList;
     row.querySelector(".task-open").setAttribute("aria-label", `Відкрити деталі: ${task.title}`);
     return [task.id, row];
   }));
@@ -1568,7 +1650,7 @@ function syncTaskActionsMenu() {
   els.taskActionsTrigger.setAttribute("aria-expanded", "false");
   const merge = document.querySelector("#task-merge-checklist");
   merge.hidden = !els.editor.dataset.taskId || !/^\s*[-*+] \[[ xX]\](?: |$)/m.test(els.description.value || "");
-  els.taskActionsTrigger.hidden = [els.taskAttachProject, els.taskConvertProject, els.taskDetachProject, els.taskDelete, merge].every(button => button.hidden);
+  els.taskActionsTrigger.hidden = [els.taskAddToday, els.taskAttachProject, els.taskConvertProject, els.taskDetachProject, els.taskDelete, merge].every(button => button.hidden);
 }
 
 function hideTaskEditor() {
@@ -1615,6 +1697,7 @@ function openNewTaskEditor(listId, originListId = listId) {
   els.taskConvertProject.hidden = true;
   els.taskDetachProject.hidden = true;
   els.taskDelete.hidden = true;
+  els.taskAddToday.hidden = true;
   syncTaskActionsMenu();
   delete els.taskProjectLink.dataset.projectId;
   setTaskEditorListUI(listId);
@@ -1648,6 +1731,11 @@ function openTaskDetails(task) {
   els.taskConvertProject.hidden = task.status !== "active" || Boolean(task.projectId);
   els.taskDetachProject.hidden = task.status !== "active" || !project;
   els.taskDelete.hidden = false;
+  const manuallyToday = task.addedToTodayDate === localDateValue();
+  els.taskAddToday.hidden = task.status !== "active" || task.dueDate === localDateValue() && !manuallyToday;
+  els.taskAddToday.querySelector("span:last-child").textContent = manuallyToday
+    ? task.dueDate === localDateValue() ? "Зняти ручне додавання" : "Прибрати зі «Сьогодні»"
+    : "Додати до «Сьогодні»";
   els.taskProjectLink.dataset.projectId = project?.id || "";
   els.taskProjectValue.textContent = project?.title || "";
   setTaskEditorListUI(task.listId || INBOX_LIST_ID);
