@@ -93,7 +93,12 @@ async function swipe(page, selector, direction, distance = 95) {
     await page.locator("#task-editor-back").click();
     await page.locator(`[data-id="${ids.due}"] .task-open`).click();
     await page.locator("#task-actions-trigger").click();
-    assert.equal(await page.locator("#task-add-today").isHidden(), true);
+    await page.locator("#task-add-today").getByText("Додати до «Сьогодні»").click();
+    await page.waitForFunction(id => tasks.find(task => task.id === id)?.addedToTodayDate === localDateValue(), ids.due);
+    assert.equal(await page.evaluate(id => tasks.find(task => task.id === id).dueDate === localDateValue(), ids.due), true);
+    await page.locator("#task-actions-trigger").click();
+    await page.locator("#task-add-today").getByText("Зняти ручне додавання").click();
+    await page.waitForFunction(id => tasks.find(task => task.id === id)?.addedToTodayDate === null, ids.due);
     await page.locator("#task-editor-back").click();
     await swipe(page, `[data-id="${ids.second}"]`, -1);
     await page.waitForFunction(id => !tasks.some(task => task.id === id), ids.second);

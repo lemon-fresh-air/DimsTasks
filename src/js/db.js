@@ -604,6 +604,16 @@ const settingsDb = {
     const settings = await appDb.get("settings", WORKFLOW_SETTINGS_ID);
     return settings?.returnOverdueToInbox === true;
   },
+  groupTasksWithoutDueDate: async () => {
+    const settings = await appDb.get("settings", WORKFLOW_SETTINGS_ID);
+    return settings?.groupTasksWithoutDueDate !== false;
+  },
+  setGroupTasksWithoutDueDate: async enabled => {
+    const current = await appDb.get("settings", WORKFLOW_SETTINGS_ID);
+    const now = new Date().toISOString();
+    await appDb.put("settings", { ...current, id: WORKFLOW_SETTINGS_ID, entityVersion: 1,
+      groupTasksWithoutDueDate: enabled === true, createdAt: current?.createdAt || now, updatedAt: now });
+  },
   projectPreview: async () => {
     const settings = await appDb.get("settings", WORKFLOW_SETTINGS_ID);
     return settings?.projectPreview === true;
@@ -621,6 +631,7 @@ const settingsDb = {
       id: WORKFLOW_SETTINGS_ID,
       entityVersion: 1,
       projectPreview: current?.projectPreview === true,
+      groupTasksWithoutDueDate: current?.groupTasksWithoutDueDate !== false,
       returnOverdueToInbox: enabled === true,
       createdAt: current?.createdAt || now,
       updatedAt: now

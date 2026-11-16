@@ -1557,8 +1557,7 @@ enableTaskGestures({
   container: projectEls.taskList,
   onDelete: deleteTask,
   onAddToday: swipeTaskToday,
-  canAddToday: id => tasks.some(task => task.id === id && task.status === "active"
-    && (task.dueDate !== localDateValue() || task.addedToTodayDate === localDateValue())),
+  canAddToday: id => tasks.some(task => task.id === id && task.status === "active"),
   isSelectionMode: () => selectedTaskIds.size > 0,
   isSelected: id => selectedTaskIds.has(id),
   onLongPress: selectTask,

@@ -6,6 +6,7 @@ let activeListId = INBOX_LIST_ID;
 let todayDefaultListId = INBOX_LIST_ID;
 let returnOverdueToInbox = false;
 let projectPreview = false;
+let groupTasksWithoutDueDate = true;
 let startScreen = "inbox";
 let manualTheme = "light";
 let useSystemTheme = true;
@@ -401,6 +402,7 @@ async function initializeApp({ openStartScreen = false } = {}) {
   todayDefaultListId = await settingsDb.todayListId() || INBOX_LIST_ID;
   returnOverdueToInbox = await settingsDb.returnOverdueToInbox();
   projectPreview = await settingsDb.projectPreview();
+  groupTasksWithoutDueDate = await settingsDb.groupTasksWithoutDueDate();
   startScreen = await settingsDb.startScreen();
   calendarRangeMode = await settingsDb.calendarRange();
   const backupNaming = await settingsDb.backupNaming();
@@ -409,6 +411,7 @@ async function initializeApp({ openStartScreen = false } = {}) {
   await loadBackupDirectory();
   els.returnOverdueToggle.checked = returnOverdueToInbox;
   els.projectPreviewToggle.checked = projectPreview;
+  els.groupTasksWithoutDueDateToggle.checked = groupTasksWithoutDueDate;
   els.startScreenSelect.value = startScreen;
   els.calendarRangeSelect.value = calendarRangeMode;
   await loadAndNormalizeTaskOrder();
@@ -1920,7 +1923,6 @@ async function setTaskToday(id, added, { undoOnRemove = false } = {}) {
   const task = tasks.find(item => item.id === id);
   if (!task || task.status !== "active") return;
   const date = localDateValue();
-  if (added && isTaskDueToday(task, date)) { toast("Завдання вже у «Сьогодні» за терміном"); return; }
   const updated = setTaskAddedToToday(task, date, added);
   if (updated === task) return;
   try {
@@ -2532,6 +2534,16 @@ els.returnOverdueToggle.addEventListener("change", async () => {
     toast("Не вдалося зберегти налаштування");
   }
 });
+els.groupTasksWithoutDueDateToggle.addEventListener("change", async () => {
+  const previous = groupTasksWithoutDueDate;
+  groupTasksWithoutDueDate = els.groupTasksWithoutDueDateToggle.checked;
+  try { await settingsDb.setGroupTasksWithoutDueDate(groupTasksWithoutDueDate); }
+  catch (_error) {
+    groupTasksWithoutDueDate = previous;
+    els.groupTasksWithoutDueDateToggle.checked = previous;
+    toast("Не вдалося зберегти налаштування");
+  }
+});
 els.projectPreviewToggle.addEventListener("change", async () => {
   const previous = projectPreview;
   projectPreview = els.projectPreviewToggle.checked;
@@ -3088,7 +3100,9 @@ els.quickTaskForm.addEventListener("submit", async event => {
       const date = target.kind === "group" ? activePlanDate() : null;
       const task = createTask({ listId: target.kind === "group" ? validTodayDefaultListId() : target.listId,
         sectionId: target.kind === "list-section" ? target.sectionId : null, title,
-        description: els.quickTaskDescription.value.trim(), dueDate: date, position: 0 });
+        description: els.quickTaskDescription.value.trim(),
+        dueDate: date && (date !== localDateValue() || !groupTasksWithoutDueDate) ? date : null,
+        addedToTodayDate: date === localDateValue() && groupTasksWithoutDueDate ? date : null, position: 0 });
       const shifted = tasks.filter(item => taskOrderScope(item) === taskOrderScope(task))
         .map(item => ({ ...item, position: item.position + 1 }));
       await taskDb.putMany([task, ...shifted]);
@@ -3401,8 +3415,7 @@ els.taskDetachDialog.addEventListener("keydown", event => {
 enableTaskGestures({
   onDelete: deleteTask,
   onAddToday: swipeTaskToday,
-  canAddToday: id => tasks.some(task => task.id === id && task.status === "active"
-    && (task.dueDate !== localDateValue() || task.addedToTodayDate === localDateValue())),
+  canAddToday: id => tasks.some(task => task.id === id && task.status === "active"),
   isSelectionMode: () => selectedTaskIds.size > 0,
   isSelected: id => selectedTaskIds.has(id),
   onLongPress: selectTask,

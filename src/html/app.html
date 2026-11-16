@@ -258,6 +258,11 @@
         </label>
       </div>
       <div class="settings-row overdue-setting">
+        <span class="calendar-icon" aria-hidden="true"></span>
+        <span class="settings-copy"><strong>Завдання групи без терміну сьогодні</strong><small>Додавати до «Сьогодні» без встановлення терміну</small></span>
+        <label class="theme-switch"><input id="group-tasks-without-due-date-toggle" type="checkbox" role="switch" aria-label="Створювати завдання в групах Сьогодні без терміну" checked><span aria-hidden="true"></span></label>
+      </div>
+      <div class="settings-row overdue-setting">
         <span class="projects-icon" aria-hidden="true"></span>
         <span class="settings-copy"><strong>Показувати лише перші 3 кроки проєкту</strong><small>Решту розгортати стрілкою на КП</small></span>
         <label class="theme-switch"><input id="project-preview-toggle" type="checkbox" role="switch" aria-label="Показувати лише перші 3 кроки проєкту"><span aria-hidden="true"></span></label>
@@ -311,7 +316,7 @@
       </div>
       <button id="clear-data-open" class="settings-row clear-data-open" type="button" aria-haspopup="dialog" aria-controls="clear-data-dialog"><span class="trash-icon" aria-hidden="true"></span><span class="settings-copy"><strong>Очистити дані</strong><small>Завдання, списки, проєкти й налаштування</small></span><span aria-hidden="true">›</span></button>
     </div>
-    <p class="settings-version"><span>Версія 0.31 · 16 листопада 2026</span><button id="check-app-update" type="button">Перевірити оновлення</button></p>
+    <p class="settings-version"><span>Версія 0.31.1 · 16 листопада 2026</span><button id="check-app-update" type="button">Перевірити оновлення</button></p>
   </div>
 </section>
 <dialog id="clear-data-dialog" class="clear-data-dialog" aria-labelledby="clear-data-title">

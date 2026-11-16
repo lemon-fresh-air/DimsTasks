@@ -184,6 +184,7 @@ const els = {
   themeLabel: document.querySelector("#theme-label"),
   returnOverdueToggle: document.querySelector("#return-overdue-toggle"),
   projectPreviewToggle: document.querySelector("#project-preview-toggle"),
+  groupTasksWithoutDueDateToggle: document.querySelector("#group-tasks-without-due-date-toggle"),
   startScreenSelect: document.querySelector("#start-screen-select"),
   calendarRangeSelect: document.querySelector("#calendar-range-select"),
   backupExport: document.querySelector("#backup-export"),
@@ -1732,7 +1733,7 @@ function openTaskDetails(task) {
   els.taskDetachProject.hidden = task.status !== "active" || !project;
   els.taskDelete.hidden = false;
   const manuallyToday = task.addedToTodayDate === localDateValue();
-  els.taskAddToday.hidden = task.status !== "active" || task.dueDate === localDateValue() && !manuallyToday;
+  els.taskAddToday.hidden = task.status !== "active";
   els.taskAddToday.querySelector("span:last-child").textContent = manuallyToday
     ? task.dueDate === localDateValue() ? "Зняти ручне додавання" : "Прибрати зі «Сьогодні»"
     : "Додати до «Сьогодні»";
