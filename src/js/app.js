@@ -2212,6 +2212,14 @@ document.addEventListener("keydown", event => {
       else openProjects();
       return;
     }
+    if (/^Digit[1-9]$/.test(event.code) && !event.shiftKey) {
+      const list = lists.filter(item => item.kind === "regular")[Number(event.code.slice(-1)) - 1];
+      if (list) {
+        event.preventDefault();
+        openList(list.id);
+      }
+      return;
+    }
   }
   if (event.code === "KeyG" && !event.shiftKey) {
     event.preventDefault();
