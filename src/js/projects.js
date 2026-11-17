@@ -200,6 +200,7 @@ async function loadProjects() {
 }
 
 function openProjects() {
+  closeUpcoming();
   activeProjectId = null;
   selectedProjectIds = new Set();
   projectEls.shell.classList.add("projects-mode");

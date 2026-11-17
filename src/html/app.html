@@ -41,6 +41,10 @@
     <p id="today-order-hint" class="today-order-hint" hidden>Перетягуйте вибрані завдання в межах їхньої групи або згорнуту групу серед інших груп і завдань.</p>
     <div id="empty-state" class="empty"><span class="empty-icon" aria-hidden="true">✓</span><p>У цьому списку поки немає завдань</p><small>Натисніть кнопку внизу, щоб додати перше.</small></div>
   </section><div id="list-swipe-zone" class="list-swipe-zone" aria-hidden="true"></div></main>
+  <section id="upcoming-screen" class="upcoming-screen" aria-labelledby="upcoming-title" hidden>
+    <header class="upcoming-header"><h1 id="upcoming-title">Скоро</h1><div class="upcoming-heading"><button id="upcoming-month" type="button" aria-haspopup="dialog" aria-controls="upcoming-calendar-backdrop"></button><div class="upcoming-heading-actions"><button id="upcoming-today" type="button">Сьогодні</button><button id="upcoming-more" type="button" aria-label="Додаткові дії в Скоро" aria-haspopup="menu" aria-expanded="false" aria-controls="upcoming-selection">⋯</button><div id="upcoming-selection" class="upcoming-selection" role="menu" aria-label="Дії в Скоро" hidden><strong id="upcoming-selection-count"></strong><button id="upcoming-selection-all" type="button" role="menuitemcheckbox" aria-checked="false">Вибрати всі видимі завдання</button><button id="upcoming-selection-date" type="button" role="menuitem" aria-haspopup="dialog">Змінити дату вибраних</button><button id="upcoming-selection-delete" type="button" role="menuitem">Видалити вибрані</button><button id="upcoming-selection-close" type="button" role="menuitem">Завершити виділення</button></div></div></div><div id="upcoming-week" class="upcoming-week" aria-label="Дні тижня"></div><button id="upcoming-expand" class="upcoming-expand" type="button" aria-controls="upcoming-week" aria-expanded="false" aria-label="Розгорнути дати на місяць"></button></header>
+    <div id="upcoming-feed" class="upcoming-feed" aria-label="Завдання за датами"></div>
+  </section>
   <section id="projects-overview" class="projects-overview" aria-labelledby="projects-title" hidden>
     <div id="projects-selection-toolbar" class="projects-selection-toolbar" hidden>
       <button id="projects-selection-close" class="toolbar-action" type="button" aria-label="Завершити виділення"><span class="back-icon" aria-hidden="true"></span></button>
@@ -69,7 +73,7 @@
   <button id="desktop-nav-toggle" class="desktop-nav-toggle" type="button" aria-label="Згорнути бічну навігацію" aria-controls="primary-nav" aria-expanded="true"><span class="desktop-nav-toggle-icon" aria-hidden="true"></span></button>
   <nav id="primary-nav" class="bottom-nav" aria-label="Основна навігація"><div class="bottom-nav-inner">
     <button id="nav-today" class="nav-item" type="button" data-nav="today"><span class="nav-icon-field" aria-hidden="true"><span class="sun-icon"></span></span><span>Сьогодні</span><span class="desktop-primary-count" aria-label="Завдань: 0">0</span></button>
-    <button id="nav-upcoming" class="nav-item" type="button" data-nav="upcoming" aria-label="Скоро — розділ у розробці"><span class="nav-icon-field" aria-hidden="true"><span class="upcoming-icon"></span></span><span>Скоро</span></button>
+    <button id="nav-upcoming" class="nav-item" type="button" data-nav="upcoming"><span class="nav-icon-field" aria-hidden="true"><span class="upcoming-icon"></span></span><span>Скоро</span></button>
     <button id="nav-projects" class="nav-item" type="button" data-nav="projects"><span class="nav-icon-field" aria-hidden="true"><span class="projects-icon"></span></span><span>Проєкти</span><span class="desktop-primary-count" aria-label="Проєктів: 0">0</span></button>
     <button id="nav-inbox" class="nav-item active" type="button" data-nav="inbox" aria-current="page"><span class="nav-icon-field" aria-hidden="true"><span class="inbox-icon"></span></span><span>Нові</span><span class="desktop-primary-count" aria-label="Завдань: 0">0</span></button>
     <button id="main-menu-open" class="nav-item" type="button" data-nav="overview" aria-label="Відкрити огляд" aria-controls="main-menu" aria-expanded="false"><span class="nav-icon-field" aria-hidden="true"><span class="overview-icon"></span></span><span>Огляд</span></button>
@@ -105,6 +109,7 @@
     <div><dt><kbd>V</kbd></dt><dd>Перемістити виділені завдання</dd></div>
     <div><dt><kbd>G</kbd>, потім <kbd>I</kbd></dt><dd>Нові</dd></div>
     <div><dt><kbd>G</kbd>, потім <kbd>T</kbd></dt><dd>Сьогодні</dd></div>
+    <div><dt><kbd>G</kbd>, потім <kbd>C</kbd></dt><dd>Календар «Скоро»</dd></div>
     <div><dt><kbd>G</kbd>, потім <kbd>P</kbd></dt><dd>Проєкти</dd></div>
     <div><dt><kbd>G</kbd>, потім <kbd>1</kbd>–<kbd>9</kbd></dt><dd>Перші дев’ять власних списків у порядку меню</dd></div>
     <div><dt><kbd>M</kbd></dt><dd>Показати або сховати бічну навігацію на ПК</dd></div>
@@ -492,6 +497,7 @@
   </form>
   <div id="description-save-confirm" class="description-save-confirm" hidden><section role="dialog" aria-modal="true" aria-labelledby="description-save-question"><h2 id="description-save-question">Зберегти зміни опису?</h2><div><button id="description-save-no" type="button">Ні</button><button id="description-save-yes" type="button">Так</button></div></section></div>
 </section>
+<div id="upcoming-calendar-backdrop" class="date-picker-backdrop" hidden><section id="upcoming-calendar" class="date-picker" role="dialog" aria-modal="true" aria-labelledby="upcoming-calendar-title" tabindex="-1"><div class="sheet-handle" aria-hidden="true"></div><header class="upcoming-calendar-header"><button id="upcoming-calendar-cancel" type="button">Скасувати</button><h2 id="upcoming-calendar-title">Виберіть дату</h2><button id="upcoming-calendar-today" type="button">Сьогодні</button></header><div class="calendar-panel"><div class="calendar-toolbar"><button id="upcoming-calendar-previous" type="button" aria-label="Попередній місяць">‹</button><h3 id="upcoming-calendar-month"></h3><button id="upcoming-calendar-next" type="button" aria-label="Наступний місяць">›</button></div><div class="calendar-weekdays" aria-hidden="true"><span>Пн</span><span>Вт</span><span>Ср</span><span>Чт</span><span>Пт</span><span>Сб</span><span>Нд</span></div><div id="upcoming-calendar-grid" class="calendar-grid" role="grid" aria-label="Календар Скоро"></div></div></section></div>
 <div id="date-picker-backdrop" class="date-picker-backdrop" hidden>
   <section id="date-picker" class="date-picker" role="dialog" aria-modal="true" aria-labelledby="date-picker-title" tabindex="-1">
     <div class="sheet-handle" aria-hidden="true"></div>

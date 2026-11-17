@@ -234,6 +234,11 @@ function compareTodayTasks(a, b) {
 function compareDayTasks(a, b) {
   return String(b.createdAt || "").localeCompare(String(a.createdAt || "")) || String(a.id).localeCompare(String(b.id));
 }
+function compareUpcomingTasks(a, b) {
+  return Number(!a.dueTime) - Number(!b.dueTime)
+    || String(a.dueTime || "").localeCompare(String(b.dueTime || ""))
+    || compareTasks(a, b);
+}
 function dayPlanId(date) { return `day-plan:${date}`; }
 function nextLocalDate(date = new Date()) {
   const next = new Date(date);
