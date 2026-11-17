@@ -42,9 +42,17 @@ test("manual Today date survives backup and older format defaults safely", async
 
 test("project root visibility survives backup and older backups default to visible", async () => {
   const current = structuredClone(data);
-  current.projects.push({ ...base("project"), title: "Проєкт", goal: "", description: "", status: "active", dueDate: null, dueTime: null, showCountdown: false, lastListId: null, defaultListId: null, addNewTasksFirst: false, unsectionedCollapsed: false, unsectionedHidden: true, projectSections: [], completedAt: null, position: 0 });
+  current.projects.push({ ...base("project"), title: "Проєкт", goal: "", description: "", status: "active", dueDate: null, dueTime: null, showCountdown: false, lastListId: null, defaultListId: null, addNewTasksFirst: false, unsectionedCollapsed: false, unsectionedHidden: true, unsectionedPosition: 0, projectSections: [], completedAt: null, position: 0 });
   const payload = { format: "local-first-pwa-backup", appId: "dims-tasks", formatVersion: BACKUP_FORMAT_VERSION, data: current };
   assert.equal((await parseBackup(file(payload))).projects[0].unsectionedHidden, true);
+  current.projects[0].unsectionedPosition = 2;
+  assert.equal((await parseBackup(file(payload))).projects[0].unsectionedPosition, 2);
+  current.projects[0].unsectionedPosition = -1;
+  await assert.rejects(parseBackup(file(payload)), /Некоректний проєкт/);
+  current.projects[0].unsectionedPosition = 0;
+  const olderPosition = await parseBackup(file({ ...payload, formatVersion: 24,
+    data: { ...current, projects: current.projects.map(({ unsectionedPosition, ...project }) => project) } }));
+  assert.equal(olderPosition.projects[0].unsectionedPosition, 0);
   current.projects[0].unsectionedHidden = "true";
   await assert.rejects(parseBackup(file(payload)), /Некоректний проєкт/);
   delete current.projects[0].unsectionedHidden;
@@ -65,7 +73,7 @@ test("section collapse survives backup and older sections default to expanded", 
 
 test("project sections survive backup and broken step references are rejected", async () => {
   const current = structuredClone(data);
-  current.projects.push({ ...base("project"), title: "Проєкт", goal: "", description: "", status: "active", dueDate: null, dueTime: null, showCountdown: false, lastListId: null, defaultListId: null, addNewTasksFirst: false, unsectionedHidden: false, projectSections: [{ id: "phase", title: "Етап", collapsed: true }], completedAt: null, position: 0 });
+  current.projects.push({ ...base("project"), title: "Проєкт", goal: "", description: "", status: "active", dueDate: null, dueTime: null, showCountdown: false, lastListId: null, defaultListId: null, addNewTasksFirst: false, unsectionedHidden: false, unsectionedPosition: 0, projectSections: [{ id: "phase", title: "Етап", collapsed: true }], completedAt: null, position: 0 });
   current.tasks[0].projectId = "project";
   current.tasks[0].projectSectionId = "phase";
   current.tasks[0].projectPosition = 0;
@@ -115,7 +123,7 @@ test("current backup round-trip parser preserves appearance, workflow, and retur
 test("project fixed list survives format 14 and format 13 defaults to automatic", async () => {
   const current = structuredClone(data);
   current.lists.push({ ...base("work"), title: "Робота", description: "", kind: "regular", position: 1 });
-  current.projects.push({ ...base("project"), title: "Проєкт", goal: "", description: "", status: "active", dueDate: null, dueTime: null, showCountdown: false, lastListId: "inbox", defaultListId: "work", addNewTasksFirst: true, unsectionedHidden: false, completedAt: null, position: 0 });
+  current.projects.push({ ...base("project"), title: "Проєкт", goal: "", description: "", status: "active", dueDate: null, dueTime: null, showCountdown: false, lastListId: "inbox", defaultListId: "work", addNewTasksFirst: true, unsectionedHidden: false, unsectionedPosition: 0, completedAt: null, position: 0 });
   const restored = await parseBackup(file({ format: "local-first-pwa-backup", appId: "dims-tasks", formatVersion: BACKUP_FORMAT_VERSION, data: current }));
   assert.equal(restored.projects[0].defaultListId, "work");
   delete current.projects[0].defaultListId;

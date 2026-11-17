@@ -2165,6 +2165,26 @@ document.querySelector("#keyboard-shortcuts-close").addEventListener("click", cl
 keyboardShortcutsDialog.addEventListener("cancel", event => { event.preventDefault(); closeKeyboardShortcuts(); });
 let navigationShortcutPending = false;
 let navigationShortcutTimer;
+async function navigateWithShortcut(destination) {
+  if (!els.editor.hidden) {
+    await saveAndLeaveTaskEditor({ allowEmptyNew: true });
+    if (!els.editor.classList.contains("is-closing")) return;
+    clearTimeout(editorCloseTimer);
+    els.editor.hidden = true;
+    els.editor.classList.remove("is-closing");
+  }
+  if (!projectEls.editor.hidden && !await saveProjectFields({ closeAfter: true })) return;
+  if (!els.listEditor.hidden) {
+    await saveActiveListName(null, { fromHistory: true });
+    if (els.listEditorOpen.getAttribute("aria-expanded") === "true") return;
+  }
+  if (!els.completedTasksScreen.hidden) closeCompletedTasks({ fromHistory: true });
+  if (!els.settingsScreen.hidden) closeSettings({ fromHistory: true });
+  if (!els.mainMenu.hidden) closeMainMenu({ fromHistory: true });
+  if (!projectEls.screen.hidden) await closeProject();
+  if (destination === "projects") openProjects();
+  else openList(destination);
+}
 document.addEventListener("keydown", event => {
   if (event.key === "Escape") {
     navigationShortcutPending = false;
@@ -2201,22 +2221,22 @@ document.addEventListener("keydown", event => {
       return;
     }
   }
-  if (editable || event.target.closest("[role='dialog']:not([hidden]),dialog[open]") || document.querySelector("dialog:modal, .project-delete-dialog-backdrop:not([hidden]), .date-picker-backdrop:not([hidden]), .time-dialog-backdrop:not([hidden]), .project-attach-backdrop:not([hidden])") || !els.editor.hidden || !els.listEditor.hidden || !els.settingsScreen.hidden || !els.mainMenu.hidden) return;
+  if (editable || event.target.closest("[role='dialog']:not([hidden]),dialog[open]") || document.querySelector("dialog:modal, .project-delete-dialog-backdrop:not([hidden]), .date-picker-backdrop:not([hidden]), .time-dialog-backdrop:not([hidden]), .project-attach-backdrop:not([hidden])")) return;
   if (navigationShortcutPending) {
     navigationShortcutPending = false;
     clearTimeout(navigationShortcutTimer);
     if (["KeyI", "KeyT", "KeyP"].includes(event.code) && !event.shiftKey) {
       event.preventDefault();
-      if (event.code === "KeyI") openList(INBOX_LIST_ID);
-      else if (event.code === "KeyT") openList(TODAY_LIST_ID);
-      else openProjects();
+      if (event.code === "KeyI") navigateWithShortcut(INBOX_LIST_ID);
+      else if (event.code === "KeyT") navigateWithShortcut(TODAY_LIST_ID);
+      else navigateWithShortcut("projects");
       return;
     }
     if (/^Digit[1-9]$/.test(event.code) && !event.shiftKey) {
       const list = lists.filter(item => item.kind === "regular")[Number(event.code.slice(-1)) - 1];
       if (list) {
         event.preventDefault();
-        openList(list.id);
+        navigateWithShortcut(list.id);
       }
       return;
     }

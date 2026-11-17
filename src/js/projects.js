@@ -105,6 +105,11 @@ const projectEls = {
   attachSave: document.querySelector("#project-attach-save"),
   addNewFirst: document.querySelector("#project-add-new-first"),
   mainComplete: document.querySelector("#project-main-complete"),
+  mainCreateSection: document.querySelector("#project-main-create-section"),
+  newSectionDialog: document.querySelector("#project-section-new-dialog"),
+  newSectionForm: document.querySelector("#project-section-new-form"),
+  newSectionName: document.querySelector("#project-section-new-name"),
+  newSectionBefore: document.querySelector("#project-section-new-before"),
   actionsTrigger: document.querySelector("#project-actions-trigger"),
   actionsMenu: document.querySelector("#project-actions-menu"),
   sectionsOpen: document.querySelector("#project-assign-section"),
@@ -248,7 +253,6 @@ function renderProjectTask(task, target = projectEls.taskList) {
   target.append(row);
 }
 
-const PROJECT_ROOT_SECTION_ID = "project-root";
 
 function renderProjectSectionHeading(section, count, root = false) {
   const row = document.createElement("li");
@@ -362,19 +366,23 @@ function renderOpenProject() {
   projectEls.deleteCompletedTasks.hidden = completedCount === 0;
   projectEls.convertTask.hidden = project.status === "completed";
   projectEls.mainComplete.textContent = projectEls.complete.textContent;
+  projectEls.mainCreateSection.hidden = project.status !== "active";
   projectEls.taskList.replaceChildren();
   const projectSections = project.projectSections || [];
   const validSectionIds = new Set(projectSections.map(section => section.id));
   const unsectioned = activeSteps.filter(task => !validSectionIds.has(task.projectSectionId));
   const rootSection = { id: PROJECT_ROOT_SECTION_ID, title: "Звичайні кроки", collapsed: project.unsectionedCollapsed === true };
-  if (!project.unsectionedHidden) {
-    const rootTarget = renderProjectSectionHeading(rootSection, unsectioned.length, true);
-    if (!rootSection.collapsed || unsectioned.some(task => selectedHere.has(task.id))) {
-      rootTarget.hidden = false;
-      unsectioned.forEach(task => renderProjectTask(task, rootTarget));
+  for (const id of orderedProjectSectionIds(project)) {
+    if (id === PROJECT_ROOT_SECTION_ID) {
+      if (project.unsectionedHidden) continue;
+      const rootTarget = renderProjectSectionHeading(rootSection, unsectioned.length, true);
+      if (!rootSection.collapsed || unsectioned.some(task => selectedHere.has(task.id))) {
+        rootTarget.hidden = false;
+        unsectioned.forEach(task => renderProjectTask(task, rootTarget));
+      }
+      continue;
     }
-  }
-  for (const section of projectSections) {
+    const section = projectSections.find(item => item.id === id);
     const members = activeSteps.filter(task => task.projectSectionId === section.id);
     const target = renderProjectSectionHeading(section, members.length);
     if (!section.collapsed || members.some(task => selectedHere.has(task.id))) {
@@ -579,13 +587,13 @@ let projectSectionBusy = false;
 function syncProjectSectionSelection() {
   const project = projects.find(item => item.id === activeProjectId);
   const sections = project?.projectSections || [];
-  const valid = new Set(sections.map(section => section.id));
+  const valid = new Set([...sections.map(section => section.id), PROJECT_ROOT_SECTION_ID]);
   for (const id of selectedProjectSectionIds) if (!valid.has(id)) selectedProjectSectionIds.delete(id);
   const active = selectedProjectSectionIds.size > 0 && !projectEls.screen.hidden;
   document.querySelector("#project-section-selection-toolbar").hidden = !active;
   document.querySelector("#project-section-selection-count").textContent = `Секцій: ${selectedProjectSectionIds.size}`;
-  document.querySelector("#project-section-rename").disabled = selectedProjectSectionIds.size !== 1 || projectSectionBusy;
-  for (const id of ["project-section-delete", "project-section-dissolve"]) document.getElementById(id).disabled = projectSectionBusy;
+  document.querySelector("#project-section-rename").disabled = selectedProjectSectionIds.size !== 1 || selectedProjectSectionIds.has(PROJECT_ROOT_SECTION_ID) || projectSectionBusy;
+  for (const id of ["project-section-delete", "project-section-dissolve"]) document.getElementById(id).disabled = projectSectionBusy || selectedProjectSectionIds.has(PROJECT_ROOT_SECTION_ID);
   projectEls.screen.querySelector(".project-screen-header").hidden = active || selectedTaskIds.size > 0;
   if (active) projectEls.selectionToolbar.hidden = true;
   for (const row of projectEls.taskList.querySelectorAll(".project-section-heading")) {
@@ -641,6 +649,10 @@ async function changeProjectSections(transform) {
     } else if (projectEls.sectionsDialog.open) {
       const field = document.querySelector("#project-section-picker-error");
       field.textContent = error.message || "Не вдалося змінити секцію";
+      field.hidden = false;
+    } else if (projectEls.newSectionDialog.open) {
+      const field = document.querySelector("#project-section-new-error");
+      field.textContent = error.message || "Не вдалося створити секцію";
       field.hidden = false;
     } else toast("Не вдалося змінити секції");
     return false;
@@ -704,7 +716,7 @@ function closeProjectActions({ focus = false } = {}) {
 }
 function syncProjectDialogViewport() {
   const viewport = window.visualViewport;
-  for (const dialog of [projectEls.sectionsDialog, projectEls.descriptionDialog, projectEls.sectionActionDialog]) {
+  for (const dialog of [projectEls.sectionsDialog, projectEls.descriptionDialog, projectEls.sectionActionDialog, projectEls.newSectionDialog]) {
     dialog.style.setProperty("--project-dialog-top", `${viewport?.offsetTop || 0}px`);
     dialog.style.setProperty("--project-dialog-height", `${viewport?.height || window.innerHeight}px`);
     dialog.style.setProperty("--project-dialog-bottom", `${Math.max(0, window.innerHeight - (viewport?.height || window.innerHeight) - (viewport?.offsetTop || 0))}px`);
@@ -1357,7 +1369,7 @@ projectEls.taskList.addEventListener("click", async event => {
   const id = header?.dataset.projectSectionToggle;
   const row = header?.closest(".project-section-heading");
   if (row?.dataset.longPressed || row?.dataset.dragged) { delete row.dataset.longPressed; delete row.dataset.dragged; return; }
-  if (id && id !== PROJECT_ROOT_SECTION_ID && selectedProjectSectionIds.size) {
+  if (id && selectedProjectSectionIds.size) {
     if (selectedProjectSectionIds.has(id)) selectedProjectSectionIds.delete(id);
     else selectedProjectSectionIds.add(id);
     syncProjectSectionSelection();
@@ -1453,11 +1465,44 @@ projectEls.actionsMenu.addEventListener("keydown", event => {
   if (event.key === "Tab") closeProjectActions({ focus: true });
 });
 projectEls.sectionsOpen.addEventListener("click", openProjectSections);
+projectEls.mainCreateSection.addEventListener("click", () => {
+  const project = projects.find(item => item.id === activeProjectId);
+  if (!project || project.status !== "active") return;
+  projectEls.newSectionForm.reset();
+  document.querySelector("#project-section-new-error").hidden = true;
+  const names = new Map((project.projectSections || []).map(section => [section.id, section.title]));
+  names.set(PROJECT_ROOT_SECTION_ID, "Звичайні кроки");
+  projectEls.newSectionBefore.replaceChildren(new Option("У кінці", ""),
+    ...orderedProjectSectionIds(project).map(id => new Option(`Перед «${names.get(id)}»`, id)));
+  syncProjectDialogViewport();
+  projectEls.newSectionDialog.showModal();
+  projectEls.newSectionName.focus();
+  scheduleMobileNavigationRecord();
+});
+function closeNewProjectSection() {
+  projectEls.newSectionDialog.close();
+  projectEls.mainCreateSection.focus();
+  scheduleMobileNavigationRecord();
+}
+document.querySelector("#project-section-new-cancel").addEventListener("click", closeNewProjectSection);
+projectEls.newSectionDialog.addEventListener("cancel", event => { event.preventDefault(); closeNewProjectSection(); });
+projectEls.newSectionForm.addEventListener("submit", async event => {
+  event.preventDefault();
+  const title = projectEls.newSectionName.value;
+  const beforeId = projectEls.newSectionBefore.value || null;
+  const saved = await changeProjectSections(project => {
+    const id = crypto.randomUUID();
+    const section = { id, title: "", collapsed: false };
+    const updated = renameProjectSection({ ...project, projectSections: [...(project.projectSections || []), section] }, id, title);
+    return { project: beforeId ? reorderProjectSections(updated, new Set([id]), beforeId) : updated };
+  });
+  if (saved) closeNewProjectSection();
+});
 document.querySelector("#project-sections-close").addEventListener("click", closeProjectSections);
 projectEls.descriptionOpen.addEventListener("click", openProjectDescription);
 document.querySelector("#project-description-cancel").addEventListener("click", () => closeProjectDescription());
 document.querySelector("#project-description-done").addEventListener("click", () => closeProjectDescription(true));
-for (const [dialog, close] of [[projectEls.sectionsDialog, closeProjectSections], [projectEls.descriptionDialog, closeProjectDescription]]) {
+for (const [dialog, close] of [[projectEls.sectionsDialog, closeProjectSections], [projectEls.descriptionDialog, closeProjectDescription], [projectEls.newSectionDialog, closeNewProjectSection]]) {
   dialog.addEventListener("cancel", event => { event.preventDefault(); close(); });
   dialog.addEventListener("click", event => {
     const rect = dialog.getBoundingClientRect();
@@ -1587,14 +1632,14 @@ projectEls.taskList.addEventListener("keydown", event => {
   const header = event.target.closest("[data-project-section-toggle]");
   if (!header) return;
   if (event.key === "Escape") { clearProjectSectionSelection(); event.preventDefault(); }
-  if (event.key === " " && event.shiftKey && header.dataset.projectSectionToggle !== PROJECT_ROOT_SECTION_ID) { selectProjectSection(header.dataset.projectSectionToggle); event.preventDefault(); }
+  if (event.key === " " && event.shiftKey) { selectProjectSection(header.dataset.projectSectionToggle); event.preventDefault(); }
   if (event.altKey && ["ArrowUp", "ArrowDown"].includes(event.key)) {
     event.preventDefault();
-    const sections = projects.find(project => project.id === activeProjectId)?.projectSections || [];
-    const index = sections.findIndex(section => section.id === header.dataset.projectSectionToggle);
+    const sections = orderedProjectSectionIds(projects.find(project => project.id === activeProjectId));
+    const index = sections.indexOf(header.dataset.projectSectionToggle);
     const target = event.key === "ArrowUp" ? index - 1 : index + 2;
     if ((event.key === "ArrowUp" && index <= 0) || (event.key === "ArrowDown" && index >= sections.length - 1)) return;
-    changeProjectSections(project => ({ project: reorderProjectSections(project, new Set([header.dataset.projectSectionToggle]), sections[target]?.id || null) }));
+    changeProjectSections(project => ({ project: reorderProjectSections(project, new Set([header.dataset.projectSectionToggle]), sections[target] || null) }));
   }
 });
 for (const action of ["rename", "dissolve", "delete"]) document.getElementById(`project-section-${action}`).addEventListener("click", () => openProjectSectionAction(action));
@@ -1622,7 +1667,7 @@ document.querySelector("#project-section-action-form").addEventListener("submit"
   }
 });
 enableProjectCardReorder({
-  container: projectEls.taskList, cardSelector: ".project-section-heading:not(.project-root-heading)", handleSelector: "[data-project-section-toggle]", insertionSelector: ".list-section-heading", idKey: "sectionId", scrollElement: projectEls.screen, requireSelectionForDrag: true,
+  container: projectEls.taskList, cardSelector: ".project-section-heading", handleSelector: "[data-project-section-toggle]", insertionSelector: ".list-section-heading", idKey: "sectionId", scrollElement: projectEls.screen, requireSelectionForDrag: true,
   isSelectionMode: () => !projectSectionBusy && selectedProjectSectionIds.size > 0,
   isSelected: id => !projectSectionBusy && selectedProjectSectionIds.has(id),
   onLongPress: id => selectProjectSection(id), onSelectOnly: id => selectProjectSection(id, true),

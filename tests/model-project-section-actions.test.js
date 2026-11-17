@@ -4,8 +4,8 @@ const path = require('node:path');
 const test = require('node:test');
 const vm = require('node:vm');
 const context = vm.createContext({ crypto: { randomUUID: () => 'id' }, INBOX_LIST_ID: 'inbox' });
-vm.runInContext(fs.readFileSync(path.join(__dirname, '../src/js/model.js'), 'utf8') + '\nthis.api={reorderProjectSections,renameProjectSection,removeProjectSections,currentProjectTask,assignProjectTasksToSection};', context);
-const { reorderProjectSections, renameProjectSection, removeProjectSections, currentProjectTask, assignProjectTasksToSection } = context.api;
+vm.runInContext(fs.readFileSync(path.join(__dirname, '../src/js/model.js'), 'utf8') + '\nthis.api={reorderProjectSections,orderedProjectSectionIds,renameProjectSection,removeProjectSections,currentProjectTask,assignProjectTasksToSection,PROJECT_ROOT_SECTION_ID};', context);
+const { reorderProjectSections, orderedProjectSectionIds, renameProjectSection, removeProjectSections, currentProjectTask, assignProjectTasksToSection, PROJECT_ROOT_SECTION_ID } = context.api;
 const plain = value => JSON.parse(JSON.stringify(value));
 const project = { id: 'p', title: 'Проєкт', goal: 'Збережена мета', projectSections: ['a','b','c','d'].map(id => ({ id, title: id.toUpperCase(), collapsed: id === 'a' })) };
 const records = [
@@ -29,6 +29,16 @@ test('invalid, empty and unchanged section moves do nothing', () => {
   for (const [ids,before] of [[[],null],[['missing'],null],[['a'],'a'],[['a'],'missing'],[['a'],'b'],[['a','b','c','d'],null]]) {
     assert.equal(reorderProjectSections(project, new Set(ids), before), project);
   }
+});
+test('ordinary steps move as a section and keep task membership', () => {
+  const moved = reorderProjectSections(project, new Set([PROJECT_ROOT_SECTION_ID]), 'c', 'now');
+  assert.deepEqual(Array.from(orderedProjectSectionIds(moved)), ['a','b',PROJECT_ROOT_SECTION_ID,'c','d']);
+  assert.equal(moved.unsectionedPosition, 2);
+  assert.deepEqual(Array.from(moved.projectSections, section => section.id), ['a','b','c','d']);
+  assert.equal(currentProjectTask(records, 'p', [moved]).id, '1');
+  const back = reorderProjectSections(moved, new Set([PROJECT_ROOT_SECTION_ID]), 'a');
+  assert.equal(back.unsectionedPosition, 0);
+  assert.equal(currentProjectTask(records, 'p', [back]).id, '5');
 });
 test('renaming trims names, preserves links and rejects invalid or duplicate names', () => {
   const renamed = renameProjectSection(project, 'a', '  Нова назва  ', 'now');

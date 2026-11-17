@@ -116,7 +116,7 @@ async function readStore(page, name) {
     await page.click("#backup-export");
     await fullDownloadPromise;
     const exported = await page.evaluate(async () => JSON.parse(await window.lastBackupBlob.text()));
-    assert.equal(exported.formatVersion, 19);
+    assert.equal(exported.formatVersion, 25);
     assert.equal(exported.data.tasks.length, 1000);
     assert.equal(exported.data.tasks[0].todayPosition, null);
     assert.equal(exported.data.projects.length, 100);

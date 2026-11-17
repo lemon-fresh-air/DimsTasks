@@ -38,7 +38,7 @@ function createSection(values = {}) {
   return { ...baseRecord(values), ...values, listId: values.listId, title: String(values.title || "").trim(), description: values.description || "", position: Number.isFinite(values.position) ? values.position : 0, collapsed: values.collapsed === true };
 }
 function createProject(values = {}) {
-  return { ...baseRecord(values), ...values, title: String(values.title || "").trim(), goal: values.goal || "", description: values.description || "", status: values.status === "completed" ? "completed" : "active", dueDate: values.dueDate || null, dueTime: values.dueDate && values.dueTime ? values.dueTime : null, showCountdown: values.showCountdown === true, lastListId: typeof values.lastListId === "string" ? values.lastListId : null, defaultListId: typeof values.defaultListId === "string" ? values.defaultListId : null, addNewTasksFirst: values.addNewTasksFirst === true, unsectionedCollapsed: values.unsectionedCollapsed === true, unsectionedHidden: values.unsectionedHidden === true, projectSections: Array.isArray(values.projectSections) ? values.projectSections : [], completedAt: values.completedAt || null, position: Number.isFinite(values.position) ? values.position : 0 };
+  return { ...baseRecord(values), ...values, title: String(values.title || "").trim(), goal: values.goal || "", description: values.description || "", status: values.status === "completed" ? "completed" : "active", dueDate: values.dueDate || null, dueTime: values.dueDate && values.dueTime ? values.dueTime : null, showCountdown: values.showCountdown === true, lastListId: typeof values.lastListId === "string" ? values.lastListId : null, defaultListId: typeof values.defaultListId === "string" ? values.defaultListId : null, addNewTasksFirst: values.addNewTasksFirst === true, unsectionedCollapsed: values.unsectionedCollapsed === true, unsectionedHidden: values.unsectionedHidden === true, unsectionedPosition: Number.isSafeInteger(values.unsectionedPosition) && values.unsectionedPosition >= 0 ? values.unsectionedPosition : 0, projectSections: Array.isArray(values.projectSections) ? values.projectSections : [], completedAt: values.completedAt || null, position: Number.isFinite(values.position) ? values.position : 0 };
 }
 function projectFromTask(task, projectRecords) {
   if (task.status !== "active") throw new Error("Лише активне завдання можна перетворити на проєкт");
@@ -583,10 +583,10 @@ function moveTaskBlockToSection(records, movedIds, listId, sectionId, beforeId =
   return records.map(task => replacements.get(task.id) || task);
 }
 function currentProjectTask(tasks, projectId, projectRecords = []) {
-  const sections = projectRecords.find(project => project.id === projectId)?.projectSections || [];
-  const sectionOrder = new Map(sections.map((section, index) => [section.id, index + 1]));
+  const project = projectRecords.find(project => project.id === projectId);
+  const sectionOrder = new Map(orderedProjectSectionIds(project).map((id, index) => [id, index]));
   return tasks.filter(task => task.projectId === projectId && !isTaskCompleted(task))
-    .sort((a, b) => (sectionOrder.get(a.projectSectionId) || 0) - (sectionOrder.get(b.projectSectionId) || 0)
+    .sort((a, b) => (sectionOrder.get(a.projectSectionId || PROJECT_ROOT_SECTION_ID) || 0) - (sectionOrder.get(b.projectSectionId || PROJECT_ROOT_SECTION_ID) || 0)
       || compareProjectTasks(a, b))[0] || null;
 }
 function currentProjectStepGroupColor(task, plans) {
@@ -642,16 +642,24 @@ function reorderProjectStepBlock(records, projectId, selectedIds, beforeId) {
 }
 
 
+const PROJECT_ROOT_SECTION_ID = "project-root";
+function orderedProjectSectionIds(project) {
+  const ids = (project?.projectSections || []).map(section => section.id);
+  ids.splice(Math.min(Math.max(project?.unsectionedPosition || 0, 0), ids.length), 0, PROJECT_ROOT_SECTION_ID);
+  return ids;
+}
 function reorderProjectSections(project, selectedIds, beforeId, updatedAt = nowIso()) {
-  const sections = project.projectSections || [];
-  const moving = sections.filter(section => selectedIds.has(section.id));
+  const original = orderedProjectSectionIds(project);
+  const moving = original.filter(id => selectedIds.has(id));
   if (!moving.length || selectedIds.has(beforeId)) return project;
-  const remaining = sections.filter(section => !selectedIds.has(section.id));
-  const index = beforeId == null ? remaining.length : remaining.findIndex(section => section.id === beforeId);
+  const remaining = original.filter(id => !selectedIds.has(id));
+  const index = beforeId == null ? remaining.length : remaining.indexOf(beforeId);
   if (index < 0) return project;
   remaining.splice(index, 0, ...moving);
-  if (remaining.every((section, index) => section.id === sections[index].id)) return project;
-  return { ...project, projectSections: remaining, updatedAt };
+  if (remaining.every((id, index) => id === original[index])) return project;
+  const byId = new Map((project.projectSections || []).map(section => [section.id, section]));
+  return { ...project, projectSections: remaining.filter(id => id !== PROJECT_ROOT_SECTION_ID).map(id => byId.get(id)),
+    unsectionedPosition: remaining.indexOf(PROJECT_ROOT_SECTION_ID), updatedAt };
 }
 function renameProjectSection(project, sectionId, title, updatedAt = nowIso()) {
   title = String(title || "").trim();
@@ -674,10 +682,10 @@ function removeProjectSections(project, taskRecords, selectedIds, deleteTasks, u
 function assignProjectTasksToSection(project, taskRecords, selectedIds, sectionId = null, title = "", updatedAt = nowIso()) {
   if (project.status === "completed") throw new Error("Завершений проєкт не можна змінювати");
   const sections = project.projectSections || [];
-  const sectionOrder = new Map(sections.map((section, index) => [section.id, index + 1]));
+  const sectionOrder = new Map(orderedProjectSectionIds(project).map((id, index) => [id, index]));
   const selected = taskRecords.filter(task => task.projectId === project.id && selectedIds.has(task.id))
     .sort((a, b) => Number(isTaskCompleted(a)) - Number(isTaskCompleted(b))
-      || (sectionOrder.get(a.projectSectionId) || 0) - (sectionOrder.get(b.projectSectionId) || 0)
+      || (sectionOrder.get(a.projectSectionId || PROJECT_ROOT_SECTION_ID) || 0) - (sectionOrder.get(b.projectSectionId || PROJECT_ROOT_SECTION_ID) || 0)
       || compareProjectTasks(a, b));
   if (!selected.length) throw new Error("Виберіть завдання цього проєкту");
   let updated;
