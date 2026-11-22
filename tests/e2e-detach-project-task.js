@@ -36,8 +36,9 @@ const { openTestApp } = require("./e2e-helper");
     await page.click("#task-detach-confirm");
     assert.equal(await page.locator("#toast .toast-message").textContent(), "Введіть назву завдання");
     await page.fill("#task-title", "Самостійний крок");
+    await page.click("#task-description-edit");
     await page.fill("#task-description", "Введений опис");
-    await page.click("#description-edit-back");
+    await page.click("#description-edit-save");
     await page.evaluate(() => {
       window.originalPutMany = taskDb.putMany;
       taskDb.putMany = async () => { throw new Error("test write failure"); };
@@ -45,6 +46,7 @@ const { openTestApp } = require("./e2e-helper");
     await page.click("#task-actions-trigger");
     await page.click("#task-detach-project");
     await page.click("#task-detach-confirm");
+    await page.getByText("Не вдалося від’єднати завдання. Зміни не збережено", { exact: true }).waitFor();
     assert.equal(await page.locator("#task-editor").isVisible(), true);
     assert.equal(await page.locator("#task-description").evaluate(node => node.value), "Введений опис");
     const failedRecord = await page.evaluate(async id => (await taskDb.all()).find(task => task.id === id), stepId);
@@ -59,7 +61,9 @@ const { openTestApp } = require("./e2e-helper");
       const editor = document.querySelector("#task-editor");
       return editor.dataset.taskId === id && document.querySelector("#task-detach-project").hidden;
     }, stepId);
-    await page.locator("#toast-action").click();
+    await page.locator("#toast-action").click({ timeout: 5000 }).catch(async error => {
+      throw new Error(await page.locator("#toast .toast-message").textContent(), { cause: error });
+    });
     await page.waitForFunction(id => document.querySelector("#task-editor").dataset.taskId === id
       && !document.querySelector("#task-detach-project").hidden, stepId);
     assert.equal((await page.evaluate(async id => (await taskDb.all()).find(task => task.id === id)?.projectId, stepId)), projectId);

@@ -18,8 +18,9 @@ const { openTestApp } = require("./e2e-helper");
     assert.equal(await page.locator("#toast .toast-message").textContent(), "Введіть назву завдання");
 
     await page.fill("#task-title", "Нова назва проєкту");
+    await page.click("#task-description-edit");
     await page.fill("#task-description", "Новий опис");
-    await page.click("#description-edit-back");
+    await page.click("#description-edit-save");
     await page.evaluate(() => {
       const existing = createProject({ title: "Колізія", position: 0 });
       window.testCollisionProject = existing;

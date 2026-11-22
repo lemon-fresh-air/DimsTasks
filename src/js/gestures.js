@@ -228,6 +228,21 @@ function enableListReordering({ container = els.mainMenuLists, onReorder, isSele
     reorder: ({ selectedIds, before }) => onReorder({ selectedIds, beforeId: before?.dataset.listId || null }) });
 }
 
+function captureRows(dragContainer) {
+  return new Map([...dragContainer.children].filter(row => row.dataset.id || row.dataset.groupId)
+    .map(row => [row.dataset.groupId ? `group:${row.dataset.groupId}` : `task:${row.dataset.id}`, row.getBoundingClientRect().top]));
+}
+
+function animateRows(previous, dragContainer) {
+  if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  for (const row of dragContainer.children) {
+    const top = previous.get(row.dataset.groupId ? `group:${row.dataset.groupId}` : `task:${row.dataset.id}`);
+    if (top === undefined) continue;
+    const delta = top - row.getBoundingClientRect().top;
+    if (Math.abs(delta) > 1) row.animate([{ transform: `translateY(${delta}px)` }, { transform: "translateY(0)" }], { duration: 240, easing: "cubic-bezier(.2,.8,.2,1)" });
+  }
+}
+
 function enableTaskGestures({ container = els.list, onDelete, onAddToday, canAddToday = () => true, isSelectionMode, isSelected, onLongPress, onSelectOnly, getSelectedIds, onReorder, requireSelectionForDrag = false, canDragRow = () => true, sectionDragEnabled = () => false }) {
   let gesture = null;
   const maxReveal = 112;
@@ -272,21 +287,6 @@ function enableTaskGestures({ container = els.list, onDelete, onAddToday, canAdd
       if (gesture?.pointerType === "touch" ||
           container.contains(event.target) && event.target instanceof Element && event.target.closest(".task-card")) event.preventDefault();
     });
-  }
-
-  function captureRows(dragContainer) {
-    return new Map([...dragContainer.children].filter(row => row.dataset.id || row.dataset.groupId)
-      .map(row => [row.dataset.groupId ? `group:${row.dataset.groupId}` : `task:${row.dataset.id}`, row.getBoundingClientRect().top]));
-  }
-
-  function animateRows(previous, dragContainer) {
-    if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-    for (const row of dragContainer.children) {
-      const top = previous.get(row.dataset.groupId ? `group:${row.dataset.groupId}` : `task:${row.dataset.id}`);
-      if (top === undefined) continue;
-      const delta = top - row.getBoundingClientRect().top;
-      if (Math.abs(delta) > 1) row.animate([{ transform: `translateY(${delta}px)` }, { transform: "translateY(0)" }], { duration: 240, easing: "cubic-bezier(.2,.8,.2,1)" });
-    }
   }
 
   function startDrag(event) {

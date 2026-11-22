@@ -342,3 +342,23 @@ test("future and malformed files are rejected before restoration", async () => {
   await assert.rejects(readBackup(file({ format: "local-first-pwa-backup", appId: "dims-tasks", formatVersion: BACKUP_FORMAT_VERSION + 1, data })), /ще не підтримано/);
   await assert.rejects(readBackup({ text: async () => "{" }), /JSON-файл/);
 });
+
+test("Today creation modes apply the selected default date and sun fields", () => {
+  const date = "2026-01-01";
+  for (const [mode, dueDate, addedToTodayDate] of [
+    ["sun", null, date], ["date", date, null], ["both", date, date]
+  ]) {
+    const fields = vm.runInContext(`todayTaskDates("${date}", "${mode}")`, context);
+    assert.deepEqual({ ...fields }, { dueDate, addedToTodayDate });
+  }
+});
+
+test("backup preserves the Today creation mode and accepts previous workflow settings", async () => {
+  const workflow = { ...base("workflow"), returnOverdueToInbox: false };
+  const payload = { format: "local-first-pwa-backup", appId: "dims-tasks", formatVersion: BACKUP_FORMAT_VERSION, data };
+  const withMode = todayTaskCreationMode => ({ ...payload, data: { ...data, settings: [{ ...workflow, todayTaskCreationMode }] } });
+  assert.equal((await parseBackup(file(withMode("both")))).settings[0].todayTaskCreationMode, "both");
+  await assert.rejects(parseBackup(file(withMode("invalid"))), /Некоректне налаштування/);
+  const legacy = { ...payload, formatVersion: 25, data: { ...data, settings: [{ ...workflow, groupTasksWithoutDueDate: false }] } };
+  assert.equal((await parseBackup(file(legacy))).settings[0].todayTaskCreationMode, undefined);
+});

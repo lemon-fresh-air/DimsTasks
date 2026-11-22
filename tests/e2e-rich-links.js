@@ -30,7 +30,7 @@ async function selectText(page, selector, text) {
       return task.id;
     });
     await page.locator(`#task-list [data-id="${taskId}"] .task-open`).click();
-    await page.locator("#task-description").click();
+    await page.locator("#task-description-edit").click();
     await selectText(page, "#task-description", "фрагмент");
     const linkButton = page.locator('#task-description').locator('xpath=..').locator('[data-rich-command="link"]');
     assert.equal(await linkButton.evaluate(button => getComputedStyle(button, "::before").content), "none");

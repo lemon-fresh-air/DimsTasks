@@ -263,11 +263,15 @@
           <span aria-hidden="true"></span>
         </label>
       </div>
-      <div class="settings-row overdue-setting">
-        <span class="calendar-icon" aria-hidden="true"></span>
-        <span class="settings-copy"><strong>Завдання групи без терміну сьогодні</strong><small>Додавати до «Сьогодні» без встановлення терміну</small></span>
-        <label class="theme-switch"><input id="group-tasks-without-due-date-toggle" type="checkbox" role="switch" aria-label="Створювати завдання в групах Сьогодні без терміну" checked><span aria-hidden="true"></span></label>
-      </div>
+      <label class="settings-row start-screen-setting" for="today-task-creation-select">
+        <span class="sun-icon" aria-hidden="true"></span>
+        <span class="settings-copy"><strong>Нові завдання на «Сьогодні»</strong><small>Дата й сонечко під час створення</small></span>
+        <select id="today-task-creation-select">
+          <option value="sun">Лише сонечко</option>
+          <option value="date">Лише дата</option>
+          <option value="both">Дата й сонечко</option>
+        </select>
+      </label>
       <div class="settings-row overdue-setting">
         <span class="projects-icon" aria-hidden="true"></span>
         <span class="settings-copy"><strong>Показувати лише перші 3 кроки проєкту</strong><small>Решту розгортати стрілкою на КП</small></span>
@@ -322,7 +326,7 @@
       </div>
       <button id="clear-data-open" class="settings-row clear-data-open" type="button" aria-haspopup="dialog" aria-controls="clear-data-dialog"><span class="trash-icon" aria-hidden="true"></span><span class="settings-copy"><strong>Очистити дані</strong><small>Завдання, списки, проєкти й налаштування</small></span><span aria-hidden="true">›</span></button>
     </div>
-    <p class="settings-version"><span>Версія 0.32 · 17 листопада 2026</span><button id="check-app-update" type="button">Перевірити оновлення</button></p>
+    <p class="settings-version"><span>Версія 0.33 · 22 листопада 2026</span><button id="check-app-update" type="button">Перевірити оновлення</button></p>
   </div>
 </section>
 <dialog id="clear-data-dialog" class="clear-data-dialog" aria-labelledby="clear-data-title">
@@ -442,6 +446,8 @@
     <span class="editor-context"><span id="editor-list-icon" class="inbox-icon" aria-hidden="true"></span><span id="editor-list-label">Нові</span></span>
     <button id="task-actions-trigger" class="task-actions-trigger" type="button" aria-label="Додаткові дії із завданням" aria-haspopup="menu" aria-expanded="false" aria-controls="task-actions-menu" hidden><span aria-hidden="true"></span></button>
     <div id="task-actions-menu" class="task-actions-menu" role="menu" aria-label="Додаткові дії із завданням" hidden>
+      <button id="task-copy-description" class="project-attribute" type="button" role="menuitem" data-rich-copy="description" data-rich-target="task-description" hidden><span class="description-icon" aria-hidden="true"></span><span>Копіювати опис</span></button>
+      <button class="project-attribute" type="button" role="menuitem" data-rich-copy="title-description" data-rich-target="task-description" hidden><span class="description-icon" aria-hidden="true"></span><span>Копіювати опис із назвою</span></button>
       <button id="task-add-checklist" class="project-attribute" type="button" role="menuitem"><span class="checklist-icon" aria-hidden="true">☑</span><span>Додати чекліст</span></button>
       <button id="task-add-today" class="project-attribute" type="button" role="menuitem" hidden><span class="sun-icon" aria-hidden="true"></span><span>Додати до «Сьогодні»</span></button>
       <button id="task-merge-checklist" class="project-attribute" type="button" role="menuitem" hidden><span class="checklist-icon" aria-hidden="true">☑</span><span>Злити чекліст із завданням</span></button>
@@ -459,10 +465,14 @@
       <textarea id="task-title" name="title" rows="1" maxlength="160" placeholder="Назва завдання" required></textarea>
     </div>
     <div class="detail-fields" hidden>
-      <button id="task-copy-description" class="modal-field-icon description-icon" type="button" aria-label="Копіювати опис завдання" title="Копіювати опис"></button>
-      <div class="rich-description-shell"><div id="task-description" class="rich-description" contenteditable="true" role="textbox" aria-multiline="true" aria-label="Опис завдання" data-placeholder="Додати опис…"></div><div class="rich-toolbar" role="toolbar" aria-label="Форматування опису завдання"><button type="button" data-rich-command="checklist" aria-label="Додати чекліст"><span class="checklist-icon" aria-hidden="true">☑</span></button><button type="button" data-rich-command="bold" aria-label="Жирний">Ж</button><button type="button" data-rich-command="italic" aria-label="Курсив"><i>К</i></button><button type="button" data-rich-command="underline" aria-label="Підкреслення"><u>П</u></button><button type="button" data-rich-command="link" aria-label="Додати посилання"><span class="rich-external-icon" aria-hidden="true"></span></button></div><div class="rich-copy-actions"><button type="button" data-rich-copy="title-description">Копіювати з назвою</button></div></div>
+      <div class="task-description-controls">
+        <span id="task-description-label">Опис</span>
+        <button id="task-description-toggle" class="task-description-toggle" type="button" aria-controls="task-description" aria-expanded="false" hidden>Розгорнути опис</button>
+        <button id="task-description-edit" class="task-description-edit" type="button" aria-haspopup="dialog">Додати опис</button>
+      </div>
+      <div class="rich-description-shell"><div id="task-description" class="rich-description" role="region" aria-label="Опис завдання" data-placeholder="Додати опис…"></div><div class="rich-toolbar" role="toolbar" aria-label="Форматування опису завдання"><button type="button" data-rich-command="checklist" aria-label="Додати чекліст"><span class="checklist-icon" aria-hidden="true">☑</span></button><button type="button" data-rich-command="bold" aria-label="Жирний">Ж</button><button type="button" data-rich-command="italic" aria-label="Курсив"><i>К</i></button><button type="button" data-rich-command="underline" aria-label="Підкреслення"><u>П</u></button><button type="button" data-rich-command="link" aria-label="Додати посилання"><span class="rich-external-icon" aria-hidden="true"></span></button></div></div>
     </div>
-    <div class="description-edit-actions"><button id="description-edit-back" type="button">Назад</button><button id="description-edit-save" type="button">Зберегти</button></div>
+    <div class="description-edit-actions"><button id="description-edit-back" type="button">Скасувати</button><button id="description-edit-save" type="button">Зберегти</button></div>
     <details id="task-saved-steps" hidden><summary id="task-saved-steps-title"></summary><ol id="task-saved-steps-list"></ol></details>
     <div class="composer-actions">
       <button id="date-picker-open" class="meta-chip date-chip" type="button" aria-haspopup="dialog"><span class="calendar-icon" aria-hidden="true"></span><span id="date-label">Сьогодні</span></button>

@@ -468,6 +468,17 @@ const projectDb = {
   })
 };
 
+function updateWorkflowSettings(changes) {
+  return transact("settings", "readwrite", (_tx, stores) => {
+    const request = stores.settings.get(WORKFLOW_SETTINGS_ID);
+    request.onsuccess = () => {
+      const current = request.result;
+      const now = new Date().toISOString();
+      stores.settings.put({ id: WORKFLOW_SETTINGS_ID, entityVersion: 1, returnOverdueToInbox: false,
+        ...current, ...changes, createdAt: current?.createdAt || now, updatedAt: now });
+    };
+  });
+}
 const settingsDb = {
   todayLayout: date => appDb.get("settings", dayPlanId(date)),
   migrateTodayLayout: () => transact("settings", "readwrite", (_tx, stores) => {
@@ -604,39 +615,17 @@ const settingsDb = {
     const settings = await appDb.get("settings", WORKFLOW_SETTINGS_ID);
     return settings?.returnOverdueToInbox === true;
   },
-  groupTasksWithoutDueDate: async () => {
+  todayTaskCreationMode: async () => {
     const settings = await appDb.get("settings", WORKFLOW_SETTINGS_ID);
-    return settings?.groupTasksWithoutDueDate !== false;
+    return TODAY_TASK_CREATION_MODES.includes(settings?.todayTaskCreationMode) ? settings.todayTaskCreationMode : "sun";
   },
-  setGroupTasksWithoutDueDate: async enabled => {
-    const current = await appDb.get("settings", WORKFLOW_SETTINGS_ID);
-    const now = new Date().toISOString();
-    await appDb.put("settings", { ...current, id: WORKFLOW_SETTINGS_ID, entityVersion: 1,
-      groupTasksWithoutDueDate: enabled === true, createdAt: current?.createdAt || now, updatedAt: now });
-  },
+  setTodayTaskCreationMode: mode => updateWorkflowSettings({ todayTaskCreationMode: mode }),
   projectPreview: async () => {
     const settings = await appDb.get("settings", WORKFLOW_SETTINGS_ID);
     return settings?.projectPreview === true;
   },
-  setProjectPreview: async enabled => {
-    const current = await appDb.get("settings", WORKFLOW_SETTINGS_ID);
-    const now = new Date().toISOString();
-    await appDb.put("settings", { ...current, id: WORKFLOW_SETTINGS_ID, entityVersion: 1,
-      projectPreview: enabled === true, createdAt: current?.createdAt || now, updatedAt: now });
-  },
-  setReturnOverdueToInbox: async enabled => {
-    const current = await appDb.get("settings", WORKFLOW_SETTINGS_ID);
-    const now = new Date().toISOString();
-    await appDb.put("settings", {
-      id: WORKFLOW_SETTINGS_ID,
-      entityVersion: 1,
-      projectPreview: current?.projectPreview === true,
-      groupTasksWithoutDueDate: current?.groupTasksWithoutDueDate !== false,
-      returnOverdueToInbox: enabled === true,
-      createdAt: current?.createdAt || now,
-      updatedAt: now
-    });
-  },
+  setProjectPreview: enabled => updateWorkflowSettings({ projectPreview: enabled === true }),
+  setReturnOverdueToInbox: enabled => updateWorkflowSettings({ returnOverdueToInbox: enabled === true }),
   startScreen: async () => {
     const settings = await appDb.get("settings", NAVIGATION_SETTINGS_ID);
     return START_SCREEN_IDS.includes(settings?.startScreen) ? settings.startScreen : "inbox";

@@ -14,8 +14,9 @@ const { openTestApp } = require("./e2e-helper");
     const currentId = await page.evaluate(() => currentProjectTask(tasks, activeProjectId).id);
     await page.locator(`#project-task-list [data-id="${currentId}"] .task-open`).click();
     await page.fill("#task-title", "Новий самостійний проєкт");
+    await page.click("#task-description-edit");
     await page.fill("#task-description", "Опис із редактора");
-    await page.click("#description-edit-back");
+    await page.click("#description-edit-save");
 
     await page.click("#task-actions-trigger");
     await page.click("#task-detach-project");

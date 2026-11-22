@@ -99,6 +99,10 @@ function projectCountdown(dueDate, today) {
   if (days < -2) return { text: `Прострочено на ${Math.abs(days)} днів`, overdue: true };
   return { text: `Лишилося ${days} днів`, overdue: false };
 }
+const TODAY_TASK_CREATION_MODES = ["sun", "date", "both"];
+function todayTaskDates(date, mode) {
+  return { dueDate: mode === "sun" ? null : date, addedToTodayDate: mode === "date" ? null : date };
+}
 function createTask(values = {}) {
   return { ...baseRecord(values), ...values, listId: values.listId || INBOX_LIST_ID, sectionId: values.sectionId || null, projectId: values.projectId || null, projectSectionId: values.projectId ? values.projectSectionId || null : null, title: String(values.title || "").trim(), description: values.description || "", status: values.status || "active", completedAt: values.completedAt || null, dueDate: values.dueDate || null, dueTime: values.dueDate && values.dueTime ? values.dueTime : null, addedToTodayDate: values.addedToTodayDate || null, position: Number.isFinite(values.position) ? values.position : 0, todayPosition: Number.isSafeInteger(values.todayPosition) && values.todayPosition >= 0 ? values.todayPosition : null, projectPosition: Number.isFinite(values.projectPosition) ? values.projectPosition : null, returnedToInboxAt: values.returnedToInboxAt || null, savedSteps: values.savedSteps ?? [] };
 }
@@ -234,10 +238,30 @@ function compareTodayTasks(a, b) {
 function compareDayTasks(a, b) {
   return String(b.createdAt || "").localeCompare(String(a.createdAt || "")) || String(a.id).localeCompare(String(b.id));
 }
+function upcomingTaskPosition(task) {
+  const order = task.customFields?.upcomingOrder;
+  return order && order.date === task.dueDate && Number.isSafeInteger(order.position) && order.position >= 0
+    ? order.position : Infinity;
+}
 function compareUpcomingTasks(a, b) {
-  return Number(!a.dueTime) - Number(!b.dueTime)
+  return (upcomingTaskPosition(a) - upcomingTaskPosition(b))
+    || Number(!a.dueTime) - Number(!b.dueTime)
     || String(a.dueTime || "").localeCompare(String(b.dueTime || ""))
     || compareTasks(a, b);
+}
+function reorderUpcomingTasks(dayTasks, selectedIds, targetId, after) {
+  const ordered = dayTasks.slice().sort(compareUpcomingTasks);
+  const moved = ordered.filter(task => selectedIds.has(task.id));
+  const remaining = ordered.filter(task => !selectedIds.has(task.id));
+  const targetIndex = remaining.findIndex(task => task.id === targetId);
+  if (!moved.length || targetIndex < 0) return [];
+  remaining.splice(targetIndex + Number(after), 0, ...moved);
+  if (remaining.every((task, position) => task === ordered[position])) return [];
+  const updatedAt = nowIso();
+  return remaining.flatMap((task, position) => upcomingTaskPosition(task) === position ? [] : [{
+    ...task, updatedAt,
+    customFields: { ...task.customFields, upcomingOrder: { date: task.dueDate, position } }
+  }]);
 }
 function dayPlanId(date) { return `day-plan:${date}`; }
 function nextLocalDate(date = new Date()) {

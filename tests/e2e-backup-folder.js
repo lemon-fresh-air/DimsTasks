@@ -10,8 +10,8 @@ const backup = (exportedAt, tasks) => ({ format: "local-first-pwa-backup", appId
 (async () => {
   const { browser, page, errors } = await openTestApp();
   try {
-    await page.click("#main-menu-open");
-    await page.click("#settings-open");
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.click("#desktop-settings-open");
     assert.equal(await page.locator("#backup-latest").isChecked(), true);
 
     await page.evaluate(({ older, newer }) => {
@@ -24,8 +24,8 @@ const backup = (exportedAt, tasks) => ({ format: "local-first-pwa-backup", appId
       window.testDenyWrite = false;
       const handle = {
         name: "DimsTasks backups sync",
-        queryPermission: async ({ mode } = {}) => mode === "readwrite" ? "prompt" : "granted",
-        requestPermission: async () => window.testDenyWrite ? "denied" : "granted",
+        queryPermission: async () => { throw new Error("Permission must be requested directly from the click"); },
+        requestPermission: () => new Promise(() => {}),
         values: async function* () {
           for (const [name] of files) yield { kind: "file", name, getFile: async () => files.get(name) };
         },
@@ -44,7 +44,10 @@ const backup = (exportedAt, tasks) => ({ format: "local-first-pwa-backup", appId
           };
         }
       };
-      Object.defineProperty(window, "showDirectoryPicker", { configurable: true, value: async () => handle });
+      Object.defineProperty(window, "showDirectoryPicker", { configurable: true, value: async options => {
+        if (options.mode === "readwrite" && window.testDenyWrite) throw new Error("Доступ до запису в папку не надано");
+        return handle;
+      } });
     }, { older: backup("2026-10-17T10:00:00.000Z", []), newer: backup("2026-10-18T10:00:00.000Z", [task]) });
 
     await page.click("#backup-import-open");
@@ -86,8 +89,8 @@ const backup = (exportedAt, tasks) => ({ format: "local-first-pwa-backup", appId
     await page.click("#backup-cancel");
 
     await page.reload({ waitUntil: "networkidle" });
-    await page.click("#main-menu-open");
-    await page.click("#settings-open");
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.click("#desktop-settings-open");
     assert.equal(await page.locator("#backup-latest").isChecked(), true);
     await page.locator("#backup-file").setInputFiles({ name: "manual.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(backup(stamp, []))) });
     await page.locator("#backup-preview:visible").waitFor();

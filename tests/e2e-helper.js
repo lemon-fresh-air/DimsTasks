@@ -4,8 +4,8 @@ const { chromium } = require("playwright");
 
 const chrome = "C:/Program Files/Google/Chrome/Application/chrome.exe";
 
-async function openTestApp() {
-  const browser = await chromium.launch({ executablePath: chrome, headless: true, args: ["--no-proxy-server"] });
+async function openTestApp({ executablePath = chrome } = {}) {
+  const browser = await chromium.launch({ executablePath, headless: true, args: ["--no-proxy-server"] });
   const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
   await context.addInitScript(() => {
     const serviceWorker = new EventTarget();

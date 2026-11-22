@@ -87,7 +87,7 @@ const { openTestApp } = require("./e2e-helper");
     await page.waitForFunction(earlier => {
       const feed = document.querySelector("#upcoming-feed").getBoundingClientRect();
       const day = document.querySelector(`#upcoming-feed [data-date="${earlier}"] h2`)?.getBoundingClientRect();
-      return day && day.top > feed.top + 8 && day.bottom < feed.bottom;
+      return day && day.top > feed.top + 55 && day.bottom < feed.bottom - 45;
     }, dates.earlier);
     await page.mouse.move(feedBox.x + feedBox.width / 2, feedBox.y + feedBox.height / 2);
     const earlierBox = await page.locator(`#upcoming-feed [data-date="${dates.earlier}"] h2`).boundingBox();
@@ -113,7 +113,7 @@ const { openTestApp } = require("./e2e-helper");
     await page.waitForFunction(date => {
       const feed = document.querySelector("#upcoming-feed").getBoundingClientRect();
       const day = document.querySelector(`#upcoming-feed [data-date="${date}"] h2`)?.getBoundingClientRect();
-      return day && day.top > feed.top + 8 && day.bottom < feed.bottom;
+      return day && day.top > feed.top + 55 && day.bottom < feed.bottom - 45;
     }, yesterday);
     await page.mouse.move(pastFeedBox.x + pastFeedBox.width / 2, pastFeedBox.y + pastFeedBox.height / 2);
     const yesterdayBox = await page.locator(`#upcoming-feed [data-date="${yesterday}"] h2`).boundingBox();

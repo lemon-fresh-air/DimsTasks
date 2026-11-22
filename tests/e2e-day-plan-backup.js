@@ -35,7 +35,7 @@ const { openTestApp } = require("./e2e-helper");
       const parsed = await parseBackup({ size: blob.size, text: async () => JSON.stringify(payload) });
       return { payload, parsed };
     });
-    assert.equal(backup.payload.formatVersion, 24);
+    assert.equal(backup.payload.formatVersion, 26);
     assert.equal(backup.parsed.settings.filter(item => item.id.startsWith("day-plan:")).length, 2);
     const old = structuredClone(backup.payload);
     old.formatVersion = 16;
