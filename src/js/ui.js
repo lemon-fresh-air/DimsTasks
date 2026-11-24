@@ -323,6 +323,133 @@ function taskCountsByList(tasks) {
   return counts;
 }
 
+function appendSearchHighlight(container, text, matches, start = 0, end = text.length) {
+  let offset = start;
+  for (const match of [...matches].sort((a, b) => a.start - b.start)) {
+    const from = Math.max(offset, match.start);
+    const to = Math.min(end, match.end);
+    if (from >= to) continue;
+    container.append(text.slice(offset, from));
+    const highlight = document.createElement("mark");
+    highlight.textContent = text.slice(from, to);
+    container.append(highlight);
+    offset = to;
+  }
+  container.append(text.slice(offset, end));
+}
+
+function searchControl(action, text, label = text, iconClass) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.dataset.searchAction = action;
+  button.textContent = text;
+  button.setAttribute("aria-label", label);
+  if (iconClass) {
+    const icon = document.createElement("span");
+    icon.className = iconClass;
+    icon.setAttribute("aria-hidden", "true");
+    button.prepend(icon);
+  }
+  return button;
+}
+
+function taskTodayActionLabel(manuallyToday, dueToday) {
+  if (!manuallyToday) return "Додати до «Сьогодні»";
+  return dueToday ? "Зняти ручне додавання" : "Прибрати зі «Сьогодні»";
+}
+
+function renderSearchResult({ entry, titleMatches, descriptionMatches }) {
+  const row = document.createElement("li");
+  row.className = "global-search-result";
+  row.dataset.searchKey = `${entry.type}:${entry.id}`;
+  const open = searchControl("open", "", entry.title);
+  open.className = "global-search-open";
+  const title = document.createElement("strong");
+  appendSearchHighlight(title, entry.title, titleMatches);
+  const meta = document.createElement("span");
+  meta.className = "global-search-meta";
+  meta.textContent = entry.meta;
+  if (entry.manuallyToday) {
+    const sun = document.createElement("span");
+    sun.className = "task-today-indicator sun-icon";
+    sun.setAttribute("role", "img");
+    sun.setAttribute("aria-label", "Додано до «Сьогодні»");
+    meta.append(sun);
+  }
+  open.append(title, meta);
+  open.setAttribute("aria-label", [entry.title, entry.meta, entry.manuallyToday ? "Додано до «Сьогодні»" : null].filter(Boolean).join(" · "));
+  if (entry.type === "task" && !entry.completed) {
+    const toggle = searchControl("complete", "", "Виконати завдання");
+    toggle.className = "toggle";
+    const icon = document.createElement("span");
+    icon.setAttribute("aria-hidden", "true");
+    toggle.append(icon);
+    row.append(toggle);
+  }
+  row.append(open);
+
+  if (entry.type === "task") {
+    const actions = document.createElement("div");
+    actions.className = "global-search-actions";
+    const trigger = document.createElement("button");
+    trigger.type = "button";
+    trigger.className = "global-search-more-actions";
+    trigger.textContent = "⋯";
+    trigger.setAttribute("aria-label", "Дії із завданням");
+    const menu = document.createElement("div");
+    menu.className = "global-search-action-menu";
+    menu.setAttribute("popover", "auto");
+    trigger.popoverTargetElement = menu;
+    if (!entry.completed) {
+      const label = taskTodayActionLabel(entry.manuallyToday, entry.dueToday);
+      menu.append(searchControl(entry.manuallyToday ? "remove-today" : "add-today", label, label, "sun-icon"));
+    }
+    if (entry.canMoveList) {
+      const label = "Перемістити в інший список";
+      menu.append(searchControl("pick-list", label, label, "inbox-icon"));
+    }
+    if (entry.canMoveProject) {
+      const label = entry.projectId ? "Перемістити до проєкту" : "Додати до проєкту";
+      menu.append(searchControl("pick-project", label, label, "projects-icon"));
+    }
+    menu.append(searchControl("delete", "Видалити", "Видалити", "trash-icon"));
+    menu.addEventListener("beforetoggle", event => {
+      if (event.newState !== "open") return;
+      const anchor = trigger.getBoundingClientRect();
+      const bounds = row.closest("dialog").getBoundingClientRect();
+      menu.style.right = `${document.documentElement.clientWidth - anchor.right}px`;
+      const height = 16 + menu.childElementCount * 50;
+      const openAbove = anchor.bottom + height > bounds.bottom && anchor.top - bounds.top > bounds.bottom - anchor.bottom;
+      menu.style.top = `${openAbove ? anchor.top - 6 : anchor.bottom + 6}px`;
+      menu.classList.toggle("opens-above", openAbove);
+    });
+    actions.append(trigger, menu);
+    row.append(actions);
+  }
+  if (entry.description) {
+    const preview = document.createElement("details");
+    preview.className = "global-search-preview";
+    const summary = document.createElement("summary");
+    summary.textContent = "Опис";
+    const description = document.createElement("p");
+    appendSearchHighlight(description, entry.description, descriptionMatches);
+    if (descriptionMatches.length) {
+      const excerpt = document.createElement("span");
+      excerpt.className = "global-search-meta";
+      const firstMatch = Math.min(...descriptionMatches.map(match => match.start));
+      const start = Math.max(0, firstMatch - 24);
+      const end = Math.min(entry.description.length, firstMatch + 68);
+      if (start) excerpt.append("…");
+      appendSearchHighlight(excerpt, entry.description, descriptionMatches, start, end);
+      if (end < entry.description.length) excerpt.append("…");
+      open.append(excerpt);
+    }
+    preview.append(summary, description);
+    row.append(preview);
+  }
+  return row;
+}
+
 function renderMainMenuLists(lists, activeListId, selectedIds = new Set(), tasks = []) {
   const counts = taskCountsByList(tasks);
   els.mainMenuLists.classList.toggle("selection-mode", selectedIds.size > 0);
@@ -1068,9 +1195,7 @@ function openTaskDetails(task) {
   els.taskDelete.hidden = false;
   const manuallyToday = task.addedToTodayDate === localDateValue();
   els.taskAddToday.hidden = task.status !== "active";
-  els.taskAddToday.querySelector("span:last-child").textContent = manuallyToday
-    ? task.dueDate === localDateValue() ? "Зняти ручне додавання" : "Прибрати зі «Сьогодні»"
-    : "Додати до «Сьогодні»";
+  els.taskAddToday.querySelector("span:last-child").textContent = taskTodayActionLabel(manuallyToday, task.dueDate === localDateValue());
   els.taskProjectLink.dataset.projectId = project?.id || "";
   els.taskProjectValue.textContent = project?.title || "";
   setTaskEditorListUI(task.listId || INBOX_LIST_ID);

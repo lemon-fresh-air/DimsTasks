@@ -1,0 +1,153 @@
+const assert = require("node:assert/strict");
+const { openTestApp } = require("./e2e-helper");
+
+(async () => {
+  const { browser, page, errors } = await openTestApp();
+  try {
+    const ids = await page.evaluate(async () => {
+      const list = createList({ title: "Магазин" });
+      const project = createProject({ title: "Покупки біля магазину" });
+      const destination = createProject({ title: "Домашні справи" });
+      const standalone = createTask({ title: "Позапроєктна справа" });
+      const task = createTask({ title: "Купити в магазині масло", listId: list.id,
+        description: "ДовгийОпис".repeat(80), dueDate: localDateValue(), projectId: project.id, projectPosition: 0 });
+      const next = createTask({ title: "Повернутися додому", listId: list.id,
+        dueDate: localDateValue(), projectId: project.id, projectPosition: 1 });
+      await listDb.put(list);
+      await projectDb.put(project);
+      await projectDb.put(destination);
+      await taskDb.putMany([task, next, standalone]);
+      lists.push(list);
+      await loadProjects();
+      await refresh();
+      const date = localDateValue();
+      const plan = createTodayGroup(null, visibleTodayLayoutTasks(date), date, "#3A7BD5", [task.id], "search-group");
+      await settingsDb.saveTodayLayout(plan, date);
+      return { list: list.id, project: project.id, task: task.id, next: next.id,
+        destination: destination.id, standalone: standalone.id };
+    });
+    const dialog = page.locator("#global-search");
+    const input = page.locator("#global-search-input");
+    const row = (type, id) => page.locator(`[data-search-key="${type}:${id}"]`);
+    const taskRow = row("task", ids.task);
+    const open = async () => {
+      await page.click("#main-menu-open");
+      await page.click("#main-menu [data-open-search]");
+      await dialog.waitFor({ state: "visible" });
+    };
+    await open();
+    assert.equal(await input.evaluate(element => document.activeElement === element), true);
+    await input.fill("магаз");
+    await dialog.getByText("Знайдено: 3").waitFor();
+    await taskRow.locator("summary", { hasText: "Опис" }).click();
+    assert.equal(await taskRow.evaluate(element => element.scrollWidth <= element.clientWidth), true);
+    assert.equal(await taskRow.locator(".global-search-preview p").isVisible(), true);
+    await row("list", ids.list).locator(".global-search-open").click();
+    await dialog.waitFor({ state: "hidden" });
+    assert.equal(await page.evaluate(() => activeListId), ids.list);
+    await page.click("#global-search-return");
+    await dialog.waitFor({ state: "visible" });
+    assert.equal(await input.inputValue(), "магаз");
+    await row("project", ids.project).locator(".global-search-open").click();
+    await page.locator("#project-screen").waitFor();
+    await page.click("#global-search-return");
+    await dialog.waitFor({ state: "visible" });
+    await dialog.getByRole("button", { name: "Завдання", exact: true }).click();
+    await taskRow.locator(".global-search-open").click();
+    await page.locator("#task-editor").waitFor();
+    await page.click("#global-search-return");
+    await dialog.waitFor({ state: "visible" });
+    assert.equal(await dialog.getByRole("button", { name: "Завдання", exact: true }).getAttribute("aria-pressed"), "true");
+    await taskRow.getByRole("button", { name: "Виконати завдання" }).click();
+    await taskRow.waitFor({ state: "detached" });
+    assert.equal(await page.evaluate(async id => (await taskDb.all()).find(task => task.id === id).status, ids.task), "completed");
+    assert.equal(await page.evaluate(async id => (await settingsDb.todayLayout(localDateValue())).groups[0].taskIds.includes(id), ids.next), true);
+    await page.click("#toast-action");
+    await taskRow.waitFor();
+    assert.equal(await page.evaluate(async id => (await settingsDb.todayLayout(localDateValue())).groups[0].taskIds.includes(id), ids.task), true);
+    const actions = taskRow.getByRole("button", { name: "Дії із завданням" });
+    const menu = taskRow.locator(".global-search-action-menu");
+    const rowHeight = (await taskRow.boundingBox()).height;
+    await actions.click();
+    await menu.waitFor();
+    assert.equal((await taskRow.boundingBox()).height, rowHeight);
+    await page.click("#global-search-status");
+    await menu.waitFor({ state: "hidden" });
+    await actions.click();
+    await taskRow.getByRole("button", { name: "Видалити" }).click();
+    await dialog.getByText("Нічого не знайдено.").waitFor();
+    await page.click("#toast-action");
+    await page.click("#task-restore-to-group");
+    await taskRow.waitFor();
+    await page.click("#global-search-close");
+    await dialog.waitFor({ state: "hidden" });
+    await page.reload({ waitUntil: "networkidle" });
+    await open();
+    await input.fill("масло магаз");
+    await taskRow.waitFor();
+    await actions.click();
+    await taskRow.getByRole("button", { name: "Додати до «Сьогодні»" }).click();
+    await taskRow.locator(".task-today-indicator").waitFor();
+    assert.equal(await page.evaluate(async id => {
+      const task = (await taskDb.all()).find(item => item.id === id);
+      return task.addedToTodayDate === localDateValue() && task.dueDate === localDateValue();
+    }, ids.task), true);
+    await page.reload({ waitUntil: "networkidle" });
+    await open();
+    await input.fill("масло магаз");
+    await taskRow.locator(".task-today-indicator").waitFor();
+    await actions.click();
+    await taskRow.getByRole("button", { name: "Зняти ручне додавання" }).click();
+    await taskRow.locator(".task-today-indicator").waitFor({ state: "hidden" });
+    await page.click("#toast-action");
+    await taskRow.locator(".task-today-indicator").waitFor();
+    const picker = page.locator("#global-search-destination");
+    await actions.click();
+    await taskRow.getByRole("button", { name: "Перемістити в інший список" }).click();
+    await picker.waitFor();
+    await picker.locator("input").fill("Нові");
+    await picker.getByRole("button", { name: "Нові" }).click();
+    await taskRow.getByText(/Нові/).waitFor();
+    await actions.click();
+    await taskRow.getByRole("button", { name: "Перемістити до проєкту" }).click();
+    await picker.waitFor();
+    await page.keyboard.press("Escape");
+    await picker.waitFor({ state: "hidden" });
+    assert.equal(await dialog.isVisible(), true);
+    await actions.click();
+    await taskRow.getByRole("button", { name: "Перемістити до проєкту" }).click();
+    await picker.getByRole("button", { name: "Домашні справи" }).click();
+    await taskRow.getByText(/Домашні справи/).waitFor();
+    await input.fill("Позапроєктна");
+    const standalone = row("task", ids.standalone);
+    await standalone.getByRole("button", { name: "Дії із завданням" }).click();
+    await standalone.getByRole("button", { name: "Додати до проєкту" }).click();
+    await picker.getByRole("button", { name: "Домашні справи" }).click();
+    await standalone.getByText(/Домашні справи/).waitFor();
+    await page.reload({ waitUntil: "networkidle" });
+    assert.equal(await page.evaluate(async ids => {
+      const records = await taskDb.all();
+      const moved = records.find(task => task.id === ids.task);
+      return moved.listId === INBOX_LIST_ID && moved.projectId === ids.destination
+        && moved.projectSectionId === null
+        && records.find(task => task.id === ids.standalone).projectId === ids.destination;
+    }, ids), true);
+    await open();
+    await page.keyboard.press("Escape");
+    await dialog.waitFor({ state: "hidden" });
+    await page.setViewportSize({ width: 1200, height: 844 });
+    await page.click(".desktop-nav-actions [data-open-search]");
+    await dialog.waitFor();
+    await input.fill("покупки");
+    await row("project", ids.project).waitFor();
+    await page.keyboard.press("Enter");
+    await page.locator("#project-screen").waitFor();
+    await page.click("#global-search-return");
+    await dialog.waitFor();
+    assert.equal(await input.inputValue(), "покупки");
+    assert.deepEqual(errors, []);
+    console.log("Global search: PASS");
+  } finally {
+    await browser.close();
+  }
+})().catch(error => { console.error(error); process.exitCode = 1; });

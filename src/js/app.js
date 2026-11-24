@@ -324,6 +324,7 @@ async function refresh({ animateTaskReflow: shouldAnimateTaskReflow = false } = 
   renderCurrentTasks();
   renderProjects();
   renderCompletedTasks();
+  if (globalSearch.dialog.open && !globalSearch.busy) updateGlobalSearch();
   if (!upcoming.screen.hidden) { renderUpcomingWeek(); renderUpcomingFeed(); }
   if (previousPositions) animateTaskReflow(previousPositions);
 }
@@ -1371,12 +1372,12 @@ function toggleAllVisibleTasks() {
   renderCurrentTasks();
 }
 
-function deletedTaskGroupSnapshot(deletedTasks) {
-  if (!isDayList() || todayLayout?.date !== activePlanDate()) return null;
+function deletedTaskGroupSnapshot(deletedTasks, layout = isDayList() && todayLayout?.date === activePlanDate() ? todayLayout : null) {
+  if (!layout) return null;
   const ids = new Set(deletedTasks.map(task => task.id));
-  const groups = todayLayout.groups.filter(group => group.taskIds.some(id => ids.has(id)))
+  const groups = layout.groups.filter(group => group.taskIds.some(id => ids.has(id)))
     .map(group => ({ ...group, taskIds: [...group.taskIds] }));
-  return groups.length ? { date: activePlanDate(), groups, items: todayLayout.items.map(item => ({ ...item })) } : null;
+  return groups.length ? { date: layout.date, groups, items: layout.items.map(item => ({ ...item })) } : null;
 }
 
 async function restoreDeletedTasks(deletedTasks, snapshot, toGroup) {
@@ -1537,23 +1538,22 @@ async function moveSelectedTasksToList(listId) {
   }
 }
 
-async function moveOpenTaskImmediatelyToList(listId) {
-  const task = tasks.find(item => item.id === els.editor.dataset.taskId);
-  if (!task || task.listId === listId) {
-    setTaskEditorListUI(listId);
-    updateDesktopSaveState();
-    return;
-  }
+async function persistTaskListMove(task, listId) {
   const updatedAt = new Date().toISOString();
   const movedTask = { ...task, listId, sectionId: null, position: 0, updatedAt };
   const shiftedTasks = tasks
     .filter(item => item.id !== task.id && taskOrderScope(item) === taskOrderScope(movedTask))
     .map(item => ({ ...item, position: (Number.isFinite(item.position) ? item.position : 0) + 1, updatedAt }));
   const replacements = new Map([movedTask, ...shiftedTasks].map(item => [item.id, item]));
+  await taskDb.putMany([movedTask, ...shiftedTasks]);
+  tasks = tasks.map(item => replacements.get(item.id) || item).sort(compareTasks);
+  await rememberProjectLists([movedTask], listId);
+}
+
+async function moveOpenTaskImmediatelyToList(listId) {
+  const task = tasks.find(item => item.id === els.editor.dataset.taskId);
   try {
-    await taskDb.putMany([movedTask, ...shiftedTasks]);
-    await rememberProjectLists([movedTask], listId);
-    tasks = tasks.map(item => replacements.get(item.id) || item).sort(compareTasks);
+    if (task && task.listId !== listId) await persistTaskListMove(task, listId);
     setTaskEditorListUI(listId);
     updateDesktopSaveState();
     renderCurrentTasks();
@@ -1907,10 +1907,13 @@ async function saveAndLeaveTaskEditor({ allowEmptyNew = false } = {}) {
   toast(editing ? "Зміни збережено" : "Завдання додано");
 }
 
-async function deleteTask(id) {
+async function deleteTask(id, { fromSearch = false } = {}) {
   const task = tasks.find(item => item.id === id);
   if (!task) return;
-  const groupSnapshot = deletedTaskGroupSnapshot([task]);
+  const groupSnapshot = fromSearch
+    ? deletedTaskGroupSnapshot([task], await searchDayLayout(localDateValue()))
+      || deletedTaskGroupSnapshot([task], await searchDayLayout(nextLocalDate()))
+    : deletedTaskGroupSnapshot([task]);
   tasks = tasks.filter(item => item.id !== id);
   selectedTaskIds.delete(id);
   renderCurrentTasks();
@@ -1959,15 +1962,16 @@ function swipeTaskToday(id) {
   return setTaskToday(id, task.addedToTodayDate !== localDateValue(), { undoOnRemove: true });
 }
 
-async function completeTask(task, changes = {}, toggle) {
+async function completeTask(task, changes = {}, toggle, { fromSearch = false } = {}) {
   if (!task) return;
   if (toggle) toggle.disabled = true;
   startCompletionFeedback(toggle);
   await new Promise(resolve => setTimeout(resolve, 400));
   const completedAt = new Date().toISOString();
   const completedTask = { ...task, ...changes, status: "completed", completedAt, updatedAt: completedAt };
-  const groupDate = activeListId === TODAY_LIST_ID ? activePlanDate() : null;
-  const previousGroupLayout = groupDate && todayLayout?.date === groupDate ? todayLayout : null;
+  const groupDate = fromSearch || activeListId === TODAY_LIST_ID ? localDateValue() : null;
+  const previousGroupLayout = fromSearch ? await searchDayLayout(groupDate)
+    : groupDate && todayLayout?.date === groupDate ? todayLayout : null;
   const groupSuccessor = previousGroupLayout
     ? carryTodayProjectGroup(previousGroupLayout, tasks, completedTask, groupDate, projects) : null;
   await taskDb.put(completedTask);
@@ -1983,6 +1987,332 @@ async function completeTask(task, changes = {}, toggle) {
     }
   });
 }
+
+const globalSearch = {
+  dialog: document.querySelector("#global-search"),
+  input: document.querySelector("#global-search-input"),
+  close: document.querySelector("#global-search-close"),
+  completed: document.querySelector("#global-search-completed"),
+  results: document.querySelector("#global-search-results"),
+  status: document.querySelector("#global-search-status"),
+  more: document.querySelector("#global-search-more"),
+  destinationPicker: document.querySelector("#global-search-destination"),
+  returnButton: document.querySelector("#global-search-return"),
+  type: "all",
+  limit: 30,
+  scrollTop: 0,
+  timer: null,
+  busy: false,
+  prepared: null,
+  sources: [],
+  destination: false,
+  mobileOriginIndex: null,
+  desktopOrigin: null
+};
+globalSearch.scroll = globalSearch.results.parentElement;
+const searchDestination = globalSearch.destinationPicker;
+const searchDestinationInput = searchDestination.querySelector("input");
+const searchDestinationOptions = searchDestination.querySelector(".global-search-destination-options");
+const searchOverlays = [els.toast, els.taskRestoreGroupBackdrop].map(element => ({
+  element, anchor: element.nextElementSibling, parent: element.parentElement
+}));
+
+async function searchDayLayout(date) {
+  const layout = await settingsDb.todayLayout(date);
+  return layout && isValidDayPlanShape(layout) ? normalizeDayPlan(layout, visibleTodayLayoutTasks(date), date) : null;
+}
+
+function globalSearchEntries() {
+  const date = localDateValue();
+  const sources = [tasks, lists, projects, date];
+  if (globalSearch.prepared && sources.every((source, i) => source === globalSearch.sources[i])) return globalSearch.prepared;
+  const listNames = new Map(lists.map(list => [list.id, list.title]));
+  const projectNames = new Map(projects.map(project => [project.id, project.title]));
+  const activeProjectIds = new Set(projects.filter(project => project.status === "active").map(project => project.id));
+  const entries = lists.map(list => ({ id: list.id, title: list.title, type: "list", description: "", meta: "Список" }));
+  for (const [id, title] of [[TODAY_LIST_ID, "Сьогодні"], [TOMORROW_LIST_ID, "Завтра"]]) {
+    if (!listNames.has(id)) entries.push({ id, title, type: "list", description: "", meta: "Список" });
+  }
+  for (const project of projects) entries.push({
+    id: project.id, title: project.title, type: "project", description: project.description || "",
+    completed: project.status === "completed", meta: project.status === "completed" ? "Проєкт · Завершено" : "Проєкт"
+  });
+  for (const task of tasks) {
+    if (task.status === "archived") continue;
+    const projectName = projectNames.get(task.projectId);
+    const listName = listNames.get(task.listId);
+    entries.push({
+      id: task.id, title: task.title, type: "task", description: task.description || "",
+      completed: task.status === "completed",
+      manuallyToday: task.status === "active" && task.addedToTodayDate === date,
+      dueToday: task.dueDate === date,
+      projectId: task.projectId,
+      canMoveList: task.status === "active" && listNames.size > Number(listNames.has(task.listId)),
+      canMoveProject: task.status === "active" && !task.savedSteps?.length
+        && activeProjectIds.size > Number(activeProjectIds.has(task.projectId)),
+      meta: ["Завдання", projectName, listName, task.status === "completed" ? "Виконано" : null].filter(Boolean).join(" · ")
+    });
+  }
+  globalSearch.sources = sources;
+  globalSearch.prepared = prepareSearchEntries(entries);
+  return globalSearch.prepared;
+}
+
+function updateGlobalSearch({ reset = false, invalidate = false } = {}) {
+  clearTimeout(globalSearch.timer);
+  if (!globalSearch.dialog.open) return;
+  if (invalidate) globalSearch.prepared = null;
+  if (reset) {
+    globalSearch.limit = 30;
+    globalSearch.scroll.scrollTop = 0;
+  }
+  const query = globalSearch.input.value;
+  const ready = searchWords(query).some(word => word.value.length >= 2);
+  const results = ready ? searchEntries(globalSearchEntries(), query, {
+    type: globalSearch.type, includeCompleted: globalSearch.completed.checked
+  }) : [];
+  const expanded = new Set([...globalSearch.results.querySelectorAll(".global-search-preview[open]")]
+    .map(preview => preview.parentElement.dataset.searchKey));
+  const focused = document.activeElement.closest("[data-search-key]");
+  const focusAction = document.activeElement.dataset.searchAction;
+  const rows = results.slice(0, globalSearch.limit).map(result => {
+    const row = renderSearchResult(result);
+    if (!reset && expanded.has(row.dataset.searchKey)) row.querySelector(".global-search-preview").open = true;
+    return row;
+  });
+  globalSearch.results.replaceChildren(...rows);
+  globalSearch.status.textContent = !ready ? "Введіть щонайменше дві літери або цифри."
+    : results.length ? `Знайдено: ${results.length}` : "Нічого не знайдено.";
+  globalSearch.more.hidden = results.length <= globalSearch.limit;
+  if (focused) {
+    const row = rows.find(item => item.dataset.searchKey === focused.dataset.searchKey);
+    const button = row?.querySelector(`[data-search-action="${focusAction}"]:not([data-search-action="delete"])`);
+    (button || row?.querySelector(".global-search-open") || globalSearch.input).focus({ preventScroll: true });
+  }
+}
+
+function syncSearchViewport() {
+  if (!globalSearch.dialog.open || !window.visualViewport) return;
+  globalSearch.dialog.style.setProperty("--search-viewport-height", `${visualViewport.height}px`);
+  globalSearch.dialog.style.setProperty("--search-viewport-top", `${visualViewport.offsetTop}px`);
+}
+
+function openSearchDestination(task, type, trigger) {
+  const heading = type === "list" ? "Виберіть список" : "Виберіть проєкт";
+  searchDestination.querySelector("label").textContent = heading;
+  searchDestinationInput.value = "";
+  searchDestination.dataset.taskId = task.id;
+  const options = type === "list"
+    ? lists.filter(list => list.id !== task.listId).map(list => {
+      const option = createListDropdownOption(list);
+      option.removeAttribute("role");
+      return option;
+    })
+    : projects.filter(project => project.id !== task.projectId && project.status === "active")
+      .sort(compareProjects).map(createTaskProjectOption);
+  searchDestinationOptions.replaceChildren(...options);
+  searchDestination.querySelector("p").hidden = options.length > 0;
+  searchDestination.showPopover({ source: trigger });
+  searchDestinationInput.focus({ preventScroll: true });
+}
+
+searchDestinationInput.addEventListener("input", () => {
+  const query = searchDestinationInput.value.trim().toLocaleLowerCase("uk-UA");
+  for (const option of searchDestinationOptions.children) {
+    option.hidden = !option.textContent.toLocaleLowerCase("uk-UA").includes(query);
+  }
+  searchDestination.querySelector("p").hidden = [...searchDestinationOptions.children].some(option => !option.hidden);
+});
+
+searchDestination.addEventListener("click", async event => {
+  const option = event.target.closest("[data-list-id], [data-project-id]");
+  if (!option || globalSearch.busy) return;
+  const task = tasks.find(item => item.id === searchDestination.dataset.taskId);
+  if (task?.status !== "active") return;
+  const list = lists.find(item => item.id === option.dataset.listId && item.id !== task.listId);
+  const project = projects.find(item => item.id === option.dataset.projectId && item.id !== task.projectId && item.status === "active");
+  if (!list && (!project || task.savedSteps?.length)) return;
+  event.stopPropagation();
+  globalSearch.busy = true;
+  try {
+    searchDestination.hidePopover();
+    if (list) {
+      await persistTaskListMove(task, list.id);
+      await refresh();
+      toast(`Завдання переміщено до «${displayListTitle(list)}»`);
+    } else {
+      await persistTaskProjectMove(task, project.id);
+      toast(task.projectId ? "Проєкт завдання змінено" : "Завдання додано до проєкту");
+    }
+  } catch (_error) {
+    toast("Не вдалося перемістити завдання");
+  } finally {
+    globalSearch.busy = false;
+    updateGlobalSearch({ invalidate: true });
+  }
+});
+
+function showGlobalSearch({ reset = false } = {}) {
+  if (globalSearch.dialog.open) return;
+  if (reset) {
+    globalSearch.input.value = "";
+    globalSearch.completed.checked = false;
+    globalSearch.type = "all";
+    globalSearch.limit = 30;
+    globalSearch.scrollTop = 0;
+    for (const button of globalSearch.dialog.querySelectorAll("[data-search-type]")) {
+      button.setAttribute("aria-pressed", String(button.dataset.searchType === "all"));
+    }
+  }
+  globalSearch.destination = false;
+  globalSearch.returnButton.hidden = true;
+  globalSearch.dialog.showModal();
+  for (const { element } of searchOverlays) globalSearch.dialog.append(element);
+  syncSearchViewport();
+  updateGlobalSearch({ reset });
+  globalSearch.scroll.scrollTop = globalSearch.scrollTop;
+  (reset ? globalSearch.input : globalSearch.close).focus({ preventScroll: true });
+}
+
+function hideGlobalSearch() {
+  if (!globalSearch.dialog.open) return;
+  if (searchDestination.matches(":popover-open")) searchDestination.hidePopover();
+  globalSearch.scrollTop = globalSearch.scroll.scrollTop;
+  clearTimeout(globalSearch.timer);
+  globalSearch.prepared = null;
+  for (const { element, anchor, parent } of [...searchOverlays].reverse()) parent.insertBefore(element, anchor);
+  globalSearch.dialog.close();
+}
+
+function closeGlobalSearch() {
+  if (!els.taskRestoreGroupBackdrop.hidden) {
+    resolveDeletedTaskRestore(false);
+    return;
+  }
+  hideGlobalSearch();
+  recordMobileNavigation();
+}
+
+function openGlobalSearchResult(type, id) {
+  const task = type === "task" ? tasks.find(item => item.id === id) : null;
+  const project = type === "project" ? projects.find(item => item.id === id)
+    : projects.find(item => item.id === task?.projectId);
+  if (type === "task" && !task || type === "project" && !project) return;
+  if (mobileNavigationEnabled()) globalSearch.mobileOriginIndex = mobileNavIndex;
+  else globalSearch.desktopOrigin = mobileNavigationState();
+  hideGlobalSearch();
+  closeMainMenu({ fromHistory: true });
+  if (type === "list") openList(id);
+  else if (project) {
+    openProjects();
+    openProject(project.id, { showOverdue: false });
+  } else if (task) openList(task.listId);
+  if (task) openTaskDetails(task);
+  globalSearch.destination = true;
+  globalSearch.returnButton.hidden = false;
+  if (mobileNavigationEnabled()) recordMobileNavigation();
+  else history.pushState({ globalSearchDestination: true }, "");
+}
+
+for (const button of document.querySelectorAll("[data-open-search]")) button.addEventListener("click", () => {
+  showGlobalSearch({ reset: true });
+  recordMobileNavigation();
+});
+globalSearch.close.addEventListener("click", closeGlobalSearch);
+globalSearch.scroll.addEventListener("scroll", () => {
+  globalSearch.results.querySelector(".global-search-action-menu:popover-open")?.hidePopover();
+});
+globalSearch.returnButton.addEventListener("click", () => {
+  if (mobileNavigationEnabled() && globalSearch.mobileOriginIndex < mobileNavIndex) {
+    history.go(globalSearch.mobileOriginIndex - mobileNavIndex);
+  } else history.back();
+});
+globalSearch.dialog.addEventListener("cancel", event => {
+  event.preventDefault();
+  closeGlobalSearch();
+});
+window.visualViewport?.addEventListener("resize", syncSearchViewport);
+window.visualViewport?.addEventListener("scroll", syncSearchViewport);
+function scheduleGlobalSearch(event) {
+  if (event.isComposing) return;
+  clearTimeout(globalSearch.timer);
+  globalSearch.timer = setTimeout(() => updateGlobalSearch({ reset: true }), 130);
+}
+globalSearch.input.addEventListener("input", scheduleGlobalSearch);
+globalSearch.input.addEventListener("compositionend", scheduleGlobalSearch);
+globalSearch.completed.addEventListener("change", () => updateGlobalSearch({ reset: true }));
+globalSearch.more.addEventListener("click", () => {
+  const previousLimit = globalSearch.limit;
+  globalSearch.limit += 30;
+  updateGlobalSearch();
+  globalSearch.results.children[previousLimit]?.querySelector(".global-search-open").focus();
+});
+globalSearch.dialog.addEventListener("keydown", event => {
+  if (event.isComposing || !["ArrowUp", "ArrowDown", "Enter"].includes(event.key)) return;
+  const buttons = [...globalSearch.results.querySelectorAll(".global-search-open")];
+  const index = buttons.indexOf(event.target);
+  if (index < 0 && event.target !== globalSearch.input) return;
+  if (event.key === "Enter") {
+    if (index < 0) {
+      event.preventDefault();
+      updateGlobalSearch();
+      globalSearch.results.querySelector(".global-search-open")?.click();
+    }
+    return;
+  }
+  event.preventDefault();
+  const next = event.key === "ArrowDown" ? index + 1 : index < 0 ? buttons.length - 1 : index - 1;
+  (buttons[next] || globalSearch.input).focus();
+});
+globalSearch.dialog.addEventListener("click", async event => {
+  const filter = event.target.closest("[data-search-type]");
+  if (filter) {
+    globalSearch.type = filter.dataset.searchType;
+    for (const button of globalSearch.dialog.querySelectorAll("[data-search-type]")) {
+      button.setAttribute("aria-pressed", String(button === filter));
+    }
+    updateGlobalSearch({ reset: true });
+    return;
+  }
+  const button = event.target.closest("[data-search-action]");
+  if (!button || globalSearch.busy) return;
+  const [type, ...idParts] = button.closest("[data-search-key]").dataset.searchKey.split(":");
+  const id = idParts.join(":");
+  if (button.dataset.searchAction === "open") {
+    openGlobalSearchResult(type, id);
+    return;
+  }
+  if (button.dataset.searchAction === "pick-list" || button.dataset.searchAction === "pick-project") {
+    const task = tasks.find(item => item.id === id && item.status === "active");
+    if (!task) return;
+    const trigger = button.closest("[data-search-key]").querySelector(".global-search-more-actions");
+    button.closest("[popover]").hidePopover();
+    openSearchDestination(task, button.dataset.searchAction === "pick-list" ? "list" : "project", trigger);
+    return;
+  }
+  globalSearch.busy = true;
+  try {
+    if (button.dataset.searchAction === "complete") {
+      await completeTask(tasks.find(task => task.id === id && task.status === "active"), {}, button, { fromSearch: true });
+    } else if (["add-today", "remove-today"].includes(button.dataset.searchAction)) {
+      if (!ensureCurrentDay()) {
+        closeGlobalSearch();
+        els.dayChangeConfirm.focus({ preventScroll: true });
+        return;
+      }
+      button.closest("[popover]").hidePopover();
+      await setTaskToday(id, button.dataset.searchAction === "add-today", { undoOnRemove: true });
+    } else {
+      button.disabled = true;
+      await deleteTask(id, { fromSearch: true });
+    }
+  } catch (_error) {
+    toast("Не вдалося змінити завдання. Спробуйте ще раз.");
+  } finally {
+    globalSearch.busy = false;
+    updateGlobalSearch({ invalidate: true });
+  }
+});
 
 const quickChecklist = {
   backdrop: document.querySelector("#quick-checklist-backdrop"),
@@ -2475,8 +2805,12 @@ els.listDeleteCancel.addEventListener("click", () => {
   els.listDeleteOpen.focus();
 });
 els.listDeleteConfirmButton.addEventListener("click", deleteActiveList);
-window.addEventListener("popstate", () => {
+window.addEventListener("popstate", event => {
   if (mobileNavigationEnabled()) return;
+  if (globalSearch.destination && !event.state?.globalSearchDestination && globalSearch.desktopOrigin) {
+    restoreMobileNavigation(globalSearch.desktopOrigin);
+    return;
+  }
   if (skipCompletedPopstate) { skipCompletedPopstate = false; return; }
   if (!els.completedTasksScreen.hidden) {
     closeCompletedTasks({ fromHistory: true });
@@ -3299,24 +3633,38 @@ function closeTaskProjectDropdown({ returnFocus = false } = {}) {
   if (returnFocus) els.taskProjectTrigger.focus({ preventScroll: true });
 }
 
+function createTaskProjectOption(project) {
+  const option = document.createElement("button");
+  option.type = "button";
+  option.className = "list-dropdown-option";
+  option.dataset.projectId = project.id;
+  const icon = document.createElement("span");
+  icon.className = "projects-icon";
+  icon.setAttribute("aria-hidden", "true");
+  const title = document.createElement("span");
+  title.textContent = project.title;
+  option.append(icon, title);
+  return option;
+}
+
+async function persistTaskProjectMove(task, projectId) {
+  const updatedAt = new Date().toISOString();
+  const bumped = tasks.filter(item => item.projectId === projectId && item.status === "active")
+    .map(item => ({ ...item, projectPosition: (item.projectPosition ?? 0) + 1, updatedAt }));
+  await taskDb.putMany([{ ...task, projectId, projectSectionId: null, projectPosition: 0, updatedAt }, ...bumped]);
+  await refresh();
+  if (!projectEls.screen.hidden) renderOpenProject();
+}
+
 els.taskProjectTrigger.addEventListener("click", () => {
   if (!els.taskProjectOptions.hidden) { closeTaskProjectDropdown(); return; }
   const currentId = els.taskProjectLink.dataset.projectId;
   const available = projects.filter(project => project.status === "active").sort(compareProjects);
   els.taskProjectOptions.replaceChildren(...available.map(project => {
-    const option = document.createElement("button");
-    option.type = "button";
-    option.className = "list-dropdown-option";
-    option.dataset.projectId = project.id;
+    const option = createTaskProjectOption(project);
     option.setAttribute("role", "option");
     option.setAttribute("aria-selected", String(project.id === currentId));
     option.classList.toggle("is-selected", project.id === currentId);
-    const icon = document.createElement("span");
-    icon.className = "projects-icon";
-    icon.setAttribute("aria-hidden", "true");
-    const title = document.createElement("span");
-    title.textContent = project.title;
-    option.append(icon, title);
     return option;
   }));
   if (!available.length) return;
@@ -3339,10 +3687,7 @@ els.taskProjectOptions.addEventListener("click", async event => {
   try {
     if (!await saveOpenTask()) return;
     const current = tasks.find(item => item.id === task.id);
-    const bumped = tasks.filter(item => item.projectId === projectId && item.status === "active")
-      .map(item => ({ ...item, projectPosition: (item.projectPosition ?? 0) + 1 }));
-    await taskDb.putMany([{ ...current, projectId, projectSectionId: null, projectPosition: 0, updatedAt: new Date().toISOString() }, ...bumped]);
-    await refresh();
+    await persistTaskProjectMove(current, projectId);
     openTaskDetails(tasks.find(item => item.id === task.id));
     toast("Проєкт завдання змінено");
   } catch (_error) {
@@ -3437,12 +3782,9 @@ els.taskAttachConfirm.addEventListener("click", async () => {
   if (!els.input.value.trim()) { closeTaskAttachDialog(); els.input.focus(); return; }
   els.taskAttachConfirm.disabled = true;
   try {
-    await saveOpenTask();
+    if (!await saveOpenTask()) return;
     const current = tasks.find(item => item.id === task.id);
-    const bumped = tasks.filter(item => item.projectId === projectId && item.status === "active")
-      .map(item => ({ ...item, projectPosition: (item.projectPosition ?? 0) + 1 }));
-    await taskDb.putMany([{ ...current, projectId, projectSectionId: null, projectPosition: 0, updatedAt: new Date().toISOString() }, ...bumped]);
-    await refresh();
+    await persistTaskProjectMove(current, projectId);
     closeTaskAttachDialog();
     openTaskDetails(tasks.find(item => item.id === task.id));
     toast("Завдання додано до проєкту");
@@ -3557,6 +3899,7 @@ function mobileNavigationState() {
     listId: activeListId,
     projectId: !projectEls.screen.hidden ? activeProjectId : null,
     menu: menuOpen,
+    search: globalSearch.dialog.open,
     settings: settingsOpen,
     completed: !els.completedTasksScreen.hidden,
     completedWeek: !els.completedTasksScreen.hidden ? completedWeekOffset : 0,
@@ -3627,6 +3970,7 @@ async function restoreMobileNavigation(view) {
   clearTimeout(mobileNavTimer);
   try {
     const current = mobileNavigationState();
+    if (current.search && !view.search) hideGlobalSearch();
     const sameParent = ["screen", "listId", "projectId", "menu", "settings", "completed",
       "listEditor", "projectEditor", "taskEditor"].every(key => current[key] === view[key]);
     if (sameParent) {
@@ -3671,6 +4015,7 @@ async function restoreMobileNavigation(view) {
       if (view.deleteDialog && !current.deleteDialog) requestProjectDeletion(Math.max(1, selectedProjectIds.size));
       if (view.overdueDialog && !current.overdueDialog) openProjectOverdueDialog();
       if (view.listDeleteDialog && !current.listDeleteDialog) els.mainMenuDeleteSelected.click();
+      if (view.search) showGlobalSearch();
       return;
     }
     if (projectEls.sectionActionDialog.open) closeProjectSectionAction();
@@ -3749,6 +4094,7 @@ async function restoreMobileNavigation(view) {
     if (view.deleteDialog) requestProjectDeletion(Math.max(1, selectedProjectIds.size));
     if (view.overdueDialog && view.projectId) openProjectOverdueDialog();
     if (view.listDeleteDialog) els.mainMenuDeleteSelected.click();
+    if (view.search) showGlobalSearch();
   } finally {
     // The snapshot ignores closing animation frames, so the next user action can be recorded immediately.
     setTimeout(() => { mobileNavApplying = false; scheduleMobileNavigationRecord(); }, 0);
