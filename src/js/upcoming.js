@@ -4,18 +4,23 @@ let upcomingStart = null;
 let upcomingCalendarMonth = null;
 let upcomingReturnFocus = null;
 let upcomingWeekAnimation = null;
+let upcomingHeightAnimation = null;
 let upcomingScrollTimer = null;
 let upcomingProgrammaticScroll = false;
 let upcomingScrollRestore = null;
 let upcomingExpanded = false;
 let upcomingExpandedStart = null;
+const UPCOMING_EXPANDED_DAYS = 28;
 const upcoming = {
   screen: document.querySelector("#upcoming-screen"), week: document.querySelector("#upcoming-week"),
+  weekViewport: document.querySelector(".upcoming-week-viewport"),
   feed: document.querySelector("#upcoming-feed"), month: document.querySelector("#upcoming-month"),
   backdrop: document.querySelector("#upcoming-calendar-backdrop"), grid: document.querySelector("#upcoming-calendar-grid")
 };
 const upcomingMonthFormatter = new Intl.DateTimeFormat("uk-UA", { month: "long", year: "numeric" });
 const upcomingDayFormatter = new Intl.DateTimeFormat("uk-UA", { weekday: "long", day: "numeric", month: "long" });
+const upcomingDateLabel = new Intl.DateTimeFormat("uk-UA", { day: "numeric", month: "long" });
+const upcomingWeekday = new Intl.DateTimeFormat("uk-UA", { weekday: "long" });
 function upcomingAdvance(value, days) {
   const date = dateFromValue(value);
   date.setDate(date.getDate() + days);
@@ -63,12 +68,21 @@ function closeUpcomingMenu({ restoreFocus = false } = {}) {
 }
 function renderUpcomingWeek(previousDate = null) {
   const selectedWeek = localDateValue(calendarWeekStart(dateFromValue(upcomingDate)));
-  if (upcomingExpanded && (!upcomingExpandedStart || upcomingDate < upcomingExpandedStart || upcomingDate > upcomingAdvance(upcomingExpandedStart, 34)))
+  if (upcomingExpanded && (!upcomingExpandedStart || upcomingDate < upcomingExpandedStart
+    || upcomingDate >= upcomingAdvance(upcomingExpandedStart, UPCOMING_EXPANDED_DAYS)))
     upcomingExpandedStart = selectedWeek;
   const first = dateFromValue(upcomingExpanded ? upcomingExpandedStart : selectedWeek);
+  upcomingWeekAnimation?.();
+  const shouldSlide = previousDate && previousDate !== upcomingDate
+    && upcoming.week.firstElementChild?.dataset.date !== localDateValue(first)
+    && !matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const previous = shouldSlide ? upcoming.week.cloneNode(true) : null;
+  const oldHeight = upcoming.week.offsetHeight;
+  const oldScroll = upcoming.week.scrollTop;
   const dueDates = new Set(upcomingTasks().map(task => task.dueDate));
+  const today = localDateValue();
   upcoming.month.textContent = upcomingMonthFormatter.format(dateFromValue(upcomingDate));
-  upcoming.week.replaceChildren(...Array.from({ length: upcomingExpanded ? 35 : 7 }, (_, index) => {
+  upcoming.week.replaceChildren(...Array.from({ length: upcomingExpanded ? UPCOMING_EXPANDED_DAYS : 7 }, (_, index) => {
     const date = new Date(first);
     date.setDate(date.getDate() + index);
     const value = localDateValue(date);
@@ -76,23 +90,22 @@ function renderUpcomingWeek(previousDate = null) {
     button.type = "button";
     button.dataset.date = value;
     button.className = "upcoming-day";
-    button.innerHTML = `<span>${["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Нд"][index % 7]}</span><strong>${date.getDate()}</strong><i aria-hidden="true"></i>`;
+    button.innerHTML = `<strong>${date.getDate()}</strong><i aria-hidden="true"></i>`;
     button.setAttribute("aria-label", upcomingDayFormatter.format(date));
     button.setAttribute("aria-pressed", String(value === upcomingDate));
-    if (value === localDateValue()) button.setAttribute("aria-current", "date");
+    if (value === today) button.setAttribute("aria-current", "date");
+    if (value < today) button.dataset.dateTone = "overdue";
     button.classList.toggle("has-tasks", dueDates.has(value));
     return button;
   }));
-  upcomingWeekAnimation?.cancel();
-  if (previousDate && previousDate !== upcomingDate && !matchMedia("(prefers-reduced-motion: reduce)").matches) {
-    const direction = upcomingDate > previousDate ? 1 : -1;
-    upcomingWeekAnimation = upcoming.week.animate([
-      { opacity: .55, transform: `translateX(${direction * 18}px)` },
-      { opacity: 1, transform: "translateX(0)" }
-    ], { duration: 260, easing: "cubic-bezier(.22,1,.36,1)" });
+  if (previous) {
+    upcomingWeekAnimation = animateCalendarSlide(upcoming.week, previous, upcoming.weekViewport,
+      upcomingDate > previousDate ? 1 : -1, oldHeight, () => { upcomingWeekAnimation = null; });
+    previous.scrollTop = oldScroll;
   }
 }
 function appendUpcomingDays(start, count = 21) {
+  const today = localDateValue();
   const byDate = new Map();
   for (const task of upcomingTasks()) {
     if (!byDate.has(task.dueDate)) byDate.set(task.dueDate, []);
@@ -104,21 +117,20 @@ function appendUpcomingDays(start, count = 21) {
     const day = document.createElement("section");
     day.className = "upcoming-feed-day";
     day.dataset.date = value;
+    if (value < today) day.dataset.dateTone = "overdue";
+    if (value === today) day.dataset.dateTone = "today";
     day.classList.toggle("selected-day", value === upcomingDate);
     const heading = document.createElement("h2");
-    heading.textContent = `${value === localDateValue() ? "Сьогодні · " : ""}${upcomingDayFormatter.format(dateFromValue(value))}`;
+    const date = dateFromValue(value);
+    heading.textContent = `${value === today ? "Сьогодні · " : ""}${upcomingDateLabel.format(date)}, ${upcomingWeekday.format(date)}`;
     heading.tabIndex = 0;
     heading.setAttribute("role", "button");
-    heading.setAttribute("aria-label", `Перейти до ${upcomingDayFormatter.format(dateFromValue(value))}`);
+    heading.setAttribute("aria-label", `Перейти до ${upcomingDayFormatter.format(date)}`);
     day.append(heading);
     for (const task of (byDate.get(value) || []).sort(compareUpcomingTasks)) {
       const row = els.template.content.firstElementChild.cloneNode(true);
       row.dataset.id = task.id;
-      row.querySelector(".task-text").textContent = task.title;
-      row.querySelector(".task-open").setAttribute("aria-label", `Відкрити деталі: ${task.title}`);
-      row.querySelector(".task-meta-primary").hidden = !task.dueTime;
-      row.querySelector(".task-date").textContent = task.dueTime || "";
-      row.querySelector(".task-list-name").textContent = displayListTitle(lists.find(list => list.id === task.listId) || lists.find(list => list.kind === "inbox"));
+      renderTaskCardDetails(row, task, lists, projects, { listSections: sections, showListSection: true });
       day.append(row);
     }
     fragment.append(day);
@@ -141,6 +153,12 @@ function prependUpcomingDays() {
   upcoming.feed.scrollTop += upcoming.feed.scrollHeight - oldHeight;
   while (upcoming.feed.children.length > 84) upcoming.feed.lastElementChild.remove();
   if (upcoming.feed.lastElementChild) upcomingEnd = upcoming.feed.lastElementChild.dataset.date;
+}
+function rememberUpcomingFeedScroll() {
+  if (upcoming.screen.hidden) return;
+  const feedTop = upcoming.feed.getBoundingClientRect().top;
+  const anchor = [...upcoming.feed.children].find(day => day.getBoundingClientRect().bottom > feedTop);
+  if (anchor) upcomingScrollRestore = { date: anchor.dataset.date, offset: anchor.getBoundingClientRect().top - feedTop };
 }
 function renderUpcomingFeed() {
   upcoming.feed.replaceChildren();
@@ -187,6 +205,8 @@ function openUpcoming() {
 }
 function closeUpcoming() {
   if (upcoming.screen.hidden) return;
+  upcomingWeekAnimation?.();
+  upcomingHeightAnimation?.();
   selectedTaskIds = new Set();
   els.shell.classList.remove("selection-active");
   els.shell.classList.remove("upcoming-mode");
@@ -196,6 +216,7 @@ function closeUpcoming() {
 }
 function renderUpcomingCalendar() {
   const month = upcomingCalendarMonth;
+  const today = localDateValue();
   document.querySelector("#upcoming-calendar-month").textContent = upcomingMonthFormatter.format(month);
   const first = calendarWeekStart(month);
   const last = new Date(month.getFullYear(), month.getMonth() + 1, 0, 12);
@@ -205,13 +226,14 @@ function renderUpcomingCalendar() {
     const button = document.createElement("button");
     button.type = "button";
     button.dataset.date = value;
+    if (value < today) button.dataset.dateTone = "overdue";
     button.textContent = date.getDate();
     button.setAttribute("role", "gridcell");
     button.setAttribute("aria-label", fullDateFormatter.format(date));
     button.classList.toggle("outside-month", date.getMonth() !== month.getMonth());
-    button.classList.toggle("today", value === localDateValue());
+    button.classList.toggle("today", value === today);
     button.classList.toggle("selected", value === upcomingDate);
-    if (value === localDateValue()) button.setAttribute("aria-current", "date");
+    if (value === today) button.setAttribute("aria-current", "date");
     if (value === upcomingDate) button.setAttribute("aria-selected", "true");
     cells.push(button);
   }
@@ -233,12 +255,38 @@ function closeUpcomingCalendar() {
 let upcomingSuppressClick = false;
 const upcomingExpand = document.querySelector("#upcoming-expand");
 function setUpcomingExpanded(expanded) {
+  const viewport = upcoming.weekViewport;
+  const oldHeight = viewport.getBoundingClientRect().height;
+  upcomingHeightAnimation?.();
+  upcomingWeekAnimation?.();
+  const animate = !matchMedia("(prefers-reduced-motion: reduce)").matches && oldHeight > 0;
+  const previous = animate && !expanded ? upcoming.week.cloneNode(true) : null;
+  const oldScroll = upcoming.week.scrollTop;
   upcomingExpanded = expanded;
   upcomingExpandedStart = expanded ? localDateValue(calendarWeekStart(dateFromValue(upcomingDate))) : null;
   upcoming.screen.classList.toggle("calendar-expanded", expanded);
   upcomingExpand.setAttribute("aria-expanded", String(expanded));
-  upcomingExpand.setAttribute("aria-label", expanded ? "Згорнути дати до тижня" : "Розгорнути дати на місяць");
+  upcomingExpand.setAttribute("aria-label", expanded ? "Згорнути дати до тижня" : "Розгорнути дати на чотири тижні");
   renderUpcomingWeek();
+  if (!animate) return;
+  const height = viewport.offsetHeight;
+  if (previous) {
+    previous.removeAttribute("id");
+    previous.setAttribute("aria-hidden", "true");
+    previous.inert = true;
+    previous.classList.add("upcoming-week-collapsing");
+    previous.style.height = `${oldHeight}px`;
+    viewport.append(previous);
+    previous.scrollTop = oldScroll;
+  }
+  const animation = viewport.animate([{ height: `${oldHeight}px` }, { height: `${height}px` }],
+    { duration: 260, easing: "cubic-bezier(.22,1,.36,1)" });
+  upcomingHeightAnimation = () => {
+    animation.cancel();
+    previous?.remove();
+    upcomingHeightAnimation = null;
+  };
+  animation.addEventListener("finish", upcomingHeightAnimation, { once: true });
 }
 let upcomingExpandPointer = null;
 let upcomingExpandDragged = false;
@@ -267,16 +315,25 @@ upcoming.week.addEventListener("click", event => {
   if (day) selectUpcomingDate(day.dataset.date);
 });
 let upcomingSwipe = null;
-upcoming.week.addEventListener("pointerdown", event => { upcomingSuppressClick = false; upcomingSwipe = { x: event.clientX, y: event.clientY }; });
-upcoming.week.addEventListener("pointerup", event => {
-  if (!upcomingSwipe) return;
+upcoming.week.addEventListener("pointerdown", event => {
+  if (!event.isPrimary || event.button !== 0) return;
+  upcomingSuppressClick = false;
+  upcomingSwipe = { id: event.pointerId, x: event.clientX, y: event.clientY };
+});
+window.addEventListener("pointerup", event => {
+  if (upcomingSwipe?.id !== event.pointerId) return;
   const dx = event.clientX - upcomingSwipe.x;
   const dy = event.clientY - upcomingSwipe.y;
   upcomingSwipe = null;
   if (Math.abs(dx) > 45 && Math.abs(dx) > Math.abs(dy) * 1.2) {
     upcomingSuppressClick = true;
-    selectUpcomingDate(upcomingAdvance(upcomingDate, dx < 0 ? 7 : -7));
+    const days = dx < 0 ? 7 : -7;
+    if (upcomingExpanded) upcomingExpandedStart = upcomingAdvance(upcomingExpandedStart, days);
+    selectUpcomingDate(upcomingAdvance(upcomingDate, days));
   }
+});
+window.addEventListener("pointercancel", event => {
+  if (upcomingSwipe?.id === event.pointerId) upcomingSwipe = null;
 });
 upcoming.feed.addEventListener("scroll", () => {
   if (!upcomingProgrammaticScroll && upcoming.feed.scrollTop < 100 && upcomingStart) prependUpcomingDays();
@@ -291,6 +348,7 @@ upcoming.feed.addEventListener("click", event => {
   const heading = event.target.closest(".upcoming-feed-day h2");
   if (heading) { selectUpcomingDate(heading.parentElement.dataset.date); return; }
   const row = event.target.closest(".swipe-row");
+  if (row?.dataset.swiped) { delete row.dataset.swiped; return; }
   const task = tasks.find(item => item.id === row?.dataset.id);
   if (!task) return;
   if (selectedTaskIds.size) { selectUpcomingTask(task.id); return; }
@@ -500,10 +558,7 @@ window.addEventListener("pointerup", async event => {
   if (!changed.length) { await finishUpcomingGhost(gesture, null); return; }
   try {
     await taskDb.putMany(changed);
-    const feedTop = upcoming.feed.getBoundingClientRect().top;
-    const anchor = [...upcoming.feed.querySelectorAll(".upcoming-feed-day")]
-      .find(day => day.getBoundingClientRect().bottom > feedTop);
-    if (anchor) upcomingScrollRestore = { date: anchor.dataset.date, offset: anchor.getBoundingClientRect().top - feedTop };
+    rememberUpcomingFeedScroll();
     selectedTaskIds = new Set();
     await refresh();
     const target = upcoming.feed.querySelector(`.upcoming-feed-day[data-date="${destination}"] [data-id="${CSS.escape(gesture.taskId)}"] .task-card`)

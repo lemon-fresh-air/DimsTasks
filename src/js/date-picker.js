@@ -162,9 +162,15 @@ function shiftCalendarRange(direction) {
   }
   else visibleCalendarStart.setDate(visibleCalendarStart.getDate() + direction * ({ "1-week": 2, "2-weeks": 3, "3-weeks": 4 }[calendarRangeMode] || 2) * 7);
   renderCalendar();
-  if (!previous) return;
+  if (previous) calendarTransition = animateCalendarSlide(grid, previous, panel, direction, oldHeight, () => {
+    calendarTransition = null;
+  });
+}
+
+function animateCalendarSlide(grid, previous, panel, direction, oldHeight, onFinish) {
   previous.removeAttribute("id");
   previous.setAttribute("aria-hidden", "true");
+  previous.inert = true;
   previous.style.cssText = `position:absolute;top:${grid.offsetTop}px;left:${grid.offsetLeft}px;width:${grid.offsetWidth}px;height:${oldHeight}px;pointer-events:none;`;
   panel.append(previous);
   const distance = grid.offsetWidth * .28 * direction;
@@ -181,10 +187,10 @@ function shiftCalendarRange(direction) {
     outgoing.cancel();
     incoming.cancel();
     previous.remove();
-    if (calendarTransition === cleanup) calendarTransition = null;
+    onFinish();
   };
-  calendarTransition = cleanup;
   incoming.addEventListener("finish", cleanup, { once: true });
+  return cleanup;
 }
 
 function enableCalendarSwipe() {
@@ -288,6 +294,7 @@ function renderCalendar() {
     const button = document.createElement("button");
     button.type = "button";
     button.dataset.date = value;
+    if (value < todayValue) button.dataset.dateTone = "overdue";
     button.textContent = date.getDate();
     button.classList.toggle("outside-month", date.getMonth() !== start.getMonth() || date.getFullYear() !== start.getFullYear());
     button.setAttribute("role", "gridcell");

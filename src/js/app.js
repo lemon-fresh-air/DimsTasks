@@ -55,10 +55,12 @@ function renderCompletedTasks() {
   if (els.completedTasksScreen.hidden) return;
   const { start, end } = completedWeekBounds();
   const entries = completedTasksInRange(tasks, start, end);
+  const today = localDateValue();
   const format = new Intl.DateTimeFormat("uk-UA", { day: "numeric", month: "short" });
   const last = new Date(end);
   last.setDate(last.getDate() - 1);
   els.completedTasksRange.textContent = `${format.format(start)} – ${format.format(last)}`;
+  els.completedTasksRange.dataset.dateTone = localDateValue(last) < today ? "overdue" : "";
   els.completedTasksNewer.hidden = completedWeekOffset === 0;
   els.completedTasksOlder.hidden = !tasks.some(task => task.status === "completed" && task.completedAt && new Date(task.completedAt) < start);
   els.completedTasksEmpty.hidden = entries.length > 0;
@@ -69,6 +71,7 @@ function renderCompletedTasks() {
     if (day !== previousDay) {
       const heading = document.createElement("h3");
       heading.className = "completed-tasks-day";
+      if (day < today) heading.dataset.dateTone = "overdue";
       heading.textContent = new Intl.DateTimeFormat("uk-UA", { weekday: "long", day: "numeric", month: "long" }).format(new Date(task.completedAt));
       els.completedTasksList.append(heading);
       previousDay = day;
@@ -1406,6 +1409,7 @@ async function restoreDeletedTasks(deletedTasks, snapshot, toGroup) {
     const plan = normalizeDayPlan({ date: snapshot.date, groups, items }, visible, snapshot.date);
     await settingsDb.saveTodayLayout(plan, snapshot.date);
   }
+  rememberUpcomingFeedScroll();
   await refresh();
   toast("Завдання відновлено");
 }
@@ -1757,14 +1761,14 @@ async function convertOpenTaskToProject() {
   }
   const editedTask = { ...task, title, description: els.description.value.trim(),
     dueDate: els.date.value || null, dueTime: els.date.value && els.time.value ? els.time.value : null };
-  if (!validSavedSteps(task.savedSteps ?? [])) { toast("Некоректні збережені кроки"); return; }
+  if (!validSavedProjectContent(task)) { toast("Некоректні збережені кроки або секції"); return; }
   const project = projectFromTask(editedTask, projects);
   els.taskConvertProject.disabled = true;
   try {
     await projectDb.convertTask(task.id, project);
     tasks = (await taskDb.all()).sort(compareTasks);
     selectedTaskIds.delete(task.id);
-    projects.push(project);
+    await loadProjects();
     els.editor.dataset.taskId = "";
     hideTaskEditor();
     openProjects();
@@ -1907,10 +1911,10 @@ async function saveAndLeaveTaskEditor({ allowEmptyNew = false } = {}) {
   toast(editing ? "Зміни збережено" : "Завдання додано");
 }
 
-async function deleteTask(id, { fromSearch = false } = {}) {
+async function deleteTask(id, { preserveDayGroups = false } = {}) {
   const task = tasks.find(item => item.id === id);
   if (!task) return;
-  const groupSnapshot = fromSearch
+  const groupSnapshot = preserveDayGroups
     ? deletedTaskGroupSnapshot([task], await searchDayLayout(localDateValue()))
       || deletedTaskGroupSnapshot([task], await searchDayLayout(nextLocalDate()))
     : deletedTaskGroupSnapshot([task]);
@@ -1927,6 +1931,11 @@ async function deleteTask(id, { fromSearch = false } = {}) {
     tasks.push(task);
     renderCurrentTasks();
     toast("Не вдалося видалити завдання");
+  }
+  if (!upcoming.screen.hidden) {
+    rememberUpcomingFeedScroll();
+    renderUpcomingWeek();
+    renderUpcomingFeed();
   }
 }
 
@@ -1999,6 +2008,7 @@ const globalSearch = {
   destinationPicker: document.querySelector("#global-search-destination"),
   returnButton: document.querySelector("#global-search-return"),
   type: "all",
+  mode: "global",
   limit: 30,
   scrollTop: 0,
   timer: null,
@@ -2029,6 +2039,7 @@ function globalSearchEntries() {
   const listNames = new Map(lists.map(list => [list.id, list.title]));
   const projectNames = new Map(projects.map(project => [project.id, project.title]));
   const activeProjectIds = new Set(projects.filter(project => project.status === "active").map(project => project.id));
+  const quickToday = globalSearch.mode === "today";
   const entries = lists.map(list => ({ id: list.id, title: list.title, type: "list", description: "", meta: "Список" }));
   for (const [id, title] of [[TODAY_LIST_ID, "Сьогодні"], [TOMORROW_LIST_ID, "Завтра"]]) {
     if (!listNames.has(id)) entries.push({ id, title, type: "list", description: "", meta: "Список" });
@@ -2037,8 +2048,9 @@ function globalSearchEntries() {
     id: project.id, title: project.title, type: "project", description: project.description || "",
     completed: project.status === "completed", meta: project.status === "completed" ? "Проєкт · Завершено" : "Проєкт"
   });
-  for (const task of tasks) {
+  for (const task of quickToday ? visibleProjectTasks(tasks, projects) : tasks) {
     if (task.status === "archived") continue;
+    if (quickToday && (task.status !== "active" || isTaskInDayPlan(task, date, date))) continue;
     const projectName = projectNames.get(task.projectId);
     const listName = listNames.get(task.listId);
     entries.push({
@@ -2048,7 +2060,7 @@ function globalSearchEntries() {
       dueToday: task.dueDate === date,
       projectId: task.projectId,
       canMoveList: task.status === "active" && listNames.size > Number(listNames.has(task.listId)),
-      canMoveProject: task.status === "active" && !task.savedSteps?.length
+      canMoveProject: task.status === "active" && !hasSavedProjectContent(task)
         && activeProjectIds.size > Number(activeProjectIds.has(task.projectId)),
       meta: ["Завдання", projectName, listName, task.status === "completed" ? "Виконано" : null].filter(Boolean).join(" · ")
     });
@@ -2067,16 +2079,17 @@ function updateGlobalSearch({ reset = false, invalidate = false } = {}) {
     globalSearch.scroll.scrollTop = 0;
   }
   const query = globalSearch.input.value;
+  const quickToday = globalSearch.mode === "today";
   const ready = searchWords(query).some(word => word.value.length >= 2);
   const results = ready ? searchEntries(globalSearchEntries(), query, {
-    type: globalSearch.type, includeCompleted: globalSearch.completed.checked
+    type: quickToday ? "task" : globalSearch.type, includeCompleted: !quickToday && globalSearch.completed.checked
   }) : [];
   const expanded = new Set([...globalSearch.results.querySelectorAll(".global-search-preview[open]")]
     .map(preview => preview.parentElement.dataset.searchKey));
   const focused = document.activeElement.closest("[data-search-key]");
   const focusAction = document.activeElement.dataset.searchAction;
   const rows = results.slice(0, globalSearch.limit).map(result => {
-    const row = renderSearchResult(result);
+    const row = renderSearchResult(result, { quickToday });
     if (!reset && expanded.has(row.dataset.searchKey)) row.querySelector(".global-search-preview").open = true;
     return row;
   });
@@ -2131,7 +2144,7 @@ searchDestination.addEventListener("click", async event => {
   if (task?.status !== "active") return;
   const list = lists.find(item => item.id === option.dataset.listId && item.id !== task.listId);
   const project = projects.find(item => item.id === option.dataset.projectId && item.id !== task.projectId && item.status === "active");
-  if (!list && (!project || task.savedSteps?.length)) return;
+  if (!list && (!project || hasSavedProjectContent(task))) return;
   event.stopPropagation();
   globalSearch.busy = true;
   try {
@@ -2152,8 +2165,11 @@ searchDestination.addEventListener("click", async event => {
   }
 });
 
-function showGlobalSearch({ reset = false } = {}) {
+function showGlobalSearch({ reset = false, mode = "global" } = {}) {
   if (globalSearch.dialog.open) return;
+  globalSearch.mode = mode;
+  globalSearch.dialog.classList.toggle("quick-today-search", mode === "today");
+  globalSearch.dialog.querySelector("h2").textContent = mode === "today" ? "Додати до «Сьогодні»" : "Пошук";
   if (reset) {
     globalSearch.input.value = "";
     globalSearch.completed.checked = false;
@@ -2231,6 +2247,12 @@ globalSearch.dialog.addEventListener("cancel", event => {
   event.preventDefault();
   closeGlobalSearch();
 });
+globalSearch.dialog.addEventListener("click", event => {
+  if (globalSearch.mode !== "today" || event.target !== globalSearch.dialog) return;
+  const bounds = globalSearch.dialog.getBoundingClientRect();
+  if (event.clientX < bounds.left || event.clientX > bounds.right
+    || event.clientY < bounds.top || event.clientY > bounds.bottom) closeGlobalSearch();
+});
 window.visualViewport?.addEventListener("resize", syncSearchViewport);
 window.visualViewport?.addEventListener("scroll", syncSearchViewport);
 function scheduleGlobalSearch(event) {
@@ -2250,18 +2272,19 @@ globalSearch.more.addEventListener("click", () => {
   const previousLimit = globalSearch.limit;
   globalSearch.limit += 30;
   updateGlobalSearch();
-  globalSearch.results.children[previousLimit]?.querySelector(".global-search-open").focus();
+  globalSearch.results.children[previousLimit]?.querySelector("[data-search-action]")?.focus();
 });
 globalSearch.dialog.addEventListener("keydown", event => {
   if (event.isComposing || !["ArrowUp", "ArrowDown", "Enter"].includes(event.key)) return;
-  const buttons = [...globalSearch.results.querySelectorAll(".global-search-open")];
+  const selector = globalSearch.mode === "today" ? ".global-search-quick-add" : ".global-search-open";
+  const buttons = [...globalSearch.results.querySelectorAll(selector)];
   const index = buttons.indexOf(event.target);
   if (index < 0 && event.target !== globalSearch.input) return;
   if (event.key === "Enter") {
     if (index < 0) {
       event.preventDefault();
       updateGlobalSearch();
-      globalSearch.results.querySelector(".global-search-open")?.click();
+      globalSearch.results.querySelector(selector)?.click();
     }
     return;
   }
@@ -2305,11 +2328,11 @@ globalSearch.dialog.addEventListener("click", async event => {
         els.dayChangeConfirm.focus({ preventScroll: true });
         return;
       }
-      button.closest("[popover]").hidePopover();
+      button.closest("[popover]")?.hidePopover();
       await setTaskToday(id, button.dataset.searchAction === "add-today", { undoOnRemove: true });
     } else {
       button.disabled = true;
-      await deleteTask(id, { fromSearch: true });
+      await deleteTask(id, { preserveDayGroups: true });
     }
   } catch (_error) {
     toast("Не вдалося змінити завдання. Спробуйте ще раз.");
@@ -2369,6 +2392,7 @@ quickChecklist.results.addEventListener("click", event => {
 let addPress = null;
 let suppressAddClickUntil = 0;
 const fabCreateMenu = document.querySelector("#fab-create-menu");
+const fabAddFromSearch = document.querySelector("#fab-add-from-search");
 function closeFabCreateMenu({ restoreFocus = false } = {}) {
   if (fabCreateMenu.hidden) return;
   fabCreateMenu.hidden = true;
@@ -2376,6 +2400,7 @@ function closeFabCreateMenu({ restoreFocus = false } = {}) {
   if (restoreFocus) els.add.focus();
 }
 function openFabCreateMenu() {
+  fabAddFromSearch.hidden = activeListId !== TODAY_LIST_ID || !upcoming.screen.hidden;
   fabCreateMenu.hidden = false;
   els.add.setAttribute("aria-expanded", "true");
   document.querySelector("#fab-create-checklist").focus();
@@ -2409,6 +2434,11 @@ els.add.addEventListener("click", () => {
   );
 });
 document.querySelector("#fab-create-checklist").addEventListener("click", () => { closeFabCreateMenu(); openQuickChecklist(); });
+fabAddFromSearch.addEventListener("click", () => {
+  closeFabCreateMenu({ restoreFocus: true });
+  showGlobalSearch({ reset: true, mode: "today" });
+  recordMobileNavigation();
+});
 document.querySelector("#fab-create-project").addEventListener("click", () => {
   closeFabCreateMenu();
   openProjects();
@@ -2833,7 +2863,8 @@ window.addEventListener("popstate", event => {
 });
 enableHorizontalSwipe(els.shell, {
   direction: "right",
-  canStart: event => projectEls.overview.hidden && selectedTaskIds.size === 0 && !event.target.closest(".task-card"),
+  canStart: event => projectEls.overview.hidden && selectedTaskIds.size === 0
+    && !event.target.closest(".task-card, .upcoming-week-viewport, .upcoming-expand"),
   canComplete: () => selectedTaskIds.size === 0,
   onSwipe: openMainMenu
 });
@@ -2851,7 +2882,7 @@ enableHorizontalSwipe(projectEls.overview, {
 });
 enableHorizontalSwipe(els.mainMenu.querySelector(".main-menu-panel"), {
   direction: "left",
-  canStart: event => selectedListIds.size === 0 && !event.target.closest(".main-menu-footer"),
+  canStart: event => selectedListIds.size === 0 && !event.target.closest(".main-menu-footer, [data-open-search]"),
   canComplete: () => selectedListIds.size === 0,
   onSwipe: closeMainMenu
 });
@@ -3783,7 +3814,7 @@ els.taskAttachConfirm.addEventListener("click", async () => {
     closeTaskAttachDialog();
     return;
   }
-  if (!task || task.status !== "active" || task.projectId || task.savedSteps?.length || !projects.some(project => project.id === projectId && project.status === "active")) return;
+  if (!task || task.status !== "active" || task.projectId || hasSavedProjectContent(task) || !projects.some(project => project.id === projectId && project.status === "active")) return;
   if (!els.input.value.trim()) { closeTaskAttachDialog(); els.input.focus(); return; }
   els.taskAttachConfirm.disabled = true;
   try {
@@ -3827,6 +3858,13 @@ enableTaskGestures({
     ? row.parentElement === els.list || Boolean(row.parentElement?.classList.contains("today-group-tasks"))
     : row.parentElement === els.list,
   sectionDragEnabled: () => activeList()?.kind === "regular" && sections.some(section => section.listId === activeListId)
+});
+enableTaskGestures({
+  container: upcoming.feed,
+  swipeOnly: true,
+  onDelete: id => deleteTask(id, { preserveDayGroups: true }),
+  canAddToday: () => false,
+  isSelectionMode: () => selectedTaskIds.size > 0
 });
 enableTodayGroupReordering({ isSelected: id => selectedTodayGroupIds.has(id), onSelect: selectTodayGroup, onReorder: reorderSelectedTodayGroup });
 let appServiceWorkerRegistration = null;
@@ -3904,7 +3942,7 @@ function mobileNavigationState() {
     listId: activeListId,
     projectId: !projectEls.screen.hidden ? activeProjectId : null,
     menu: menuOpen,
-    search: globalSearch.dialog.open,
+    search: globalSearch.dialog.open ? globalSearch.mode : null,
     settings: settingsOpen,
     completed: !els.completedTasksScreen.hidden,
     completedWeek: !els.completedTasksScreen.hidden ? completedWeekOffset : 0,
@@ -4020,7 +4058,7 @@ async function restoreMobileNavigation(view) {
       if (view.deleteDialog && !current.deleteDialog) requestProjectDeletion(Math.max(1, selectedProjectIds.size));
       if (view.overdueDialog && !current.overdueDialog) openProjectOverdueDialog();
       if (view.listDeleteDialog && !current.listDeleteDialog) els.mainMenuDeleteSelected.click();
-      if (view.search) showGlobalSearch();
+      if (view.search) showGlobalSearch({ mode: view.search });
       return;
     }
     if (projectEls.sectionActionDialog.open) closeProjectSectionAction();
@@ -4099,7 +4137,7 @@ async function restoreMobileNavigation(view) {
     if (view.deleteDialog) requestProjectDeletion(Math.max(1, selectedProjectIds.size));
     if (view.overdueDialog && view.projectId) openProjectOverdueDialog();
     if (view.listDeleteDialog) els.mainMenuDeleteSelected.click();
-    if (view.search) showGlobalSearch();
+    if (view.search) showGlobalSearch({ mode: view.search });
   } finally {
     // The snapshot ignores closing animation frames, so the next user action can be recorded immediately.
     setTimeout(() => { mobileNavApplying = false; scheduleMobileNavigationRecord(); }, 0);

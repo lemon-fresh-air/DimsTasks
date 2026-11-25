@@ -9,6 +9,27 @@ const context = vm.createContext({ crypto: { randomUUID: () => "generated-id" },
 vm.runInContext(`${source}\nthis.model = { createTask, createProject, projectFromTask, projectFromSelectedSteps, taskFromProject, projectToTaskChanges, validSavedSteps, restoredProjectSteps, detachProjectTask, compareProjects, nextProjectPosition, reorderProjects, reorderProjectBlock, projectCountdown, currentProjectTask, currentProjectStepGroupColor, compareProjectTasks, visibleProjectTasks, visibleListTasks, reorderProjectSteps, reorderProjectStepBlock, normalizeTaskOrder };`, context);
 const { createTask, createProject, projectFromTask, projectFromSelectedSteps, taskFromProject, projectToTaskChanges, validSavedSteps, restoredProjectSteps, detachProjectTask, compareProjects, nextProjectPosition, reorderProjects, reorderProjectBlock, projectCountdown, currentProjectTask, currentProjectStepGroupColor, compareProjectTasks, visibleProjectTasks, visibleListTasks, reorderProjectSteps, reorderProjectStepBlock, normalizeTaskOrder } = context.model;
 
+test("project conversion restores empty and populated sections and their step order", () => {
+  const project = createProject({ title: "План", unsectionedPosition: 1, unsectionedCollapsed: true,
+    projectSections: [{ id: "work", title: "Робота", collapsed: true }, { id: "empty", title: "Порожня", collapsed: false }] });
+  const steps = [
+    createTask({ title: "Поза секцією", projectId: project.id, projectPosition: 1 }),
+    createTask({ title: "У секції", projectId: project.id, projectPosition: 0, projectSectionId: "work" })
+  ];
+  const { task } = projectToTaskChanges(project, steps, "save");
+  const restored = projectFromTask(task, []);
+  assert.deepEqual(Array.from(restored.projectSections, section => [section.id, section.title, section.collapsed]),
+    [["work", "Робота", true], ["empty", "Порожня", false]]);
+  assert.equal(restored.unsectionedPosition, 1);
+  assert.equal(restored.unsectionedCollapsed, true);
+  assert.deepEqual(Array.from(restoredProjectSteps(task.savedSteps, restored.id, [], [], []),
+    step => [step.title, step.projectSectionId, step.projectPosition]),
+    [["У секції", "work", 0], ["Поза секцією", null, 1]]);
+  assert.equal(projectToTaskChanges(project, [], "save").task.savedProjectLayout.projectSections.length, 2);
+  assert.equal(projectToTaskChanges(project, steps, "keep").task.savedProjectLayout, null);
+  assert.equal(projectToTaskChanges(project, steps, "delete").task.savedProjectLayout, null);
+});
+
 test("saved project steps preserve order, descriptions, status and restore scopes", () => {
   const project = createProject({ id: "project", title: "Проєкт", description: "Опис проєкту" });
   const completed = createTask({ id: "b", title: "Другий", description: "Повний\nопис", status: "completed", projectId: project.id, projectPosition: 2, listId: "lost", sectionId: "gone" });

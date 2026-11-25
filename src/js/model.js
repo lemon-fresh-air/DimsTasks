@@ -45,7 +45,7 @@ function projectFromTask(task, projectRecords) {
   const title = String(task.title || "").trim();
   if (!title) throw new Error("Введіть назву завдання");
   return createProject({ title, description: task.description || "", dueDate: task.dueDate || null,
-    dueTime: task.dueTime || null, position: nextProjectPosition(projectRecords) });
+    dueTime: task.dueTime || null, ...restoredProjectLayout(task), position: nextProjectPosition(projectRecords) });
 }
 function projectFromSelectedSteps(title, sourceProjectId, selectedIds, taskRecords, projectRecords) {
   const name = String(title || "").trim();
@@ -104,13 +104,43 @@ function todayTaskDates(date, mode) {
   return { dueDate: mode === "sun" ? null : date, addedToTodayDate: mode === "date" ? null : date };
 }
 function createTask(values = {}) {
-  return { ...baseRecord(values), ...values, listId: values.listId || INBOX_LIST_ID, sectionId: values.sectionId || null, projectId: values.projectId || null, projectSectionId: values.projectId ? values.projectSectionId || null : null, title: String(values.title || "").trim(), description: values.description || "", status: values.status || "active", completedAt: values.completedAt || null, dueDate: values.dueDate || null, dueTime: values.dueDate && values.dueTime ? values.dueTime : null, addedToTodayDate: values.addedToTodayDate || null, position: Number.isFinite(values.position) ? values.position : 0, todayPosition: Number.isSafeInteger(values.todayPosition) && values.todayPosition >= 0 ? values.todayPosition : null, projectPosition: Number.isFinite(values.projectPosition) ? values.projectPosition : null, returnedToInboxAt: values.returnedToInboxAt || null, savedSteps: values.savedSteps ?? [] };
+  return { ...baseRecord(values), ...values, listId: values.listId || INBOX_LIST_ID, sectionId: values.sectionId || null, projectId: values.projectId || null, projectSectionId: values.projectId ? values.projectSectionId || null : null, title: String(values.title || "").trim(), description: values.description || "", status: values.status || "active", completedAt: values.completedAt || null, dueDate: values.dueDate || null, dueTime: values.dueDate && values.dueTime ? values.dueTime : null, addedToTodayDate: values.addedToTodayDate || null, position: Number.isFinite(values.position) ? values.position : 0, todayPosition: Number.isSafeInteger(values.todayPosition) && values.todayPosition >= 0 ? values.todayPosition : null, projectPosition: Number.isFinite(values.projectPosition) ? values.projectPosition : null, returnedToInboxAt: values.returnedToInboxAt || null, savedSteps: values.savedSteps ?? [], savedProjectLayout: values.savedProjectLayout ?? null };
 }
 function validSavedSteps(value) {
   return Array.isArray(value) && value.every(step => step && typeof step === "object" && !Array.isArray(step)
     && typeof step.title === "string" && Boolean(step.title.trim()) && typeof step.description === "string"
     && ["active", "completed"].includes(step.status) && typeof step.listId === "string" && Boolean(step.listId)
-    && (step.sectionId === null || typeof step.sectionId === "string" && Boolean(step.sectionId)));
+    && (step.sectionId === null || typeof step.sectionId === "string" && Boolean(step.sectionId))
+    && (step.projectSectionId == null || typeof step.projectSectionId === "string" && Boolean(step.projectSectionId)));
+}
+function validProjectSections(value) {
+  return Array.isArray(value) && new Set(value.map(section => section?.id)).size === value.length
+    && value.every(section => section && typeof section.id === "string" && section.id
+      && typeof section.title === "string" && section.title.trim() && section.title.length <= 80
+      && typeof section.collapsed === "boolean");
+}
+function hasSavedProjectContent(task) {
+  return Boolean(task.savedSteps?.length || task.savedProjectLayout);
+}
+function validSavedProjectContent(task) {
+  const steps = task.savedSteps ?? [];
+  const layout = task.savedProjectLayout;
+  if (!validSavedSteps(steps) || task.projectId && hasSavedProjectContent(task)) return false;
+  if (layout != null && (typeof layout !== "object" || Array.isArray(layout) || !validProjectSections(layout.projectSections)
+    || !Number.isSafeInteger(layout.unsectionedPosition) || layout.unsectionedPosition < 0
+    || layout.unsectionedPosition > layout.projectSections.length
+    || typeof layout.unsectionedCollapsed !== "boolean" || typeof layout.unsectionedHidden !== "boolean")) return false;
+  const ids = new Set(layout?.projectSections.map(section => section.id));
+  return !ids.has(PROJECT_ROOT_SECTION_ID) && steps.every(step => step.projectSectionId == null || ids.has(step.projectSectionId));
+}
+function restoredProjectLayout(task) {
+  const layout = task.savedProjectLayout;
+  return {
+    projectSections: layout?.projectSections.map(section => ({ ...section })) ?? [],
+    unsectionedPosition: layout?.unsectionedPosition ?? 0,
+    unsectionedCollapsed: layout?.unsectionedCollapsed ?? false,
+    unsectionedHidden: layout?.unsectionedHidden ?? false
+  };
 }
 function restoredProjectSteps(snapshot, projectId, lists, sections, records) {
   if (!validSavedSteps(snapshot)) throw new Error("Некоректні збережені кроки");
@@ -130,7 +160,7 @@ function restoredProjectSteps(snapshot, projectId, lists, sections, records) {
     positions.set(scope, position);
     return createTask({ title: step.title, description: step.description, status: step.status,
       completedAt: step.status === "completed" ? completedAt : null, listId, sectionId,
-      projectId, projectPosition, position });
+      projectId, projectSectionId: step.projectSectionId ?? null, projectPosition, position });
   });
 }
 function taskFromProject(project) {
@@ -155,11 +185,22 @@ function projectToTaskChanges(project, records, choice, updatedAt) {
       updatedAt };
   });
   const task = taskFromProject(project);
-  if (choice === "save") task.savedSteps = steps.filter(step => step.status === "active" && !isTaskCompleted(step)).sort((a, b) =>
-    (a.projectPosition ?? Number.MAX_SAFE_INTEGER) - (b.projectPosition ?? Number.MAX_SAFE_INTEGER)
-    || String(a.createdAt || "").localeCompare(String(b.createdAt || "")) || String(a.id).localeCompare(String(b.id)))
-    .map(step => ({ title: step.title, description: step.description, status: step.status,
-      listId: step.listId, sectionId: step.sectionId ?? null }));
+  if (choice === "save") {
+    const sections = project.projectSections ?? [];
+    const sectionIds = new Set(sections.map(section => section.id));
+    if (sections.length || project.unsectionedCollapsed || project.unsectionedHidden) {
+      task.savedProjectLayout = {
+        projectSections: sections.map(section => ({ ...section })),
+        unsectionedPosition: orderedProjectSectionIds(project).indexOf(PROJECT_ROOT_SECTION_ID),
+        unsectionedCollapsed: project.unsectionedCollapsed === true,
+        unsectionedHidden: project.unsectionedHidden === true
+      };
+    }
+    task.savedSteps = steps.filter(step => step.status === "active" && !isTaskCompleted(step)).sort(compareProjectTasks)
+      .map(step => ({ title: step.title, description: step.description, status: step.status,
+        listId: step.listId, sectionId: step.sectionId ?? null,
+        ...(sectionIds.has(step.projectSectionId) ? { projectSectionId: step.projectSectionId } : {}) }));
+  }
   return { task, updates: updates.filter(task => !records.includes(task)), deletedIds };
 }
 function isTaskCompleted(task) { return task.status === "completed" || task.done === true; }

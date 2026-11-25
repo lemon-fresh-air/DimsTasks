@@ -489,7 +489,7 @@ async function resolveProjectOverdue(deleteTasks) {
 }
 
 function renderAttachResults() {
-  const available = tasks.filter(task => task.status === "active" && !task.projectId && !task.savedSteps?.length);
+  const available = tasks.filter(task => task.status === "active" && !task.projectId && !hasSavedProjectContent(task));
   const query = projectEls.attachSearch.value.trim().toLocaleLowerCase("uk");
   const matches = available.filter(task => task.title.toLocaleLowerCase("uk").includes(query))
     .sort((a, b) => a.title.localeCompare(b.title, "uk"));
@@ -562,7 +562,7 @@ function positionAttachDialog() {
 async function saveAttachedTasks() {
   const project = projects.find(item => item.id === activeProjectId);
   if (!project || !attachSelectedIds.size || attachTargetSectionId && !project.projectSections?.some(section => section.id === attachTargetSectionId)) return;
-  const selected = tasks.filter(task => attachSelectedIds.has(task.id) && task.status === "active" && !task.projectId && !task.savedSteps?.length);
+  const selected = tasks.filter(task => attachSelectedIds.has(task.id) && task.status === "active" && !task.projectId && !hasSavedProjectContent(task));
   if (!selected.length) return;
   const now = new Date().toISOString();
   const bumped = tasks.filter(task => task.projectId === project.id && task.status === "active")

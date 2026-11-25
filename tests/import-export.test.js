@@ -29,6 +29,28 @@ const data = {
   settings: [{ ...base("appearance"), theme: "dark", useSystemTheme: false }, { ...base("workflow"), returnOverdueToInbox: true }, { ...base("navigation"), startScreen: "projects" }]
 };
 
+test("backup preserves saved project sections and rejects invalid section references", async () => {
+  const current = completeBackupFields(structuredClone(data));
+  const task = current.tasks[0];
+  task.savedProjectLayout = { projectSections: [{ id: "work", title: "Робота", collapsed: true }],
+    unsectionedPosition: 1, unsectionedCollapsed: false, unsectionedHidden: false };
+  task.savedSteps = [{ title: "Крок", description: "", status: "active", listId: "inbox",
+    sectionId: null, projectSectionId: "work" }];
+  const payload = { format: "local-first-pwa-backup", appId: "dims-tasks", formatVersion: BACKUP_FORMAT_VERSION, data: current };
+  const restored = (await parseBackup(file(payload))).tasks[0];
+  assert.deepEqual(JSON.parse(JSON.stringify(restored.savedProjectLayout)), task.savedProjectLayout);
+  assert.deepEqual(JSON.parse(JSON.stringify(restored.savedSteps)), task.savedSteps);
+  task.savedSteps[0].projectSectionId = "missing";
+  await assert.rejects(parseBackup(file(payload)), /Некоректне завдання/);
+  delete task.savedSteps[0].projectSectionId;
+  task.savedProjectLayout.projectSections.push({ ...task.savedProjectLayout.projectSections[0] });
+  await assert.rejects(parseBackup(file(payload)), /Некоректне завдання/);
+  delete task.savedProjectLayout;
+  const legacy = (await parseBackup(file({ ...payload, formatVersion: 26 }))).tasks[0];
+  assert.equal(legacy.savedProjectLayout ?? null, null);
+  assert.equal(legacy.savedSteps[0].title, "Крок");
+});
+
 test("manual Today date survives backup and older format defaults safely", async () => {
   const current = structuredClone(data);
   current.tasks[0].addedToTodayDate = "2026-11-16";

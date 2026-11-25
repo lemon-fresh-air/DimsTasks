@@ -378,14 +378,14 @@ const projectDb = {
       const task = request.result;
       if (!task || task.status !== "active" || task.projectId) { tx.abort(); return; }
       const snapshot = task.savedSteps ?? [];
-      if (!validSavedSteps(snapshot)) { tx.abort(); return; }
+      if (!validSavedProjectContent(task)) { tx.abort(); return; }
       const requests = [stores.lists.getAll(), stores.sections.getAll(), stores.tasks.getAll()];
       let remaining = requests.length;
       for (const item of requests) item.onsuccess = () => {
         if (--remaining) return;
         try {
           const steps = restoredProjectSteps(snapshot, project.id, requests[0].result, requests[1].result, requests[2].result);
-          stores.projects.add(project);
+          stores.projects.add({ ...project, ...restoredProjectLayout(task) });
           for (const step of steps) stores.tasks.add(step);
           stores.tasks.delete(taskId);
         } catch (_error) { tx.abort(); }

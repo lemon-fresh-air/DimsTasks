@@ -14,8 +14,16 @@ const { openTestApp } = require("./e2e-helper");
         ["Перший", "Виконаний", "Другий"].indexOf(title) + 1);
     }
     await page.evaluate(async () => {
+      const project = projects.find(item => item.id === activeProjectId);
+      const updatedProject = { ...project, unsectionedPosition: 1, projectSections: [
+        { id: "work-section", title: "Робота", collapsed: false },
+        { id: "empty-section", title: "Порожня секція", collapsed: true }
+      ] };
+      await projectDb.put(updatedProject);
+      projects = projects.map(item => item.id === project.id ? updatedProject : item);
       const steps = tasks.filter(task => task.projectId === activeProjectId);
       const updates = steps.map((step, index) => ({ ...step, description: `Повний опис ${index}\nдругий рядок`,
+        projectSectionId: index === 0 ? "work-section" : null,
         status: index === 1 ? "completed" : "active", completedAt: index === 1 ? new Date().toISOString() : null }));
       await taskDb.putMany(updates);
       tasks = tasks.map(task => updates.find(item => item.id === task.id) || task);
@@ -36,6 +44,8 @@ const { openTestApp } = require("./e2e-helper");
     assert.equal(await page.locator("#task-saved-steps-list").textContent().then(text => text.includes("другий рядок")), true);
     const saved = await page.evaluate(async () => (await taskDb.all()).find(task => task.title === "План"));
     assert.equal(saved.savedSteps.length, 2);
+    assert.equal(saved.savedSteps[0].projectSectionId, "work-section");
+    assert.equal(saved.savedProjectLayout.projectSections.length, 2);
     assert.equal((await page.evaluate(async () => taskDb.all())).length, 1);
     await page.evaluate(async () => {
       const collision = createProject({ id: "collision", title: "Колізія" });
@@ -61,9 +71,14 @@ const { openTestApp } = require("./e2e-helper");
     assert.deepEqual(await page.locator("#project-task-list .task-text").allTextContents(), ["Перший", "Другий"]);
     const restored = await page.evaluate(async () => ({ projects: await projectDb.all(), tasks: await taskDb.all() }));
     assert.equal(restored.projects.length, 2);
+    const restoredProject = restored.projects.find(project => project.title === "План");
+    assert.deepEqual(restoredProject.projectSections, saved.savedProjectLayout.projectSections);
+    assert.equal(restoredProject.unsectionedPosition, 1);
     assert.deepEqual(restored.tasks.sort((a, b) => a.projectPosition - b.projectPosition).map(task => task.title), ["Перший", "Другий"]);
     assert.equal(restored.tasks.every(task => task.status === "active" && task.completedAt === null), true);
     assert.equal(restored.tasks[0].description.includes("другий рядок"), true);
+    assert.equal(restored.tasks[0].projectSectionId, "work-section");
+    assert.equal(restored.tasks[1].projectSectionId, null);
     await page.reload({ waitUntil: "networkidle" });
     assert.equal((await page.evaluate(async () => taskDb.all())).length, 2);
     await page.click("#nav-inbox");

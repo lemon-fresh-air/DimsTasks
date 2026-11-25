@@ -291,7 +291,6 @@ function updateDesktopSaveState() {
 
 let editorCloseTimer;
 let menuCloseTimer;
-let menuOpenFrame;
 let settingsCloseTimer;
 let settingsOpenFrame;
 
@@ -358,11 +357,11 @@ function taskTodayActionLabel(manuallyToday, dueToday) {
   return dueToday ? "Зняти ручне додавання" : "Прибрати зі «Сьогодні»";
 }
 
-function renderSearchResult({ entry, titleMatches, descriptionMatches }) {
+function renderSearchResult({ entry, titleMatches, descriptionMatches }, { quickToday = false } = {}) {
   const row = document.createElement("li");
   row.className = "global-search-result";
   row.dataset.searchKey = `${entry.type}:${entry.id}`;
-  const open = searchControl("open", "", entry.title);
+  const open = quickToday ? document.createElement("div") : searchControl("open", "", entry.title);
   open.className = "global-search-open";
   const title = document.createElement("strong");
   appendSearchHighlight(title, entry.title, titleMatches);
@@ -377,8 +376,12 @@ function renderSearchResult({ entry, titleMatches, descriptionMatches }) {
     meta.append(sun);
   }
   open.append(title, meta);
-  open.setAttribute("aria-label", [entry.title, entry.meta, entry.manuallyToday ? "Додано до «Сьогодні»" : null].filter(Boolean).join(" · "));
-  if (entry.type === "task" && !entry.completed) {
+  if (!quickToday) open.setAttribute("aria-label", [entry.title, entry.meta, entry.manuallyToday ? "Додано до «Сьогодні»" : null].filter(Boolean).join(" · "));
+  if (quickToday) {
+    const add = searchControl("add-today", "+", `Додати до «Сьогодні»: ${entry.title}`);
+    add.className = "global-search-quick-add";
+    row.append(add);
+  } else if (entry.type === "task" && !entry.completed) {
     const toggle = searchControl("complete", "", "Виконати завдання");
     toggle.className = "toggle";
     const icon = document.createElement("span");
@@ -388,7 +391,7 @@ function renderSearchResult({ entry, titleMatches, descriptionMatches }) {
   }
   row.append(open);
 
-  if (entry.type === "task") {
+  if (entry.type === "task" && !quickToday) {
     const actions = document.createElement("div");
     actions.className = "global-search-actions";
     const trigger = document.createElement("button");
@@ -812,24 +815,17 @@ function hideNewListForm({ returnFocus = true } = {}) {
 
 function openMainMenu() {
   clearTimeout(menuCloseTimer);
-  cancelAnimationFrame(menuOpenFrame);
   els.mainMenu.hidden = false;
-  els.mainMenu.classList.remove("is-open");
+  els.mainMenu.classList.add("is-open");
   els.mainMenuOpen.setAttribute("aria-expanded", "true");
   setActivePrimaryNav("overview");
   document.body.classList.add("main-menu-open");
-  menuOpenFrame = requestAnimationFrame(() => {
-    menuOpenFrame = requestAnimationFrame(() => {
-      els.mainMenu.classList.add("is-open");
-      els.mainMenuClose.focus({ preventScroll: true });
-    });
-  });
+  els.mainMenuClose.focus({ preventScroll: true });
   if (!mobileNavigationEnabled()) history.pushState({ mainMenu: true }, "");
 }
 
 function closeMainMenu({ fromHistory = false } = {}) {
   if (els.mainMenu.hidden) return;
-  cancelAnimationFrame(menuOpenFrame);
   els.mainMenu.classList.remove("is-open");
   els.mainMenuOpen.setAttribute("aria-expanded", "false");
   setActivePrimaryNav(els.mainMenuOpen.dataset.currentPrimaryNav || "inbox");
@@ -900,6 +896,42 @@ els.toastAction.addEventListener("click", async () => {
   if (action) await action();
 });
 
+function renderTaskCardDetails(row, task, taskLists, taskProjects, { contextList = null, listSections = [], showListSection = contextList?.kind === "today" } = {}) {
+  row.querySelector(".task-text").textContent = task.title;
+  const description = task.description?.trim();
+  const preview = row.querySelector(".task-description-preview");
+  const checklist = [...(description || "").matchAll(/^\s*[-*+] \[([ xX])\](?: |$)/gm)];
+  const note = (description || "").split("\n").filter(line => !/^\s*[-*+] \[[ xX]\](?: |$)/.test(line)).join("\n").trim();
+  preview.hidden = !note;
+  preview.textContent = note ? richPreviewText(note) : "";
+  const progress = row.querySelector(".task-checklist-progress");
+  progress.hidden = checklist.length === 0;
+  progress.querySelector(".task-checklist-count").textContent = `${checklist.filter(match => match[1].toLowerCase() === "x").length}/${checklist.length}`;
+  const taskDate = row.querySelector(".task-date");
+  renderTaskDueDate(taskDate, task);
+  renderTaskTodayIndicator(row.querySelector(".task-today-indicator"), task);
+  const taskProject = taskProjects.find(project => project.id === task.projectId);
+  const projectBadge = row.querySelector(".task-project");
+  projectBadge.hidden = !taskProject;
+  row.querySelector(".task-project-name").textContent = taskProject?.title || "";
+  const taskList = taskLists.find(list => list.id === (task.listId || INBOX_LIST_ID))
+    || taskLists.find(list => list.kind === "inbox");
+  const taskListBadge = row.querySelector(".task-list");
+  const showTaskList = contextList?.kind !== "regular" || taskList?.id !== contextList.id;
+  taskListBadge.hidden = !showTaskList;
+  const taskSection = showListSection && taskList?.kind === "regular"
+    ? listSections.find(section => section.id === task.sectionId && section.listId === taskList.id) : null;
+  const listLabel = `${displayListTitle(taskList)}${taskSection ? ` / ${taskSection.title}` : ""}`;
+  row.querySelector(".task-list-name").textContent = listLabel;
+  taskListBadge.title = listLabel;
+  const taskListIcon = taskListBadge.querySelector(".inbox-icon");
+  taskListIcon.className = taskList?.kind === "regular" ? "list-menu-icon" : "inbox-icon";
+  const manualToday = task.status === "active" && task.addedToTodayDate === localDateValue();
+  row.querySelector(".task-meta-primary").hidden = !task.dueDate && !manualToday && !showTaskList;
+  row.querySelector(".task-meta").hidden = !task.dueDate && !manualToday && !taskProject && !showTaskList;
+  row.querySelector(".task-open").setAttribute("aria-label", `Відкрити деталі: ${task.title}`);
+}
+
 function renderTasks(tasks, selectedIds = new Set(), taskLists = [], taskProjects = [], contextList = null, layout = null, selectedGroupIds = new Set(), listSections = []) {
   const active = tasks.filter(task => !isTaskCompleted(task));
   const groupSelection = selectedGroupIds.size > 0;
@@ -932,39 +964,7 @@ function renderTasks(tasks, selectedIds = new Set(), taskLists = [], taskProject
     const selected = selectedIds.has(task.id);
     row.classList.toggle("selected", selected);
     row.setAttribute("aria-selected", String(selected));
-    row.querySelector(".task-text").textContent = task.title;
-    const description = task.description?.trim();
-    const preview = row.querySelector(".task-description-preview");
-    const checklist = [...(description || "").matchAll(/^\s*[-*+] \[([ xX])\](?: |$)/gm)];
-    const note = (description || "").split("\n").filter(line => !/^\s*[-*+] \[[ xX]\](?: |$)/.test(line)).join("\n").trim();
-    preview.hidden = !note;
-    preview.textContent = note ? richPreviewText(note) : "";
-    const progress = row.querySelector(".task-checklist-progress");
-    progress.hidden = checklist.length === 0;
-    progress.querySelector(".task-checklist-count").textContent = `${checklist.filter(match => match[1].toLowerCase() === "x").length}/${checklist.length}`;
-    const taskDate = row.querySelector(".task-date");
-    renderTaskDueDate(taskDate, task);
-    renderTaskTodayIndicator(row.querySelector(".task-today-indicator"), task);
-    const taskProject = taskProjects.find(project => project.id === task.projectId);
-    const projectBadge = row.querySelector(".task-project");
-    projectBadge.hidden = !taskProject;
-    row.querySelector(".task-project-name").textContent = taskProject?.title || "";
-    const taskList = taskLists.find(list => list.id === (task.listId || INBOX_LIST_ID))
-      || taskLists.find(list => list.kind === "inbox");
-    const taskListBadge = row.querySelector(".task-list");
-    const showTaskList = contextList?.kind !== "regular" || taskList?.id !== contextList.id;
-    taskListBadge.hidden = !showTaskList;
-    const taskSection = contextList?.kind === "today" && taskList?.kind === "regular"
-      ? listSections.find(section => section.id === task.sectionId && section.listId === taskList.id) : null;
-    const listLabel = `${displayListTitle(taskList)}${taskSection ? ` / ${taskSection.title}` : ""}`;
-    row.querySelector(".task-list-name").textContent = listLabel;
-    taskListBadge.title = listLabel;
-    const taskListIcon = taskListBadge.querySelector(".inbox-icon");
-    taskListIcon.className = taskList?.kind === "regular" ? "list-menu-icon" : "inbox-icon";
-    const manualToday = task.status === "active" && task.addedToTodayDate === localDateValue();
-    row.querySelector(".task-meta-primary").hidden = !task.dueDate && !manualToday && !showTaskList;
-    row.querySelector(".task-meta").hidden = !task.dueDate && !manualToday && !taskProject && !showTaskList;
-    row.querySelector(".task-open").setAttribute("aria-label", `Відкрити деталі: ${task.title}`);
+    renderTaskCardDetails(row, task, taskLists, taskProjects, { contextList, listSections });
     return [task.id, row];
   }));
   if (groupedToday) {
@@ -1189,7 +1189,7 @@ function openTaskDetails(task) {
   els.taskProjectOptions.hidden = true;
   els.taskProjectTrigger.setAttribute("aria-expanded", "false");
   els.taskProjectTrigger.disabled = task.status !== "active" || !projects.some(item => item.status === "active");
-  els.taskAttachProject.hidden = task.status !== "active" || Boolean(task.projectId) || Boolean(task.savedSteps?.length) || !projects.some(item => item.status === "active");
+  els.taskAttachProject.hidden = task.status !== "active" || Boolean(task.projectId) || hasSavedProjectContent(task) || !projects.some(item => item.status === "active");
   els.taskConvertProject.hidden = task.status !== "active" || Boolean(task.projectId);
   els.taskDetachProject.hidden = task.status !== "active" || !project;
   els.taskDelete.hidden = false;
@@ -1205,6 +1205,7 @@ function openTaskDetails(task) {
   taskDescriptionToggle.setAttribute("aria-expanded", String(Boolean(els.description.querySelector(".rich-checklist"))));
   syncTaskActionsMenu();
   const snapshot = Array.isArray(task.savedSteps) ? task.savedSteps : [];
+  const savedSectionNames = new Map((task.savedProjectLayout?.projectSections ?? []).map(section => [section.id, section.title]));
   els.savedSteps.hidden = snapshot.length === 0;
   els.savedSteps.open = false;
   els.savedStepsTitle.textContent = `Збережені кроки · ${snapshot.length}`;
@@ -1214,7 +1215,9 @@ function openTaskDetails(task) {
     const title = document.createElement("strong");
     title.textContent = step.title;
     const meta = document.createElement("span");
-    meta.textContent = `${step.status === "completed" ? "Виконано" : "Активний"} · ${displayListTitle(lists.find(list => list.id === step.listId)) || "Нові"}`;
+    meta.textContent = [step.status === "completed" ? "Виконано" : "Активний",
+      displayListTitle(lists.find(list => list.id === step.listId)) || "Нові",
+      savedSectionNames.get(step.projectSectionId)].filter(Boolean).join(" · ");
     const description = document.createElement("p");
     description.textContent = step.description;
     item.append(title, meta, description);

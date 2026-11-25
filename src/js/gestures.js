@@ -243,7 +243,7 @@ function animateRows(previous, dragContainer) {
   }
 }
 
-function enableTaskGestures({ container = els.list, onDelete, onAddToday, canAddToday = () => true, isSelectionMode, isSelected, onLongPress, onSelectOnly, getSelectedIds, onReorder, requireSelectionForDrag = false, canDragRow = () => true, sectionDragEnabled = () => false }) {
+function enableTaskGestures({ container = els.list, onDelete, onAddToday, canAddToday = () => true, isSelectionMode, isSelected, onLongPress, onSelectOnly, getSelectedIds, onReorder, requireSelectionForDrag = false, canDragRow = () => true, sectionDragEnabled = () => false, swipeOnly = false }) {
   let gesture = null;
   const maxReveal = 112;
   const deleteThreshold = 72;
@@ -253,6 +253,11 @@ function enableTaskGestures({ container = els.list, onDelete, onAddToday, canAdd
   let momentumFrame = null;
 
   container.addEventListener("pointerdown", event => {
+    if (swipeOnly) {
+      if (!event.isPrimary || isSelectionMode()) return;
+      const previous = event.target.closest(".swipe-row");
+      if (previous) delete previous.dataset.swiped;
+    }
     if (event.target.closest(".toggle, button:not(.task-open)")) return;
     const card = event.target.closest(".task-card");
     if (!card || !container.contains(card) || event.button > 0) return;
@@ -260,6 +265,7 @@ function enableTaskGestures({ container = els.list, onDelete, onAddToday, canAdd
     const row = card.closest(".swipe-row");
     if (!row || !row.dataset.id) return;
     gesture = { row, card, dragContainer: row.parentElement, id: row.dataset.id, pointerId: event.pointerId, pointerType: event.pointerType, canDrag: isSelectionMode() && canDragRow(row), startX: event.clientX, startY: event.clientY, lastY: event.clientY, dx: 0, horizontal: false, scrolling: false, longPress: false, dragging: false };
+    if (swipeOnly) return;
     if (!gesture.canDrag) row.classList.add("pressing");
     card.setPointerCapture(event.pointerId);
     row.classList.remove("settling");
@@ -405,10 +411,15 @@ function enableTaskGestures({ container = els.list, onDelete, onAddToday, canAdd
     gesture.scrollFrame = requestAnimationFrame(autoScroll);
   }
 
-  container.addEventListener("pointermove", event => {
+  const pointerTarget = swipeOnly ? window : container;
+  pointerTarget.addEventListener("pointermove", event => {
     if (!gesture || gesture.pointerId !== event.pointerId) return;
     const dx = event.clientX - gesture.startX;
     const dy = event.clientY - gesture.startY;
+    if (swipeOnly && !gesture.horizontal && (isSelectionMode() || Math.abs(dy) > 8 && Math.abs(dy) > Math.abs(dx))) {
+      gesture = null;
+      return;
+    }
     if (gesture.dragging) {
       event.preventDefault();
       positionPreview(event.clientX, event.clientY);
@@ -474,6 +485,7 @@ function enableTaskGestures({ container = els.list, onDelete, onAddToday, canAdd
     const { row, card, dx, horizontal, scrolling, longPress, longPressTimer, scrollVelocity } = gesture;
     gesture = null;
     clearTimeout(longPressTimer);
+    if (swipeOnly && !horizontal) return;
     row?.classList.remove("lifted", "pressing");
     if (scrolling && Math.abs(scrollVelocity || 0) > .08) {
       const scrollContainer = container.closest(".project-screen");
@@ -546,8 +558,9 @@ function enableTaskGestures({ container = els.list, onDelete, onAddToday, canAdd
     setTimeout(() => row.classList.remove("settling"), settleDuration);
   };
 
-  container.addEventListener("pointerup", finishGesture);
-  container.addEventListener("pointercancel", cancelGesture);
+  pointerTarget.addEventListener("pointerup", finishGesture);
+  pointerTarget.addEventListener("pointercancel", cancelGesture);
+  if (swipeOnly) return;
   enableKeyboardReorder({ container,
     items: () => {
       const selected = getSelectedIds();
