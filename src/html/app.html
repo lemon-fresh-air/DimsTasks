@@ -634,10 +634,13 @@
 <div id="app-update" class="app-update" role="status" aria-live="polite" hidden><span>Доступна нова версія</span><button id="app-update-reload" type="button">Оновити</button></div>
 <button id="global-search-return" type="button" hidden><span class="back-icon" aria-hidden="true"></span> До результатів пошуку</button>
 <dialog id="global-search" aria-labelledby="global-search-label">
-  <div class="global-search-header">
-    <button id="global-search-close" class="toolbar-action" type="button" aria-label="Назад"><span class="back-icon" aria-hidden="true"></span></button>
-    <label id="global-search-label" class="sr-only" for="global-search-input">Пошук</label>
-    <input id="global-search-input" type="search" placeholder="Пошук" autocomplete="off" autofocus>
+  <header class="project-screen-header">
+    <button id="global-search-close" class="editor-back" type="button" aria-label="Назад"><span aria-hidden="true"></span></button>
+    <h2 id="global-search-label">Пошук</h2>
+  </header>
+  <div class="global-search-field">
+    <input id="global-search-input" type="search" aria-label="Пошуковий запит" placeholder="Пошук" autocomplete="off" autofocus>
+    <button id="global-search-clear" type="button" aria-label="Очистити пошук"><span aria-hidden="true">×</span></button>
   </div>
   <div class="global-search-filters" role="group" aria-label="Тип результатів">
     <button type="button" data-search-type="all" aria-pressed="true">Усі</button>

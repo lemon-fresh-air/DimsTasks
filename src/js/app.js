@@ -2240,6 +2240,11 @@ function scheduleGlobalSearch(event) {
 }
 globalSearch.input.addEventListener("input", scheduleGlobalSearch);
 globalSearch.input.addEventListener("compositionend", scheduleGlobalSearch);
+document.querySelector("#global-search-clear").addEventListener("click", () => {
+  globalSearch.input.value = "";
+  globalSearch.input.focus({ preventScroll: true });
+  updateGlobalSearch({ reset: true });
+});
 globalSearch.completed.addEventListener("change", () => updateGlobalSearch({ reset: true }));
 globalSearch.more.addEventListener("click", () => {
   const previousLimit = globalSearch.limit;
