@@ -217,7 +217,7 @@ function enableListReordering({ container = els.mainMenuLists, onReorder, isSele
     finished.placeholder.remove();
     finished.selectedItems.forEach(item => item.classList.remove("drag-source"));
     container.classList.remove("dragging");
-    if (!cancelled && finished.moved) onReorder({ selectedIds: finished.selectedIds, beforeId: finished.lastBeforeId });
+    if (!cancelled && finished.moved) onReorder({ selectedIds: finished.selectedIds, beforeId: finished.lastBeforeId, method: "drag" });
   }
 
   pointerTarget.addEventListener("pointerup", event => finish(event));
@@ -225,7 +225,7 @@ function enableListReordering({ container = els.mainMenuLists, onReorder, isSele
   enableKeyboardReorder({ container,
     items: () => [...container.querySelectorAll('[data-list-kind="regular"]')],
     idOf: item => item.dataset.listId, selectedIds: getSelectedIds,
-    reorder: ({ selectedIds, before }) => onReorder({ selectedIds, beforeId: before?.dataset.listId || null }) });
+    reorder: ({ selectedIds, before }) => onReorder({ selectedIds, beforeId: before?.dataset.listId || null, method: "keyboard" }) });
 }
 
 function captureRows(dragContainer) {
@@ -478,7 +478,7 @@ function enableTaskGestures({ container = els.list, onDelete, onAddToday, canAdd
       finished.dragContainer.classList.remove("dragging");
        if (finished.sectionDrag) container.classList.remove("dragging");
       finished.row.dataset.swiped = "true";
-      if (finished.moved) onReorder({ beforeType: finished.lastBeforeType, beforeId: finished.lastBeforeId, groupId: finished.dragContainer.closest(".today-group")?.dataset.groupId || null,
+      if (finished.moved) onReorder({ method: "drag", beforeType: finished.lastBeforeType, beforeId: finished.lastBeforeId, groupId: finished.dragContainer.closest(".today-group")?.dataset.groupId || null,
         sectionId: finished.sectionDrag ? finished.dropSectionId : null, movedIds: finished.sectionDrag ? finished.rows.map(row => row.dataset.id) : null });
       return;
     }
@@ -585,7 +585,7 @@ function enableTaskGestures({ container = els.list, onDelete, onAddToday, canAdd
       }
       const group = moving[0].closest(".today-group") || null;
       const beforeInSection = container !== els.list || !section || beforeRow?.closest(".list-section") === section;
-      return onReorder({ beforeType: beforeRow?.dataset.groupId ? "group" : "task",
+      return onReorder({ method: "keyboard", beforeType: beforeRow?.dataset.groupId ? "group" : "task",
         beforeId: beforeInSection ? beforeRow?.dataset.groupId || beforeRow?.dataset.id || null : null,
         groupId: group?.dataset.groupId || null,
         sectionId: section?.dataset.sectionId || null,
@@ -702,7 +702,7 @@ function enableTodayGroupReordering({ isSelected, onSelect, onReorder }) {
     g.placeholder.remove();
     g.source.classList.remove("drag-source");
     container.classList.remove("dragging");
-    if (!cancelled && g.moved) onReorder(g.beforeType, g.beforeId, g.id);
+    if (!cancelled && g.moved) onReorder(g.beforeType, g.beforeId, g.id, "drag");
   }
   window.addEventListener("pointerup", event => finish(event));
   window.addEventListener("pointercancel", event => finish(event, true));
@@ -711,7 +711,7 @@ function enableTodayGroupReordering({ isSelected, onSelect, onReorder }) {
     idOf: item => item.dataset.groupId ? `group:${item.dataset.groupId}` : `task:${item.dataset.id}`,
     selectedIds: () => new Set([...container.children].filter(item => item.dataset.groupId && isSelected(item.dataset.groupId)).map(item => `group:${item.dataset.groupId}`)),
     reorder: ({ before, moving }) => onReorder(before?.dataset.groupId ? "group" : before ? "task" : null,
-      before?.dataset.groupId || before?.dataset.id || null, moving[0].dataset.groupId) });
+      before?.dataset.groupId || before?.dataset.id || null, moving[0].dataset.groupId, "keyboard") });
 }
 
 function enableProjectCardReorder({ container, isSelectionMode, isSelected, onLongPress, onSelectOnly, getSelectedIds, onReorder, cardSelector = ".project-card", idKey = "projectId", scrollElement = window, requireSelectionForDrag = false, handleSelector = null, insertionSelector = null }) {
@@ -868,7 +868,7 @@ function enableProjectCardReorder({ container, isSelectionMode, isSelected, onLo
     const { selectedIds, lastBeforeId: beforeId, moved } = finished;
     finished.card.dataset.dragged = "true";
     cleanup(finished);
-    if (moved) onReorder({ selectedIds, beforeId });
+    if (moved) onReorder({ selectedIds, beforeId, method: "drag" });
   });
 
   container.addEventListener("pointercancel", event => {
@@ -880,5 +880,5 @@ function enableProjectCardReorder({ container, isSelectionMode, isSelected, onLo
   enableKeyboardReorder({ container,
     items: () => [...container.children].filter(card => card.matches(cardSelector) && card.dataset[idKey]),
     idOf: card => card.dataset[idKey], selectedIds: getSelectedIds,
-    reorder: ({ selectedIds, before }) => onReorder({ selectedIds, beforeId: before?.dataset[idKey] || null }) });
+    reorder: ({ selectedIds, before }) => onReorder({ selectedIds, beforeId: before?.dataset[idKey] || null, method: "keyboard" }) });
 }

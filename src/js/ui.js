@@ -814,6 +814,7 @@ function hideNewListForm({ returnFocus = true } = {}) {
 }
 
 function openMainMenu() {
+  diagnostics.start("navigation.main_menu");
   clearTimeout(menuCloseTimer);
   els.mainMenu.hidden = false;
   els.mainMenu.classList.add("is-open");
@@ -839,6 +840,7 @@ function closeMainMenu({ fromHistory = false } = {}) {
 }
 
 function openSettings() {
+  diagnostics.start("navigation.settings");
   clearTimeout(settingsCloseTimer);
   cancelAnimationFrame(settingsOpenFrame);
   els.settingsScreen.hidden = false;
@@ -1140,6 +1142,7 @@ function resizeTaskTitle() {
 }
 
 function openNewTaskEditor(listId, originListId = listId) {
+  diagnostics.start("navigation.new_task", { list: listId });
   els.editor.classList.remove("detail-mode");
   els.editor.dataset.taskId = "";
   els.editor.dataset.originListId = originListId;
@@ -1174,6 +1177,7 @@ function openNewTaskEditor(listId, originListId = listId) {
 }
 
 function openTaskDetails(task) {
+  diagnostics.start("navigation.task", { task: task.id, list: task.listId });
   els.editor.classList.add("detail-mode");
   els.editor.dataset.taskId = task.id;
   els.editor.dataset.pendingProjectId = "";

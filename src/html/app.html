@@ -327,6 +327,25 @@
           </div>
         </div>
       </div>
+      <details id="diagnostics-settings" class="backup-setting">
+        <summary><strong>Діагностика</strong></summary>
+        <label class="backup-prefix-field" for="diagnostics-retention">Зберігати журнал за
+          <select id="diagnostics-retention">
+            <option value="0">Вимкнено</option>
+            <option value="1">1 годину</option>
+            <option value="24" selected>24 години</option>
+            <option value="72">3 дні</option>
+            <option value="168">7 днів</option>
+          </select>
+        </label>
+        <p id="diagnostics-coverage"></p>
+        <div class="backup-actions">
+          <button id="diagnostics-copy" type="button">Скопіювати звіт</button>
+          <button id="diagnostics-download" type="button">Завантажити .txt</button>
+        </div>
+        <p id="diagnostics-status" role="status"></p>
+        <textarea id="diagnostics-report" aria-label="Діагностичний звіт" rows="8" readonly hidden></textarea>
+      </details>
       <button id="clear-data-open" class="settings-row clear-data-open" type="button" aria-haspopup="dialog" aria-controls="clear-data-dialog"><span class="trash-icon" aria-hidden="true"></span><span class="settings-copy"><strong>Очистити дані</strong><small>Завдання, списки, проєкти й налаштування</small></span><span aria-hidden="true">›</span></button>
     </div>
     <p class="settings-version"><span>Версія 0.35 · 25 листопада 2026</span><button id="check-app-update" type="button">Перевірити оновлення</button></p>

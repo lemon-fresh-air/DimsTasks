@@ -194,6 +194,7 @@ function selectUpcomingDate(value, { animate = true } = {}) {
   scrollUpcomingToDate(value, animate && alreadyRendered);
 }
 function openUpcoming() {
+  diagnostics.start("navigation.upcoming");
   closeProjects();
   closeMainMenu();
   selectedTaskIds = new Set();
@@ -240,6 +241,7 @@ function renderUpcomingCalendar() {
   upcoming.grid.replaceChildren(...cells);
 }
 function openUpcomingCalendar() {
+  diagnostics.start("navigation.upcoming_calendar");
   upcomingReturnFocus = document.activeElement;
   const date = dateFromValue(upcomingDate);
   upcomingCalendarMonth = new Date(date.getFullYear(), date.getMonth(), 1, 12);
@@ -547,7 +549,8 @@ window.addEventListener("pointerup", async event => {
   const drop = event.clientX === gesture.currentX && event.clientY === gesture.currentY
     ? gesture.target : upcomingDropTarget(gesture, event.clientX, event.clientY);
   gesture.target?.element.classList.remove(gesture.target.marker);
-  if (!drop) { await finishUpcomingGhost(gesture, null); return; }
+  const diagnosticOp = diagnostics.start("upcoming.drop", { task: gesture.taskId, count: gesture.ids.size, beforeTask: drop?.element.dataset.id, method: "drag" });
+  if (!drop) { diagnostics.capture("operation.cancelled", diagnosticOp); await finishUpcomingGhost(gesture, null); return; }
   const destination = drop.date;
   const reorder = destination === gesture.date;
   const changed = reorder
@@ -555,9 +558,10 @@ window.addEventListener("pointerup", async event => {
       gesture.ids, drop.element.dataset.id, drop.after)
     : tasks.filter(task => gesture.ids.has(task.id) && task.dueDate !== destination)
       .map(task => ({ ...task, dueDate: destination, updatedAt: new Date().toISOString() }));
-  if (!changed.length) { await finishUpcomingGhost(gesture, null); return; }
+  if (!changed.length) { diagnostics.capture("operation.rejected", diagnosticOp); await finishUpcomingGhost(gesture, null); return; }
   try {
-    await taskDb.putMany(changed);
+    if (reorder) diagnostics.order(diagnosticOp, "task", tasks, changed, gesture.ids, upcomingTaskPosition);
+    await diagnostics.bind(diagnosticOp, taskDb.putMany)(changed);
     rememberUpcomingFeedScroll();
     selectedTaskIds = new Set();
     await refresh();
@@ -570,6 +574,7 @@ window.addEventListener("pointerup", async event => {
     toast(reorder ? "Порядок завдань збережено"
       : changed.length === 1 ? "Дату завдання змінено" : `Змінено дату завдань: ${changed.length}`);
   } catch (_error) {
+    diagnostics.error(diagnosticOp, _error);
     upcomingScrollRestore = null;
     await finishUpcomingGhost(gesture, null);
     await refresh();

@@ -129,21 +129,23 @@ function projectSteps(projectId) {
   return tasks.filter(task => task.projectId === projectId).sort(compareProjectTasks);
 }
 
-async function rememberProjectList(projectId, listId) {
+async function rememberProjectList(projectId, listId, parentOp) {
   const project = projects.find(item => item.id === projectId);
   if (!project || project.lastListId === listId || !lists.some(list => list.id === listId)) return;
+  const diagnosticOp = parentOp || diagnostics.start("project.remember_list", { project: projectId, list: listId });
   const updated = createProject({ ...project, lastListId: listId, updatedAt: new Date().toISOString() });
   projects = projects.map(item => item.id === updated.id ? updated : item);
   try {
-    await projectDb.put(updated);
+    await diagnostics.bind(diagnosticOp, projectDb.put)(updated);
   } catch (_error) {
+    diagnostics.error(diagnosticOp, _error);
     toast("Не вдалося запам’ятати список проєкту");
   }
 }
 
-async function rememberProjectLists(tasksToRemember, listId) {
+async function rememberProjectLists(tasksToRemember, listId, diagnosticOp) {
   const projectIds = new Set(tasksToRemember.map(task => task.projectId).filter(Boolean));
-  await Promise.all([...projectIds].map(projectId => rememberProjectList(projectId, listId)));
+  await Promise.all([...projectIds].map(projectId => rememberProjectList(projectId, listId, diagnosticOp)));
 }
 
 function renderProjectCountdown() {
@@ -200,6 +202,7 @@ async function loadProjects() {
 }
 
 function openProjects() {
+  diagnostics.start("navigation.projects");
   closeUpcoming();
   activeProjectId = null;
   selectedProjectIds = new Set();
@@ -313,9 +316,10 @@ function renderCompletedProjectTaskHeading(count) {
 }
 
 async function reopenProjectTask(task) {
+  const diagnosticOp = diagnostics.start("project.reopen_step", { task: task.id });
   const updatedAt = new Date().toISOString();
   const updated = { ...task, status: "active", completedAt: null, updatedAt };
-  await taskDb.put(updated);
+  await diagnostics.bind(diagnosticOp, taskDb.put)(updated);
   tasks = tasks.map(item => item.id === updated.id ? updated : item);
   if (projectSteps(activeProjectId).filter(item => !isTaskCompleted(item)).length > 3) {
     projectEls.steps.classList.add("is-expanded");
@@ -412,6 +416,7 @@ function renderOpenProject() {
 }
 
 function openProject(projectId, { showOverdue = true } = {}) {
+  diagnostics.start("navigation.project", { project: projectId });
   const project = projects.find(item => item.id === projectId);
   if (!project) return;
   selectedListSectionIds.clear();
@@ -451,14 +456,15 @@ function closeProjectOverdueDialog() {
 }
 
 async function resolveProjectOverdue(deleteTasks) {
+  const diagnosticOp = diagnostics.start("project.overdue");
   const affected = overdueProjectSteps();
   closeProjectOverdueDialog();
   if (!affected.length) return;
   try {
-    if (deleteTasks) await taskDb.deleteMany(affected.map(task => task.id));
+    if (deleteTasks) await diagnostics.bind(diagnosticOp, taskDb.deleteMany)(affected.map(task => task.id));
     else {
       const updatedAt = new Date().toISOString();
-      await taskDb.putMany(affected.map(task => ({ ...task, dueDate: null, dueTime: null, updatedAt })));
+      await diagnostics.bind(diagnosticOp, taskDb.putMany)(affected.map(task => ({ ...task, dueDate: null, dueTime: null, updatedAt })));
     }
     selectedTaskIds = new Set([...selectedTaskIds].filter(id => !affected.some(task => task.id === id)));
     await refresh();
@@ -468,21 +474,21 @@ async function resolveProjectOverdue(deleteTasks) {
       duration: 3000,
       action: async () => {
         try {
-          if (deleteTasks) await taskDb.putMany(affected);
+          if (deleteTasks) await diagnostics.bind(diagnosticOp, taskDb.putMany)(affected);
           else {
             const current = await taskDb.all();
             const dates = new Map(affected.map(task => [task.id, task]));
-            await taskDb.putMany(current.filter(task => dates.has(task.id)).map(task => ({
+            await diagnostics.bind(diagnosticOp, taskDb.putMany)(current.filter(task => dates.has(task.id)).map(task => ({
               ...task, dueDate: dates.get(task.id).dueDate, dueTime: dates.get(task.id).dueTime,
               updatedAt: new Date().toISOString()
             })));
           }
           await refresh();
           toast("Дію скасовано");
-        } catch (_error) { toast("Не вдалося скасувати дію"); }
+        } catch (_error) { diagnostics.error(diagnosticOp, _error); toast("Не вдалося скасувати дію"); }
       }
     });
-  } catch (_error) {
+  } catch (_error) { diagnostics.error(diagnosticOp, _error);
     await refresh();
     toast("Не вдалося змінити прострочені завдання");
   }
@@ -560,6 +566,7 @@ function positionAttachDialog() {
 }
 
 async function saveAttachedTasks() {
+  const diagnosticOp = diagnostics.start("project.attach");
   const project = projects.find(item => item.id === activeProjectId);
   if (!project || !attachSelectedIds.size || attachTargetSectionId && !project.projectSections?.some(section => section.id === attachTargetSectionId)) return;
   const selected = tasks.filter(task => attachSelectedIds.has(task.id) && task.status === "active" && !task.projectId && !hasSavedProjectContent(task));
@@ -570,13 +577,13 @@ async function saveAttachedTasks() {
   const changed = selected.map((task, index) => ({ ...task, projectId: project.id, projectSectionId: attachTargetSectionId, projectPosition: index, updatedAt: now }));
   projectEls.attachSave.disabled = true;
   try {
-    await taskDb.putMany([...changed, ...bumped]);
+    await diagnostics.bind(diagnosticOp, taskDb.putMany)([...changed, ...bumped]);
     const replacements = new Map([...changed, ...bumped].map(task => [task.id, task]));
     tasks = tasks.map(task => replacements.get(task.id) || task);
     closeAttachDialog();
     renderProjects();
     renderCurrentTasks();
-  } catch (_error) {
+  } catch (_error) { diagnostics.error(diagnosticOp, _error);
     projectEls.attachSave.disabled = false;
     toast("Не вдалося додати завдання до проєкту");
   }
@@ -624,6 +631,7 @@ function selectProjectSection(id, only = false) {
   syncProjectSectionSelection();
 }
 async function changeProjectSections(transform) {
+  const diagnosticOp = diagnostics.start("project.sections");
   if (projectSectionBusy) return false;
   projectSectionBusy = true;
   syncProjectSectionSelection();
@@ -632,7 +640,7 @@ async function changeProjectSections(transform) {
     const current = projects.find(item => item.id === activeProjectId);
     if (!current) return false;
     const plan = transform(current);
-    await projectDb.putWithTasks(plan.project, plan.tasks || [], plan.deletedTaskIds || []);
+    await diagnostics.bind(diagnosticOp, projectDb.putWithTasks)(plan.project, plan.tasks || [], plan.deletedTaskIds || []);
     const replacements = new Map((plan.tasks || []).map(task => [task.id, task]));
     const deleted = new Set(plan.deletedTaskIds || []);
     tasks = tasks.filter(task => !deleted.has(task.id)).map(task => replacements.get(task.id) || task);
@@ -642,7 +650,7 @@ async function changeProjectSections(transform) {
     renderOpenProject();
     syncProjectEditorSummary();
     return true;
-  } catch (error) {
+  } catch (error) { diagnostics.error(diagnosticOp, error);
     if (projectEls.sectionActionDialog.open) {
       const field = document.querySelector("#project-section-action-error");
       field.textContent = error.message || "Не вдалося змінити секції";
@@ -778,6 +786,7 @@ function closeProjectSections() {
   scheduleMobileNavigationRecord();
 }
 async function assignSelectedProjectTasks(sectionId = null) {
+  const diagnosticOp = diagnostics.start("project.assign_section");
   const selected = new Set(selectedTaskIds);
   const name = projectEls.sectionName.value;
   const saved = sectionDialogScope?.kind === "list"
@@ -859,6 +868,7 @@ async function closeProject({ animated = false } = {}) {
 }
 
 async function saveProjectFields({ closeAfter = false } = {}) {
+  const diagnosticOp = diagnostics.start("project.edit");
   const project = projects.find(item => item.id === activeProjectId);
   if (!project) return;
   const title = projectEls.title.value.trim();
@@ -870,7 +880,7 @@ async function saveProjectFields({ closeAfter = false } = {}) {
   const updated = createProject({ ...project, title, description: projectEls.description.value.trim(), dueDate: projectEls.dueDate.value || null, dueTime: projectEls.dueDate.value && projectEls.dueTime.value ? projectEls.dueTime.value : null, showCountdown: projectEls.showCountdown.checked, defaultListId: projectEls.defaultList.value || null, updatedAt: new Date().toISOString() });
   projectEls.saveStatus.textContent = "Збереження…";
   try {
-    await projectDb.put(updated);
+    await diagnostics.bind(diagnosticOp, projectDb.put)(updated);
     projects = projects.map(item => item.id === updated.id ? updated : item);
     projectEls.heading.textContent = updated.title;
     projectEls.saveStatus.textContent = "Збережено";
@@ -879,7 +889,7 @@ async function saveProjectFields({ closeAfter = false } = {}) {
     syncProjectEditorSummary();
     if (closeAfter) closeProjectEditor();
     return true;
-  } catch (_error) {
+  } catch (_error) { diagnostics.error(diagnosticOp, _error);
     projectEls.saveStatus.textContent = "Не вдалося зберегти";
     return false;
   }
@@ -890,10 +900,11 @@ function markProjectDirty() {
 }
 
 async function addProject(title) {
+  const diagnosticOp = diagnostics.start("project.create");
   const value = title.trim();
   if (!value) return;
   const project = createProject({ title: value, position: nextProjectPosition(projects) });
-  await projectDb.put(project);
+  await diagnostics.bind(diagnosticOp, projectDb.put)(project);
   projects.push(project);
   projectEls.createForm.hidden = true;
   projectEls.createTitle.value = "";
@@ -902,6 +913,7 @@ async function addProject(title) {
 }
 
 async function addProjectStep(title, { sectionId = null, description = "" } = {}) {
+  const diagnosticOp = diagnostics.start("project.add_step");
   const project = projects.find(item => item.id === activeProjectId);
   const value = title.trim();
   if (!project || !value) return;
@@ -933,7 +945,7 @@ async function addProjectStep(title, { sectionId = null, description = "" } = {}
       });
     }
   }
-  await taskDb.putMany([task, ...replacements.values()]);
+  await diagnostics.bind(diagnosticOp, taskDb.putMany)([task, ...replacements.values()]);
   tasks = tasks.map(existing => replacements.get(existing.id) || existing);
   tasks.push(task);
   await rememberProjectList(project.id, listId);
@@ -958,12 +970,13 @@ async function toggleProjectStatus() {
 }
 
 async function deleteProject() {
+  const diagnosticOp = diagnostics.start("project.delete");
   const project = projects.find(item => item.id === activeProjectId);
   if (!project) return;
   const detachTasks = await requestProjectDeletion(1);
   if (detachTasks === null) return;
   const now = new Date().toISOString();
-  await projectDb.deleteManyWithTasks([project.id], now, detachTasks);
+  await diagnostics.bind(diagnosticOp, projectDb.deleteManyWithTasks)([project.id], now, detachTasks);
   tasks = detachTasks
     ? tasks.map(task => task.projectId === project.id ? { ...task, projectId: null, projectSectionId: null, projectPosition: null, updatedAt: now } : task)
     : tasks.filter(task => task.projectId !== project.id);
@@ -974,6 +987,7 @@ async function deleteProject() {
 }
 
 async function deleteCompletedProjectTasks() {
+  const diagnosticOp = diagnostics.start("project.delete_completed_steps");
   const projectId = activeProjectId;
   if (!projects.some(project => project.id === projectId)) return;
   const deleted = tasks.filter(task => task.projectId === projectId && isTaskCompleted(task));
@@ -981,20 +995,20 @@ async function deleteCompletedProjectTasks() {
   const ids = new Set(deleted.map(task => task.id));
   projectEls.deleteCompletedTasks.disabled = true;
   try {
-    await taskDb.deleteMany([...ids]);
+    await diagnostics.bind(diagnosticOp, taskDb.deleteMany)([...ids]);
     selectedTaskIds = new Set([...selectedTaskIds].filter(id => !ids.has(id)));
     await refresh();
     renderOpenProject();
     toast(`Видалено завершених завдань: ${deleted.length}`, { duration: 3000, action: async () => {
       if (!projects.some(project => project.id === projectId)) { toast("Проєкт уже видалено"); return; }
       try {
-        await taskDb.putMany(deleted);
+        await diagnostics.bind(diagnosticOp, taskDb.putMany)(deleted);
         await refresh();
         renderOpenProject();
         toast("Завершені завдання відновлено");
-      } catch (_error) { toast("Не вдалося відновити завдання"); }
+      } catch (_error) { diagnostics.error(diagnosticOp, _error); toast("Не вдалося відновити завдання"); }
     } });
-  } catch (_error) { toast("Не вдалося видалити завершені завдання"); }
+  } catch (_error) { diagnostics.error(diagnosticOp, _error); toast("Не вдалося видалити завершені завдання"); }
   finally { projectEls.deleteCompletedTasks.disabled = false; }
 }
 
@@ -1014,6 +1028,7 @@ function openProjectConvertDialog() {
 }
 
 async function convertOpenProjectToTask() {
+  const diagnosticOp = diagnostics.start("project.convert_to_task");
   const project = projects.find(item => item.id === activeProjectId);
   if (!project || project.status !== "active") { closeProjectConvertDialog(); return; }
   const title = projectEls.title.value.trim();
@@ -1029,14 +1044,14 @@ async function convertOpenProjectToTask() {
   const choice = projectEls.convertDialog.querySelector('input[name="project-convert-choice"]:checked').value;
   let plan;
   try { plan = projectToTaskChanges(editedProject, tasks, choice, new Date().toISOString()); }
-  catch (error) { toast(error.message); return; }
+  catch (error) { diagnostics.error(diagnosticOp, error); toast(error.message); return; }
   mobileNavApplying = true;
   clearTimeout(mobileNavTimer);
   closeProjectConvertDialog();
   projectEls.convertTask.disabled = true;
   let converted = false;
   try {
-    await projectDb.convertToTask(project.id, plan.task, plan.updates, plan.deletedIds);
+    await diagnostics.bind(diagnosticOp, projectDb.convertToTask)(project.id, plan.task, plan.updates, plan.deletedIds);
     const replacements = new Map(plan.updates.map(task => [task.id, task]));
     const deleted = new Set(plan.deletedIds);
     tasks = [...tasks.filter(task => !deleted.has(task.id)).map(task => replacements.get(task.id) || task), plan.task].sort(compareTasks);
@@ -1046,7 +1061,7 @@ async function convertOpenProjectToTask() {
     openTaskDetails(plan.task);
     converted = true;
     toast(choice === "save" ? "Проєкт став завданням, кроки збережено" : choice === "keep" ? "Проєкт став завданням, кроки залишилися окремими" : "Проєкт став завданням, кроки видалено");
-  } catch (_error) {
+  } catch (_error) { diagnostics.error(diagnosticOp, _error);
     toast("Не вдалося перетворити проєкт. Дані не змінено");
   } finally {
     mobileNavApplying = false;
@@ -1072,6 +1087,7 @@ function closeProjectSelectionMore({ focus = false } = {}) {
 }
 
 async function detachSelectedProjectSteps() {
+  const diagnosticOp = diagnostics.start("project.detach_steps");
   const projectId = activeProjectId;
   const selected = projectSteps(projectId).filter(task => selectedTaskIds.has(task.id));
   if (!selected.length) return;
@@ -1079,7 +1095,7 @@ async function detachSelectedProjectSteps() {
   const updatedAt = new Date().toISOString();
   const changed = selected.map(task => ({ ...task, projectId: null, projectSectionId: null, projectPosition: null, updatedAt }));
   try {
-    await taskDb.putMany(changed);
+    await diagnostics.bind(diagnosticOp, taskDb.putMany)(changed);
     const replacements = new Map(changed.map(task => [task.id, task]));
     tasks = tasks.map(task => replacements.get(task.id) || task);
     selectedTaskIds.clear();
@@ -1087,7 +1103,7 @@ async function detachSelectedProjectSteps() {
     renderCurrentTasks();
     renderOpenProject();
     toast(`Відкріплено завдань: ${changed.length}`);
-  } catch (_error) {
+  } catch (_error) { diagnostics.error(diagnosticOp, _error);
     toast("Не вдалося відкріпити завдання");
   }
 }
@@ -1113,6 +1129,7 @@ function syncCreateFromStepsMode() {
 }
 
 async function createProjectFromSelectedSteps() {
+  const diagnosticOp = diagnostics.start("project.from_steps");
   const existing = projectEls.createFromStepsDialog.dataset.mode === "existing";
   const title = projectEls.createFromStepsName.value.trim();
   if (!existing && !title) { projectEls.createFromStepsName.focus(); return; }
@@ -1128,7 +1145,7 @@ async function createProjectFromSelectedSteps() {
       const ordered = destination.addNewTasksFirst === true ? [...selected, ...current] : [...current, ...selected];
       const now = new Date().toISOString();
       const changed = ordered.map((task, index) => ({ ...task, projectId: destination.id, projectSectionId: selectedIds.has(task.id) ? null : task.projectSectionId, projectPosition: index, updatedAt: now }));
-      await taskDb.putMany(changed);
+      await diagnostics.bind(diagnosticOp, taskDb.putMany)(changed);
       const replacements = new Map(changed.map(task => [task.id, task]));
       tasks = tasks.map(task => replacements.get(task.id) || task);
       selectedTaskIds = new Set();
@@ -1140,7 +1157,7 @@ async function createProjectFromSelectedSteps() {
       return;
     }
     const plan = projectFromSelectedSteps(title, activeProjectId, selectedIds, tasks, projects);
-    await projectDb.createFromSteps(activeProjectId, plan.project, plan.steps);
+    await diagnostics.bind(diagnosticOp, projectDb.createFromSteps)(activeProjectId, plan.project, plan.steps);
     const moved = new Map(plan.steps.map(task => [task.id, task]));
     tasks = tasks.map(task => moved.get(task.id) || task);
     projects = [...projects, plan.project].sort(compareProjects);
@@ -1149,14 +1166,15 @@ async function createProjectFromSelectedSteps() {
     renderOpenProject();
     renderProjects();
     toast("Новий проєкт створено");
-  } catch (_error) {
+  } catch (_error) { diagnostics.error(diagnosticOp, _error);
     toast("Не вдалося зберегти проєкт. Кроки не змінено");
   } finally {
     syncCreateFromStepsMode();
   }
 }
 
-async function reorderSelectedProjectSteps({ beforeId, sectionId = null, movedIds = null }) {
+async function reorderSelectedProjectSteps({ beforeId, sectionId = null, movedIds = null, method }) {
+  const diagnosticOp = diagnostics.start("project.reorder_steps", { beforeTask: beforeId, section: sectionId, method });
   if (sectionId === PROJECT_ROOT_SECTION_ID) sectionId = null;
   const projectSelectedIds = selectedActiveProjectStepIds();
   const ordered = reorderProjectStepBlock(tasks, activeProjectId, projectSelectedIds, beforeId);
@@ -1166,21 +1184,24 @@ async function reorderSelectedProjectSteps({ beforeId, sectionId = null, movedId
     ? { ...task, projectSectionId: sectionId, updatedAt: now } : task) : ordered;
   const changed = reordered.filter((task, index) => task !== tasks[index]);
   if (!changed.length) return;
+  diagnostics.order(diagnosticOp, "task", tasks, changed, projectSelectedIds, task => task.projectPosition);
   tasks = reordered;
-  renderOpenProject();
+  diagnostics.observe(diagnosticOp, renderOpenProject);
   renderProjects();
-  try { await taskDb.putMany(changed); }
-  catch (_error) { await refresh(); toast("Не вдалося зберегти порядок кроків"); }
+  try { await diagnostics.bind(diagnosticOp, taskDb.putMany)(changed); }
+  catch (_error) { diagnostics.error(diagnosticOp, _error); await refresh(); toast("Не вдалося зберегти порядок кроків"); }
 }
 
-async function reorderProjectCards({ selectedIds, beforeId }) {
+async function reorderProjectCards({ selectedIds, beforeId, method }) {
+  const diagnosticOp = diagnostics.start("project.reorder", { beforeProject: beforeId, count: selectedIds.size ?? selectedIds.length, method });
   const reordered = reorderProjectBlock(projects, selectedIds, beforeId);
   const changed = reordered.filter((project, index) => project !== projects[index]);
   if (!changed.length) return;
+  diagnostics.order(diagnosticOp, "project", projects, changed, selectedIds);
   projects = reordered;
-  renderProjects();
-  try { await projectDb.putMany(changed); }
-  catch (_error) { await loadProjects(); toast("Не вдалося зберегти порядок проєктів"); }
+  diagnostics.observe(diagnosticOp, renderProjects);
+  try { await diagnostics.bind(diagnosticOp, projectDb.putMany)(changed); }
+  catch (_error) { diagnostics.error(diagnosticOp, _error); await loadProjects(); toast("Не вдалося зберегти порядок проєктів"); }
 }
 
 function selectProject(projectId) {
@@ -1212,13 +1233,14 @@ async function completeSelectedProjects() {
 }
 
 async function completeProjects(selected) {
+  const diagnosticOp = diagnostics.start("project.complete");
   const completeTasks = await requestProjectCompletion(selected.length);
   if (completeTasks === null) return;
   const now = new Date().toISOString();
   const updates = selected.map(project => ({ ...project, status: "completed", completedAt: now, updatedAt: now }));
   const ids = new Set(updates.map(project => project.id));
   const replacements = new Map(updates.map(project => [project.id, project]));
-  await projectDb.completeManyWithTasks(updates, now, completeTasks);
+  await diagnostics.bind(diagnosticOp, projectDb.completeManyWithTasks)(updates, now, completeTasks);
   projects = projects.map(project => replacements.get(project.id) || project);
   tasks = tasks.map(task => {
     if (!ids.has(task.projectId) || task.status !== "active") return task;
@@ -1254,12 +1276,13 @@ function closeProjectCompleteDialog(result = null) {
 }
 
 async function deleteSelectedProjects() {
+  const diagnosticOp = diagnostics.start("project.bulk_delete");
   const ids = new Set(selectedProjectIds);
   if (!ids.size) return;
   const detachTasks = await requestProjectDeletion(ids.size);
   if (detachTasks === null) return;
   const now = new Date().toISOString();
-  await projectDb.deleteManyWithTasks(ids, now, detachTasks);
+  await diagnostics.bind(diagnosticOp, projectDb.deleteManyWithTasks)(ids, now, detachTasks);
   tasks = detachTasks
     ? tasks.map(task => ids.has(task.projectId) ? { ...task, projectId: null, projectSectionId: null, projectPosition: null, updatedAt: now } : task)
     : tasks.filter(task => !ids.has(task.projectId));

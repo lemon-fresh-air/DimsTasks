@@ -5,7 +5,7 @@ from shutil import copy2, copytree
 ROOT = Path(__file__).resolve().parents[1]
 DIST = ROOT / "dist"
 CSS_FILES = [ROOT / "src/css/tokens.css", ROOT / "src/css/base.css", ROOT / "src/css/app.css"]
-JS_FILES = [ROOT / "src/js/db.js", ROOT / "src/js/model.js", ROOT / "src/js/import-export.js", ROOT / "src/js/search.js", ROOT / "src/js/ui.js", ROOT / "src/js/rich-description.js", ROOT / "src/js/gestures.js", ROOT / "src/js/date-picker.js", ROOT / "src/js/projects.js", ROOT / "src/js/upcoming.js", ROOT / "src/js/app.js"]
+JS_FILES = [ROOT / "src/js/diagnostics.js", ROOT / "src/js/db.js", ROOT / "src/js/model.js", ROOT / "src/js/import-export.js", ROOT / "src/js/search.js", ROOT / "src/js/ui.js", ROOT / "src/js/rich-description.js", ROOT / "src/js/gestures.js", ROOT / "src/js/date-picker.js", ROOT / "src/js/projects.js", ROOT / "src/js/upcoming.js", ROOT / "src/js/app.js"]
 HTML_FILE = ROOT / "src/html/app.html"
 STATIC = ROOT / "static"
 
@@ -40,6 +40,7 @@ if "__BUILD_ID__" in document:
 
 asset_bytes = b"".join(path.read_bytes() for path in [STATIC / "manifest.webmanifest", STATIC / "icons/icon.svg"])
 build_id = sha256(document.encode("utf-8") + asset_bytes).hexdigest()[:12]
+document = document.replace("</head>", f'  <meta name="dimstasks-build" content="{build_id}">\n</head>', 1)
 DIST.mkdir(exist_ok=True)
 (DIST / "index.html").write_text(document, encoding="utf-8", newline="\n")
 copy2(STATIC / "manifest.webmanifest", DIST / "manifest.webmanifest")

@@ -92,27 +92,47 @@ function openDatabase() {
 }
 
 async function transact(storeNames, mode, action) {
+  const names = Array.isArray(storeNames) ? storeNames : [storeNames];
+  const op = mode === "readwrite" && typeof diagnostics !== "undefined" ? diagnostics.transaction(names) : null;
   if (mode === "readwrite" && typeof currentLocalDate !== "undefined" && localDateValue() !== currentLocalDate) {
+    if (op) diagnostics.capture("operation.rejected", op);
     throw new Error("Настала нова доба");
   }
-  const names = Array.isArray(storeNames) ? storeNames : [storeNames];
-  const db = await openDatabase();
+  const db = await openDatabase().catch(error => {
+    if (op) diagnostics.error(op, error, "transaction");
+    throw error;
+  });
   return new Promise((resolve, reject) => {
-    const tx = db.transaction(names, mode);
+    let tx;
     try {
+      tx = db.transaction(names, mode);
       if (mode === "readwrite" && typeof currentLocalDate !== "undefined" && localDateValue() !== currentLocalDate) {
         throw new Error("Настала нова доба");
       }
       action(tx, Object.fromEntries(names.map(name => [name, tx.objectStore(name)])));
     } catch (error) {
-      tx.abort();
+      tx?.abort();
+      if (op) { diagnostics.error(op, error, "transaction");
+        if (tx) diagnostics.capture("write.aborted", op, { stores: names }); }
       db.close();
       reject(error);
       return;
     }
-    tx.oncomplete = () => { db.close(); resolve(); };
+    tx.oncomplete = () => {
+      db.close();
+      if (op) diagnostics.capture("write.committed", op, { stores: names });
+      resolve();
+    };
     tx.onerror = () => { db.close(); reject(tx.error); };
-    tx.onabort = () => { db.close(); reject(tx.error || new Error("Транзакцію скасовано")); };
+    tx.onabort = () => {
+      db.close();
+      const error = tx.error || new Error("Транзакцію скасовано");
+      if (op) {
+        diagnostics.capture("write.aborted", op, { stores: names });
+        diagnostics.error(op, tx.error || new DOMException("", "AbortError"), "transaction");
+      }
+      reject(error);
+    };
   });
 }
 
@@ -202,6 +222,7 @@ const appDb = {
     }
   }),
   mergeAll: async (incoming, merge) => {
+    const op = diagnostics.transaction(STORE_NAMES);
     const db = await openDatabase();
     return new Promise((resolve, reject) => {
       const tx = db.transaction(STORE_NAMES, "readwrite");
@@ -225,9 +246,15 @@ const appDb = {
           }
         };
       }
-      tx.oncomplete = () => { db.close(); resolve(result); };
+      tx.oncomplete = () => { db.close(); diagnostics.capture("write.committed", op, { stores: STORE_NAMES }); resolve(result); };
       tx.onerror = () => { db.close(); reject(tx.error); };
-      tx.onabort = () => { db.close(); reject(failure || tx.error || new Error("Злиття скасовано")); };
+      tx.onabort = () => {
+        db.close();
+        const error = failure || tx.error || new Error("Злиття скасовано");
+        diagnostics.capture("write.aborted", op, { stores: STORE_NAMES });
+        diagnostics.error(op, error, "transaction");
+        reject(error);
+      };
     });
   }
 };
@@ -573,9 +600,11 @@ const settingsDb = {
     return settings?.theme === "dark" ? "dark" : "light";
   },
   setTheme: async theme => {
+    const diagnosticOp = typeof diagnostics === "undefined" ? null : diagnostics.context();
     const current = await appDb.get("settings", APPEARANCE_SETTINGS_ID);
+    const put = diagnosticOp ? diagnostics.bind(diagnosticOp, appDb.put) : appDb.put;
     const now = new Date().toISOString();
-    await appDb.put("settings", {
+    await put("settings", {
       id: APPEARANCE_SETTINGS_ID,
       entityVersion: 1,
       theme: theme === "dark" ? "dark" : "light",
@@ -585,9 +614,11 @@ const settingsDb = {
     });
   },
   setUseSystemTheme: async useSystemTheme => {
+    const diagnosticOp = typeof diagnostics === "undefined" ? null : diagnostics.context();
     const current = await appDb.get("settings", APPEARANCE_SETTINGS_ID);
+    const put = diagnosticOp ? diagnostics.bind(diagnosticOp, appDb.put) : appDb.put;
     const now = new Date().toISOString();
-    await appDb.put("settings", {
+    await put("settings", {
       id: APPEARANCE_SETTINGS_ID,
       entityVersion: 1,
       theme: current?.theme === "dark" ? "dark" : "light",
@@ -601,9 +632,11 @@ const settingsDb = {
     return typeof settings?.todayListId === "string" ? settings.todayListId : null;
   },
   setTodayListId: async listId => {
+    const diagnosticOp = typeof diagnostics === "undefined" ? null : diagnostics.context();
     const current = await appDb.get("settings", TASK_DEFAULTS_SETTINGS_ID);
+    const put = diagnosticOp ? diagnostics.bind(diagnosticOp, appDb.put) : appDb.put;
     const now = new Date().toISOString();
-    await appDb.put("settings", {
+    await put("settings", {
       id: TASK_DEFAULTS_SETTINGS_ID,
       entityVersion: 1,
       todayListId: typeof listId === "string" ? listId : INBOX_LIST_ID,
@@ -635,16 +668,20 @@ const settingsDb = {
     return CALENDAR_RANGE_MODES.includes(settings?.mode) ? settings.mode : "month";
   },
   setCalendarRange: async mode => {
+    const diagnosticOp = typeof diagnostics === "undefined" ? null : diagnostics.context();
     const current = await appDb.get("settings", CALENDAR_RANGE_SETTINGS_ID);
+    const put = diagnosticOp ? diagnostics.bind(diagnosticOp, appDb.put) : appDb.put;
     const now = new Date().toISOString();
-    await appDb.put("settings", { id: CALENDAR_RANGE_SETTINGS_ID, entityVersion: 1,
+    await put("settings", { id: CALENDAR_RANGE_SETTINGS_ID, entityVersion: 1,
       mode: CALENDAR_RANGE_MODES.includes(mode) ? mode : "month",
       createdAt: current?.createdAt || now, updatedAt: now });
   },
   setStartScreen: async startScreen => {
+    const diagnosticOp = typeof diagnostics === "undefined" ? null : diagnostics.context();
     const current = await appDb.get("settings", NAVIGATION_SETTINGS_ID);
+    const put = diagnosticOp ? diagnostics.bind(diagnosticOp, appDb.put) : appDb.put;
     const now = new Date().toISOString();
-    await appDb.put("settings", {
+    await put("settings", {
       id: NAVIGATION_SETTINGS_ID,
       entityVersion: 1,
       startScreen: START_SCREEN_IDS.includes(startScreen) ? startScreen : "inbox",
@@ -660,9 +697,11 @@ const settingsDb = {
     };
   },
   setBackupNaming: async (prefix, nextVersion) => {
+    const diagnosticOp = typeof diagnostics === "undefined" ? null : diagnostics.context();
     const current = await appDb.get("settings", BACKUP_NAMING_SETTINGS_ID);
+    const put = diagnosticOp ? diagnostics.bind(diagnosticOp, appDb.put) : appDb.put;
     const now = new Date().toISOString();
-    await appDb.put("settings", {
+    await put("settings", {
       id: BACKUP_NAMING_SETTINGS_ID,
       entityVersion: 1,
       prefix: typeof prefix === "string" && prefix.trim() ? prefix : "Dimstasks",

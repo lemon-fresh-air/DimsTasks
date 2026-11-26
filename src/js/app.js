@@ -101,6 +101,7 @@ function renderCompletedTasks() {
 }
 
 function openCompletedTasks() {
+  diagnostics.start("navigation.completed");
   completedWeekOffset = 0;
   completedDetailId = null;
   els.completedTasksScreen.hidden = false;
@@ -173,7 +174,8 @@ function renderCurrentTasks() {
   if (!isDayList() || todayLayout?.date !== activePlanDate()) selectedTodayGroupIds = new Set();
   else selectedTodayGroupIds = new Set([...selectedTodayGroupIds].filter(id =>
     todayLayout.groups.some(group => group.id === id && group.collapsed)));
-  renderTasks(visibleTasks(), selectedTaskIds, lists, projects, activeList(),
+  const rendered = visibleTasks();
+  renderTasks(rendered, selectedTaskIds, lists, projects, activeList(),
     isDayList() && todayLayout?.date === activePlanDate() ? todayLayout : null, selectedTodayGroupIds,
     sections);
   syncListSectionSelection();
@@ -182,6 +184,7 @@ function renderCurrentTasks() {
   renderProjects();
   els.daySwitch.hidden = !isDayList();
   els.daySwitch.textContent = activeListId === TOMORROW_LIST_ID ? "← Сьогодні" : "Завтра →";
+  return rendered;
 }
 
 function renderListNavigation() {
@@ -319,12 +322,14 @@ async function animateBulkDateChange(selectedIds, previousPositions) {
   await Promise.all(animations.map(animation => animation.finished.catch(() => {})));
 }
 
-async function refresh({ animateTaskReflow: shouldAnimateTaskReflow = false } = {}) {
+async function refresh({ animateTaskReflow: shouldAnimateTaskReflow = false, diagnosticOp = null, diagnosticTask = null } = {}) {
   const previousPositions = shouldAnimateTaskReflow ? captureTaskPositions() : null;
   tasks = (await taskDb.all()).sort(compareTasks);
   await syncTodayLayout();
   selectedTaskIds = new Set([...selectedTaskIds].filter(id => tasks.some(task => task.id === id)));
-  renderCurrentTasks();
+  const rendered = diagnostics.observe(diagnosticOp, renderCurrentTasks);
+  if (diagnosticOp) diagnostics.capture("view.observed", diagnosticOp, { list: activeListId,
+    count: rendered.length, ...(diagnosticTask && { task: diagnosticTask, present: rendered.some(task => task.id === diagnosticTask) }) });
   renderProjects();
   renderCompletedTasks();
   if (globalSearch.dialog.open && !globalSearch.busy) updateGlobalSearch();
@@ -372,6 +377,7 @@ async function syncTodayLayout() {
 }
 
 async function changeTodayLayout(change) {
+  const diagnosticOp = diagnostics.context() || diagnostics.start("day_plan.change");
   if (!ensureCurrentDay()) throw new Error("Настала нова доба");
   const date = activePlanDate();
   await syncTodayLayout();
@@ -379,7 +385,7 @@ async function changeTodayLayout(change) {
   const next = change(todayLayout, visibleTodayLayoutTasks(date), date);
   const plan = next || flattenDayPlan(todayLayout, date);
   if (!ensureCurrentDay()) throw new Error("Дата змінилася під час дії");
-  await settingsDb.saveTodayLayout(plan, date);
+  await diagnostics.bind(diagnosticOp, settingsDb.saveTodayLayout)(plan, date);
   todayLayout = plan;
   return plan;
 }
@@ -525,6 +531,7 @@ async function writeBackupToDirectory(handle, fileName, blob) {
 }
 
 async function importFromBackupDirectory() {
+  const diagnosticOp = diagnostics.start("backup.pick");
   if (backupBusy || backupImportPending) return;
   if (typeof window.showDirectoryPicker !== "function") {
     els.backupFile.click();
@@ -547,7 +554,7 @@ async function importFromBackupDirectory() {
     for await (const entry of handle.values()) {
       if (entry.kind !== "file" || !entry.name.toLowerCase().endsWith(".json")) continue;
       try { files.push({ file: await entry.getFile(), entry }); }
-      catch (_error) { /* A file may disappear while Syncthing updates the folder. */ }
+      catch (_error) { diagnostics.error(diagnosticOp, _error); /* A file may disappear while Syncthing updates the folder. */ }
     }
     if (!files.length) {
       els.backupStatus.textContent = "У вибраній папці немає JSON-файлів.";
@@ -560,7 +567,7 @@ async function importFromBackupDirectory() {
           const parsed = await readBackup(item.file);
           const time = parsed.exportedAt ? Date.parse(parsed.exportedAt) : item.file.lastModified;
           if (!newest || time > newest.time) newest = { ...item, time };
-        } catch (_error) { /* Ignore unrelated or damaged JSON files. */ }
+        } catch (_error) { diagnostics.error(diagnosticOp, _error); /* Ignore unrelated or damaged JSON files. */ }
       }
       if (!newest) {
         els.backupStatus.textContent = "У папці немає придатних бекапів DimsTasks.";
@@ -579,7 +586,7 @@ async function importFromBackupDirectory() {
       els.backupFileList.hidden = false;
       els.backupStatus.textContent = "Оберіть файл із папки бекапів.";
     }
-  } catch (error) {
+  } catch (error) { diagnostics.error(diagnosticOp, error);
     els.backupStatus.textContent = error.name === "AbortError" ? "Вибір папки скасовано." : error.message || "Не вдалося відкрити папку бекапів.";
   } finally { if (ownsBackupBusy) backupBusy = false; backupImportPending = false; }
 }
@@ -590,22 +597,27 @@ function backupSummary(data) {
 }
 
 async function chooseBackup(file) {
+  const diagnosticOp = diagnostics.start("backup.validate");
   clearBackupSelection();
   if (!file) return;
   els.backupStatus.textContent = "Перевірка файлу…";
   try {
     const parsed = await readBackup(file);
     pendingBackup = parsed;
+    diagnostics.capture("backup.validated", diagnosticOp, { count: parsed.data.tasks.length });
     const date = parsed.exportedAt ? new Date(parsed.exportedAt).toLocaleString("uk-UA") : "дата невідома";
     els.backupSummary.textContent = `${file.name}. Копія від ${date}. ${backupSummary(parsed.data)}. Формат ${parsed.formatVersion}.`;
     els.backupPreview.hidden = false;
     els.backupStatus.textContent = "Файл перевірено. Оберіть спосіб відновлення.";
   } catch (error) {
+    diagnostics.capture("operation.rejected", diagnosticOp);
+    diagnostics.error(diagnosticOp, error, "validation");
     els.backupStatus.textContent = error.message || "Не вдалося перевірити файл";
   }
 }
 
 async function applyBackup(mode) {
+  const diagnosticOp = diagnostics.start("backup.import", { method: mode });
   if (!pendingBackup || backupBusy) return;
   backupBusy = true;
   els.backupStatus.textContent = "Відновлення даних…";
@@ -614,12 +626,12 @@ async function applyBackup(mode) {
     let result = normalizeBackupTodayLayout(pendingBackup.data);
     let report = "Дані замінено";
     if (mode === "merge") {
-      const merged = await appDb.mergeAll(result, (local, incoming) => mergeBackupData(completeBackupFields(local), incoming));
+      const merged = await diagnostics.bind(diagnosticOp, appDb.mergeAll)(result, (local, incoming) => mergeBackupData(completeBackupFields(local), incoming));
       result = merged.data;
       report = `Дані злито: додано ${merged.changes.added}, оновлено ${merged.changes.updated}, збережено локальних ${merged.changes.kept}`;
     } else {
       result = preserveBackupNaming(result, await appDb.get("settings", BACKUP_NAMING_SETTINGS_ID));
-      await appDb.replaceAll(result);
+      await diagnostics.bind(diagnosticOp, appDb.replaceAll)(result);
     }
     clearPreparedBackupDownload();
     clearBackupSelection();
@@ -630,21 +642,22 @@ async function applyBackup(mode) {
     await initializeApp();
     els.backupStatus.textContent = `${report}. ${backupSummary(result)}.`;
     toast(report, { duration: 3000, action: async () => {
+      const undoOp = diagnostics.start("action.undo", { parent: diagnosticOp?.id });
       backupBusy = true;
       try {
-        await appDb.replaceAll(previous);
+        await diagnostics.bind(undoOp, appDb.replaceAll)(previous);
         clearPreparedBackupDownload();
         await initializeApp();
         els.backupStatus.textContent = "Імпорт відмінено. Попередні дані відновлено.";
         toast("Імпорт відмінено");
-      } catch (error) {
+      } catch (error) { diagnostics.error(undoOp, error);
         els.backupStatus.textContent = error.message || "Не вдалося відмінити імпорт";
         toast("Не вдалося відмінити імпорт");
       } finally {
         backupBusy = false;
       }
     } });
-  } catch (error) {
+  } catch (error) { diagnostics.error(diagnosticOp, error);
     els.backupStatus.textContent = error.message || "Не вдалося відновити дані";
   } finally {
     backupBusy = false;
@@ -711,6 +724,7 @@ function checkForDateChange() {
 }
 
 function openList(listId) {
+  const diagnosticOp = diagnostics.start("navigation.list", { list: listId });
   closeUpcoming();
   closeProjects();
   if (!isDayList(listId) && !lists.some(list => list.id === listId)) return;
@@ -721,8 +735,9 @@ function openList(listId) {
   selectedTodayGroupIds = new Set();
   selectedListIds = new Set();
   renderListNavigation();
-  renderCurrentTasks();
-  if (isDayList()) syncTodayLayout().then(() => renderCurrentTasks()).catch(() => { todayLayout = null; });
+  const rendered = diagnostics.observe(diagnosticOp, renderCurrentTasks);
+  diagnostics.capture("view.observed", diagnosticOp, { list: listId, count: rendered.length });
+  if (isDayList()) syncTodayLayout().then(() => renderCurrentTasks()).catch(error => { diagnostics.error(diagnosticOp, error); todayLayout = null; });
   closeMainMenu();
   window.scrollTo(0, 0);
 }
@@ -747,9 +762,11 @@ document.addEventListener("submit", event => {
 }, true);
 
 async function addList(title, { fromMainMenu = true } = {}) {
+  const diagnosticOp = diagnostics.start("list.create");
   const normalizedTitle = title.trim();
-  if (!normalizedTitle) return null;
+  if (!normalizedTitle) { diagnostics.capture("operation.rejected", diagnosticOp); return null; }
   if (lists.some(list => displayListTitle(list).localeCompare(normalizedTitle, "uk", { sensitivity: "accent" }) === 0)) {
+    diagnostics.capture("operation.rejected", diagnosticOp);
     toast("Список із такою назвою вже існує");
     if (fromMainMenu) els.newListTitle.focus();
     return null;
@@ -757,13 +774,14 @@ async function addList(title, { fromMainMenu = true } = {}) {
   const nextPosition = Math.max(-1, ...lists.filter(list => list.kind !== "inbox").map(list => Number.isFinite(list.position) ? list.position : -1)) + 1;
   const list = createList({ title: normalizedTitle, kind: "regular", position: nextPosition });
   try {
-    await listDb.put(list);
+    diagnostics.capture("list.prepared", diagnosticOp, { list: list.id, position: list.position });
+    await diagnostics.bind(diagnosticOp, listDb.put)(list);
     lists = [...lists, list].sort(compareLists);
     renderListMenu();
     if (fromMainMenu) hideNewListForm();
     toast("Список додано");
     return list;
-  } catch (_error) {
+  } catch (_error) { diagnostics.error(diagnosticOp, _error);
     toast("Не вдалося додати список");
     return null;
   }
@@ -822,6 +840,7 @@ function selectListSection(id, only = false) {
   syncListSectionSelection();
 }
 async function changeListSections(transform, expectedListId = activeListId) {
+  const diagnosticOp = diagnostics.start("list.sections", { list: expectedListId });
   if (projectSectionBusy) return false;
   projectSectionBusy = true;
   syncListSectionSelection();
@@ -829,7 +848,7 @@ async function changeListSections(transform, expectedListId = activeListId) {
     const list = activeList();
     if (!projectEls.screen.hidden || list?.kind !== "regular" || list.id !== expectedListId) throw new Error("Список змінився. Спробуйте ще раз");
     const plan = transform(list);
-    await sectionDb.applyChanges(plan);
+    await diagnostics.bind(diagnosticOp, sectionDb.applyChanges)(plan);
     const sectionUpdates = new Map((plan.sections || []).map(section => [section.id, section]));
     const deletedSections = new Set(plan.deletedSectionIds || []);
     sections = sections.filter(section => !deletedSections.has(section.id)).map(section => {
@@ -844,7 +863,7 @@ async function changeListSections(transform, expectedListId = activeListId) {
     renderCurrentTasks();
     renderCompletedTasks();
     return true;
-  } catch (error) {
+  } catch (error) { diagnostics.error(diagnosticOp, error);
     const field = document.querySelector(projectEls.sectionActionDialog.open ? "#project-section-action-error" : "#project-section-picker-error");
     if (projectEls.sectionActionDialog.open || projectEls.sectionsDialog.open) {
       field.textContent = error.message || "Не вдалося змінити секції";
@@ -918,6 +937,7 @@ function closeListEditor({ fromHistory = false } = {}) {
 }
 
 async function saveActiveListName(event, { fromHistory = false } = {}) {
+  const diagnosticOp = diagnostics.start("list.rename");
   event?.preventDefault();
   const list = activeList();
   if (list?.kind !== "regular") return;
@@ -934,24 +954,25 @@ async function saveActiveListName(event, { fromHistory = false } = {}) {
   }
   const updated = { ...list, title, updatedAt: new Date().toISOString() };
   try {
-    await listDb.put(updated);
+    await diagnostics.bind(diagnosticOp, listDb.put)(updated);
     lists = lists.map(item => item.id === updated.id ? updated : item).sort(compareLists);
     renderListNavigation();
     renderCurrentTasks();
     closeListEditor({ fromHistory });
     toast("Назву списку змінено");
-  } catch (_error) {
+  } catch (_error) { diagnostics.error(diagnosticOp, _error);
     showListEditorError("Не вдалося зберегти назву. Спробуйте ще раз.");
   }
 }
 
 async function deleteActiveList() {
+  const diagnosticOp = diagnostics.start("list.delete");
   const list = activeList();
   if (list?.kind !== "regular") return;
   const now = new Date().toISOString();
   els.listDeleteConfirmButton.disabled = true;
   try {
-    await listDb.deleteAndMoveTasksToInbox(list.id, now);
+    await diagnostics.bind(diagnosticOp, listDb.deleteAndMoveTasksToInbox)(list.id, now);
     tasks = tasks.map(task => task.listId === list.id ? { ...task, listId: INBOX_LIST_ID, sectionId: null, updatedAt: now } : task);
     lists = lists.filter(item => item.id !== list.id);
     sections = sections.filter(section => section.listId !== list.id);
@@ -962,7 +983,7 @@ async function deleteActiveList() {
     renderCurrentTasks();
     window.scrollTo(0, 0);
     toast("Список видалено, завдання перенесено до «Нові»");
-  } catch (_error) {
+  } catch (_error) { diagnostics.error(diagnosticOp, _error);
     showListEditorError("Не вдалося видалити список. Спробуйте ще раз.");
   } finally {
     els.listDeleteConfirmButton.disabled = false;
@@ -996,6 +1017,7 @@ function closeSelectedListsDeleteDialog() {
 }
 
 async function deleteSelectedLists() {
+  const diagnosticOp = diagnostics.start("list.bulk_delete", { count: selectedListIds.size });
   const ids = new Set(selectedListIds);
   if (!ids.size) return;
   const deletedLists = lists.filter(list => ids.has(list.id));
@@ -1005,7 +1027,7 @@ async function deleteSelectedLists() {
   els.listSelectionDeleteConfirm.disabled = true;
   try {
     const deletedSections = (await appDb.all("sections")).filter(section => ids.has(section.listId));
-    await listDb.deleteManyAndMoveTasksToInbox([...ids], now);
+    await diagnostics.bind(diagnosticOp, listDb.deleteManyAndMoveTasksToInbox)([...ids], now);
     tasks = tasks.map(task => ids.has(task.listId) ? { ...task, listId: INBOX_LIST_ID, sectionId: null, updatedAt: now } : task);
     lists = lists.filter(list => !ids.has(list.id));
     sections = sections.filter(section => !ids.has(section.listId));
@@ -1018,7 +1040,7 @@ async function deleteSelectedLists() {
       duration: 3000,
       action: async () => {
         try {
-          await listDb.restoreDeleted({ lists: deletedLists, sections: deletedSections, tasks: deletedTasks });
+          await diagnostics.bind(diagnosticOp, listDb.restoreDeleted)({ lists: deletedLists, sections: deletedSections, tasks: deletedTasks });
           const restoredTasks = new Map(deletedTasks.map(task => [task.id, task]));
           lists = [...lists.filter(list => !ids.has(list.id)), ...deletedLists].sort(compareLists);
            sections = [...sections, ...deletedSections];
@@ -1027,19 +1049,20 @@ async function deleteSelectedLists() {
           renderListNavigation();
           renderCurrentTasks();
           toast(ids.size === 1 ? "Список відновлено" : `Відновлено списків: ${ids.size}`);
-        } catch (_error) {
+        } catch (_error) { diagnostics.error(diagnosticOp, _error);
           toast("Не вдалося відновити списки");
         }
       }
     });
-  } catch (_error) {
+  } catch (_error) { diagnostics.error(diagnosticOp, _error);
     toast("Не вдалося видалити списки. Спробуйте ще раз.");
   } finally {
     els.listSelectionDeleteConfirm.disabled = false;
   }
 }
 
-async function reorderTaskLists({ selectedIds, beforeId }) {
+async function reorderTaskLists({ selectedIds, beforeId, method }) {
+  const diagnosticOp = diagnostics.start("list.reorder", { count: selectedIds.size ?? selectedIds.length, beforeList: beforeId, method });
   const previous = lists;
   const reordered = reorderLists(lists, selectedIds, beforeId);
   const changed = reordered.filter(list => {
@@ -1050,12 +1073,13 @@ async function reorderTaskLists({ selectedIds, beforeId }) {
     renderListMenu();
     return false;
   }
+  diagnostics.order(diagnosticOp, "list", previous, changed, selectedIds);
   lists = reordered;
-  renderListMenu();
+  diagnostics.observe(diagnosticOp, renderListMenu);
   try {
-    await listDb.putMany(changed);
+    await diagnostics.bind(diagnosticOp, listDb.putMany)(changed);
     return true;
-  } catch (_error) {
+  } catch (_error) { diagnostics.error(diagnosticOp, _error);
     lists = previous;
     renderListMenu();
     toast("Не вдалося зберегти порядок списків");
@@ -1109,6 +1133,7 @@ function openTodayGroupRenameDialog() {
 }
 
 async function saveTodayGroupName(event) {
+  const diagnosticOp = diagnostics.start("group.rename");
   event.preventDefault();
   const title = els.todayGroupRenameInput.value.trim();
   if (!title) {
@@ -1119,11 +1144,11 @@ async function saveTodayGroupName(event) {
   }
   const groupId = [...selectedTodayGroupIds][0];
   try {
-    await changeTodayLayout((layout, visible, date) => setTodayGroupTitle(layout, visible, date, groupId, title));
+    await diagnostics.bind(diagnosticOp, changeTodayLayout)((layout, visible, date) => setTodayGroupTitle(layout, visible, date, groupId, title));
     closeTodayGroupRenameDialog();
     renderCurrentTasks();
     toast("Групу перейменовано");
-  } catch (_error) {
+  } catch (_error) { diagnostics.error(diagnosticOp, _error);
     els.todayGroupRenameError.textContent = "Не вдалося зберегти назву групи";
     els.todayGroupRenameError.hidden = false;
   }
@@ -1145,6 +1170,7 @@ function openTodayGroupDeleteDialog() {
 }
 
 async function deleteSelectedTodayGroups() {
+  const diagnosticOp = diagnostics.start("group.delete");
   const keepTasks = els.todayGroupDeleteKeepTasks.checked;
   const ids = new Set(selectedTodayGroupIds);
   closeTodayGroupDeleteDialog();
@@ -1162,7 +1188,7 @@ async function deleteSelectedTodayGroups() {
     for (const group of groups) next = ungroupTodayGroup(next, visible, date, group.id);
     if (!keepTasks && next) next = normalizeTodayGroups(next, visible.filter(task => !deletedIds.has(task.id)), date);
     if (!next) next = flattenDayPlan(before, date, keepTasks ? new Set() : deletedIds);
-    await settingsDb.changeTodayLayoutAndTasks(before, next, date, deletedTasks.map(task => ({ id: task.id, remove: true })));
+    await diagnostics.bind(diagnosticOp, settingsDb.changeTodayLayoutAndTasks)(before, next, date, deletedTasks.map(task => ({ id: task.id, remove: true })));
     todayLayout = next;
     if (!keepTasks) tasks = tasks.filter(task => !deletedIds.has(task.id));
     selectedTodayGroupIds = new Set();
@@ -1171,15 +1197,15 @@ async function deleteSelectedTodayGroups() {
       duration: 3000,
       action: async () => {
         try {
-          await settingsDb.changeTodayLayoutAndTasks(next, before, date, deletedTasks);
+          await diagnostics.bind(diagnosticOp, settingsDb.changeTodayLayoutAndTasks)(next, before, date, deletedTasks);
           todayLayout = before;
           if (deletedTasks.length) tasks = [...tasks, ...deletedTasks];
           renderCurrentTasks();
           toast("Видалення груп скасовано");
-        } catch (_error) { toast("Не вдалося скасувати видалення груп"); }
+        } catch (_error) { diagnostics.error(diagnosticOp, _error); toast("Не вдалося скасувати видалення груп"); }
       }
     });
-  } catch (_error) { toast("Не вдалося видалити групи"); }
+  } catch (_error) { diagnostics.error(diagnosticOp, _error); toast("Не вдалося видалити групи"); }
 }
 
 let pendingTodayGroupMerge = null;
@@ -1250,13 +1276,14 @@ function chooseTodayGroupColor(color) {
 }
 
 async function applyTodayGroupColor(sourceId, color, keepId) {
+  const diagnosticOp = diagnostics.start("group.recolor_or_merge");
   try {
     await syncTodayLayout();
     const date = activePlanDate();
     const before = todayLayout;
     const merging = before.groups.some(group => group.color === color && group.id !== sourceId);
     const next = recolorTodayGroup(before, visibleTodayLayoutTasks(date), date, sourceId, color, keepId);
-    await settingsDb.changeTodayLayoutAndTasks(before, next, date);
+    await diagnostics.bind(diagnosticOp, settingsDb.changeTodayLayoutAndTasks)(before, next, date);
     todayLayout = next;
     selectedTodayGroupIds = new Set();
     renderCurrentTasks();
@@ -1264,17 +1291,18 @@ async function applyTodayGroupColor(sourceId, color, keepId) {
       duration: 3000,
       action: async () => {
         try {
-          await settingsDb.changeTodayLayoutAndTasks(next, before, date);
+          await diagnostics.bind(diagnosticOp, settingsDb.changeTodayLayoutAndTasks)(next, before, date);
           todayLayout = before;
           renderCurrentTasks();
           toast(merging ? "Злиття груп скасовано" : "Зміну кольору скасовано");
-        } catch (_error) { toast("Не вдалося скасувати зміну групи"); }
+        } catch (_error) { diagnostics.error(diagnosticOp, _error); toast("Не вдалося скасувати зміну групи"); }
       }
     });
-  } catch (_error) { toast("Не вдалося змінити групу"); }
+  } catch (_error) { diagnostics.error(diagnosticOp, _error); toast("Не вдалося змінити групу"); }
 }
 
 async function selectTodayGroup(id) {
+  const diagnosticOp = diagnostics.start("group.toggle", { group: id });
   const group = todayLayout?.groups.find(item => item.id === id);
   if (!group || !isDayList()) return false;
   if (selectedTaskIds.size) { toast("Групи виділяються окремо від завдань"); return false; }
@@ -1294,8 +1322,8 @@ async function selectTodayGroup(id) {
       await Promise.all([collapse.finished.catch(() => {}), fade.finished.catch(() => {})]);
       members.hidden = true;
     }
-    try { await changeTodayLayout((layout, visible, date) => setTodayGroupCollapsed(layout, visible, date, id, true)); }
-    catch (_error) { renderCurrentTasks(); toast("Не вдалося згорнути групу"); return false; }
+    try { await diagnostics.bind(diagnosticOp, changeTodayLayout)((layout, visible, date) => setTodayGroupCollapsed(layout, visible, date, id, true)); }
+    catch (_error) { diagnostics.error(diagnosticOp, _error); renderCurrentTasks(); toast("Не вдалося згорнути групу"); return false; }
   }
   selectedTaskIds = new Set();
   const next = new Set(selectedTodayGroupIds);
@@ -1305,13 +1333,14 @@ async function selectTodayGroup(id) {
   return true;
 }
 
-async function reorderSelectedTodayGroup(beforeType, beforeId, groupId) {
+async function reorderSelectedTodayGroup(beforeType, beforeId, groupId, method) {
+  const diagnosticOp = diagnostics.start("group.reorder", { group: groupId, [beforeType === "group" ? "beforeGroup" : "beforeTask"]: beforeId, method });
   if (!groupId) return false;
   try {
-    await changeTodayLayout((layout, visible, date) => moveTodayOuterItem(layout, visible, date, "group", groupId, beforeType, beforeId));
+    await diagnostics.bind(diagnosticOp, changeTodayLayout)((layout, visible, date) => moveTodayOuterItem(layout, visible, date, "group", groupId, beforeType, beforeId));
     renderCurrentTasks();
     return true;
-  } catch (_error) {
+  } catch (_error) { diagnostics.error(diagnosticOp, _error);
     renderCurrentTasks();
     toast("Не вдалося зберегти порядок групи");
     return false;
@@ -1338,6 +1367,7 @@ function openTodayGroupDialog() {
 }
 
 async function applyTodayGroupSelection(color) {
+  const diagnosticOp = diagnostics.start("group.assign");
   if (!isDayList() || !selectedTaskIds.size) return;
   const selected = new Set(visibleTasks().filter(task => !isTaskCompleted(task) && selectedTaskIds.has(task.id)).map(task => task.id));
   closeTodayGroupDialog();
@@ -1348,7 +1378,7 @@ async function applyTodayGroupSelection(color) {
     const target = todayLayout?.groups.find(group => group.color === color);
     if (color === "none" && ![...selected].some(id => membership.has(id))) return;
     if (target && [...selected].every(id => membership.get(id) === target.id)) return;
-    await changeTodayLayout((layout, visible, date) => {
+    await diagnostics.bind(diagnosticOp, changeTodayLayout)((layout, visible, date) => {
       let next = layout;
       if (color === "none" || !target) {
         for (const group of layout?.groups || []) {
@@ -1362,7 +1392,7 @@ async function applyTodayGroupSelection(color) {
     });
     selectedTaskIds = new Set();
     renderCurrentTasks();
-  } catch (_error) {
+  } catch (_error) { diagnostics.error(diagnosticOp, _error);
     toast("Не вдалося змінити групу");
     renderCurrentTasks();
   }
@@ -1384,7 +1414,8 @@ function deletedTaskGroupSnapshot(deletedTasks, layout = isDayList() && todayLay
 }
 
 async function restoreDeletedTasks(deletedTasks, snapshot, toGroup) {
-  await taskDb.putMany(deletedTasks);
+  const diagnosticOp = diagnostics.start("task.undo_delete", { count: deletedTasks.length, sample: deletedTasks });
+  await diagnostics.bind(diagnosticOp, taskDb.putMany)(deletedTasks);
   if (snapshot) {
     const ids = new Set(deletedTasks.map(task => task.id));
     const stored = await settingsDb.todayLayout(snapshot.date);
@@ -1407,7 +1438,7 @@ async function restoreDeletedTasks(deletedTasks, snapshot, toGroup) {
     const restored = [...tasks, ...deletedTasks];
     const visible = visibleProjectTasks(restored, projects).filter(task => isTaskInDayPlan(task, snapshot.date, localDateValue()));
     const plan = normalizeDayPlan({ date: snapshot.date, groups, items }, visible, snapshot.date);
-    await settingsDb.saveTodayLayout(plan, snapshot.date);
+    await diagnostics.bind(diagnosticOp, settingsDb.saveTodayLayout)(plan, snapshot.date);
   }
   rememberUpcomingFeedScroll();
   await refresh();
@@ -1438,6 +1469,7 @@ els.taskRestoreWithoutGroup.addEventListener("click", () => resolveDeletedTaskRe
 els.taskRestoreToGroup.addEventListener("click", () => resolveDeletedTaskRestore(true));
 
 async function deleteSelectedTasks() {
+  const diagnosticOp = diagnostics.start("task.bulk_delete", { count: selectedTaskIds.size });
   const deletedTasks = tasks.filter(task => selectedTaskIds.has(task.id));
   if (!deletedTasks.length) return;
   const groupSnapshot = deletedTaskGroupSnapshot(deletedTasks);
@@ -1446,13 +1478,13 @@ async function deleteSelectedTasks() {
   selectedTaskIds = new Set();
   renderCurrentTasks();
   try {
-    await taskDb.deleteMany(deletedIds);
+    await diagnostics.bind(diagnosticOp, taskDb.deleteMany)(deletedIds);
     const message = deletedTasks.length === 1 ? "Завдання видалено" : `Видалено завдань: ${deletedTasks.length}`;
     toast(message, {
       duration: 3000,
       action: () => offerDeletedTaskRestore(deletedTasks, groupSnapshot)
     });
-  } catch (_error) {
+  } catch (_error) { diagnostics.error(diagnosticOp, _error);
     tasks.push(...deletedTasks);
     await refresh();
     toast("Не вдалося видалити завдання");
@@ -1472,6 +1504,7 @@ function openSelectedTaskDatePicker() {
 }
 
 async function updateSelectedTaskDates(dueDate, dueTime) {
+  const diagnosticOp = diagnostics.start("task.bulk_date", { count: selectedTaskIds.size });
   const selectedIds = new Set(selectedTaskIds);
   const previousPositions = captureTaskPositions();
   const updatedAt = new Date().toISOString();
@@ -1479,20 +1512,20 @@ async function updateSelectedTaskDates(dueDate, dueTime) {
   const changed = updatedTasks.filter(task => selectedIds.has(task.id));
   if (!changed.length) return;
   try {
-    await taskDb.putMany(changed);
+    await diagnostics.bind(diagnosticOp, taskDb.putMany)(changed);
     tasks = updatedTasks.sort(compareTasks);
     renderCurrentTasks();
     await animateBulkDateChange(selectedIds, previousPositions);
     clearTaskSelection();
     if (!upcoming.screen.hidden) renderUpcomingFeed();
     toast(changed.length === 1 ? "Дату завдання змінено" : `Змінено дату завдань: ${changed.length}`);
-  } catch (_error) {
+  } catch (_error) { diagnostics.error(diagnosticOp, _error);
     await refresh();
     toast("Не вдалося змінити дату");
   }
 }
 
-async function animateSelectedTasksToList(selectedIds, previousPositions) {
+async function animateSelectedTasksToList(selectedIds, previousPositions, diagnosticOp) {
   if (!matchMedia("(prefers-reduced-motion: reduce)").matches) {
     const animations = [...els.list.children]
       .filter(row => selectedIds.has(row.dataset.id))
@@ -1506,20 +1539,24 @@ async function animateSelectedTasksToList(selectedIds, previousPositions) {
       .filter(Boolean);
     await Promise.all(animations.map(animation => animation.finished.catch(() => {})));
   }
-  renderCurrentTasks();
+  const rendered = diagnostics.observe(diagnosticOp, renderCurrentTasks);
   animateTaskReflow(previousPositions);
+  return rendered;
 }
 
 async function moveSelectedTasksToList(listId) {
+  const diagnosticOp = diagnostics.start("task.move_bulk", { to: listId, count: selectedTaskIds.size });
   if (!lists.some(list => list.id === listId)) {
+    diagnostics.capture("operation.rejected", diagnosticOp);
     closeSelectedListDropdown({ returnFocus: true });
     return;
   }
   const selectedIds = new Set(selectedTaskIds);
   const selected = tasks.filter(task => selectedIds.has(task.id)).sort(compareTasks);
-  if (!selected.length) return;
+  if (!selected.length) { diagnostics.capture("operation.rejected", diagnosticOp); return; }
   const updatedAt = new Date().toISOString();
   const movedTasks = selected.map((task, position) => ({ ...task, listId, sectionId: null, position, updatedAt }));
+  diagnostics.capture("move.planned", diagnosticOp, { count: selected.length, sample: selected, to: listId });
   const movedById = new Map(movedTasks.map(task => [task.id, task]));
   const targetCount = movedTasks.length;
   const shiftedTasks = tasks
@@ -1529,39 +1566,49 @@ async function moveSelectedTasksToList(listId) {
   const previousPositions = captureTaskPositions();
   closeSelectedListDropdown();
   try {
-    await taskDb.putMany([...movedTasks, ...shiftedTasks]);
-    await rememberProjectLists(movedTasks, listId);
+    await diagnostics.bind(diagnosticOp, taskDb.putMany)([...movedTasks, ...shiftedTasks]);
+    await rememberProjectLists(movedTasks, listId, diagnosticOp);
     tasks = tasks.map(task => movedById.get(task.id) || shiftedById.get(task.id) || task).sort(compareTasks);
     selectedTaskIds = new Set();
-    await animateSelectedTasksToList(selectedIds, previousPositions);
+    const rendered = await animateSelectedTasksToList(selectedIds, previousPositions, diagnosticOp);
+    diagnostics.capture("view.observed", diagnosticOp, { list: activeListId, count: rendered.length });
+    for (const item of selected.slice(0, 4)) diagnostics.capture("move.visibility", diagnosticOp,
+      { task: item.id, list: activeListId, present: rendered.some(task => task.id === item.id) });
+
     const target = lists.find(list => list.id === listId);
     toast(selected.length === 1 ? `Завдання переміщено до «${displayListTitle(target)}»` : `Переміщено завдань: ${selected.length}`);
-  } catch (_error) {
+  } catch (_error) { diagnostics.error(diagnosticOp, _error);
     closeSelectedListDropdown();
     toast("Не вдалося перемістити завдання");
   }
 }
 
 async function persistTaskListMove(task, listId) {
+  const diagnosticOp = diagnostics.context() || diagnostics.start("task.move");
+  diagnostics.capture("move.planned", diagnosticOp, { task: task.id, from: task.listId, to: listId, position: task.position });
   const updatedAt = new Date().toISOString();
   const movedTask = { ...task, listId, sectionId: null, position: 0, updatedAt };
   const shiftedTasks = tasks
     .filter(item => item.id !== task.id && taskOrderScope(item) === taskOrderScope(movedTask))
     .map(item => ({ ...item, position: (Number.isFinite(item.position) ? item.position : 0) + 1, updatedAt }));
   const replacements = new Map([movedTask, ...shiftedTasks].map(item => [item.id, item]));
-  await taskDb.putMany([movedTask, ...shiftedTasks]);
+  await diagnostics.bind(diagnosticOp, taskDb.putMany)([movedTask, ...shiftedTasks]);
   tasks = tasks.map(item => replacements.get(item.id) || item).sort(compareTasks);
-  await rememberProjectLists([movedTask], listId);
+  await rememberProjectLists([movedTask], listId, diagnosticOp);
 }
 
 async function moveOpenTaskImmediatelyToList(listId) {
+  const diagnosticOp = diagnostics.start("task.move_editor", { to: listId });
   const task = tasks.find(item => item.id === els.editor.dataset.taskId);
   try {
-    if (task && task.listId !== listId) await persistTaskListMove(task, listId);
+    if (task && task.listId !== listId) await diagnostics.bind(diagnosticOp, persistTaskListMove)(task, listId);
+    else diagnostics.capture("operation.rejected", diagnosticOp);
     setTaskEditorListUI(listId);
     updateDesktopSaveState();
-    renderCurrentTasks();
-  } catch (_error) {
+    const rendered = diagnostics.observe(diagnosticOp, renderCurrentTasks);
+    if (task) diagnostics.capture("view.observed", diagnosticOp,
+      { task: task.id, list: activeListId, present: rendered.some(item => item.id === task.id), count: rendered.length });
+  } catch (_error) { diagnostics.error(diagnosticOp, _error);
     toast("Не вдалося перемістити завдання");
   }
 }
@@ -1618,9 +1665,10 @@ function handleDropdownListCreationKeydown(event, container) {
 }
 
 async function addTask() {
+  const diagnosticOp = diagnostics.start("task.create");
   if (!ensureCurrentDay()) return false;
   const title = els.input.value.trim();
-  if (!title) { els.input.focus(); return false; }
+  if (!title) { diagnostics.capture("operation.rejected", diagnosticOp); els.input.focus(); return false; }
   const origin = els.editor.dataset.originListId;
   const todayDates = origin === TODAY_LIST_ID ? todayTaskDates(localDateValue(), todayTaskCreationMode) : null;
   const date = els.editor.dataset.dateChosen === "true" || !isDayList(origin)
@@ -1638,18 +1686,20 @@ async function addTask() {
   const updates = new Map([...shifted, ...bumpedSteps].map(item => [item.id, item]));
   for (const item of shifted) if (updates.has(item.id) && bumpedSteps.some(step => step.id === item.id))
     updates.set(item.id, { ...updates.get(item.id), position: item.position });
-  await taskDb.putMany([task, ...updates.values()]);
-  await refresh();
+  diagnostics.capture("task.prepared", diagnosticOp, { task: task.id, list: task.listId, project: task.projectId });
+  await diagnostics.bind(diagnosticOp, taskDb.putMany)([task, ...updates.values()]);
+  await refresh({ diagnosticOp, diagnosticTask: task.id });
   if (isDayList(els.editor.dataset.originListId)) {
     todayDefaultListId = task.listId;
-    try { await settingsDb.setTodayListId(task.listId); } catch (_error) {
+    try { await diagnostics.bind(diagnosticOp, settingsDb.setTodayListId)(task.listId); } catch (_error) { diagnostics.error(diagnosticOp, _error);
       // The task is already saved; keep the chosen default for this session.
     }
   }
   return true;
 }
 
-async function reorderSelectedTasks({ beforeType = "task", beforeId, groupId = null, sectionId = null, movedIds = null }) {
+async function reorderSelectedTasks({ beforeType = "task", beforeId, groupId = null, sectionId = null, movedIds = null, method }) {
+  const diagnosticOp = diagnostics.start("task.reorder", { count: movedIds?.length ?? selectedTaskIds.size, [beforeType === "group" ? "beforeGroup" : "beforeTask"]: beforeId, section: sectionId, group: groupId, method });
   if (!ensureCurrentDay()) return false;
   const isToday = isDayList();
   if (isToday && todayLayout?.groups?.length) {
@@ -1658,11 +1708,11 @@ async function reorderSelectedTasks({ beforeType = "task", beforeId, groupId = n
         const date = activePlanDate();
         const next = reorderTodayOuterTaskBlock(todayLayout, visibleTodayLayoutTasks(date), date, selectedTaskIds, beforeType, beforeId);
         if (JSON.stringify(next.items) === JSON.stringify(todayLayout.items)) return false;
-        await changeTodayLayout((layout, visible, currentDate) =>
+        await diagnostics.bind(diagnosticOp, changeTodayLayout)((layout, visible, currentDate) =>
           reorderTodayOuterTaskBlock(layout, visible, currentDate, selectedTaskIds, beforeType, beforeId));
         renderCurrentTasks();
         return true;
-      } catch (_error) {
+      } catch (_error) { diagnostics.error(diagnosticOp, _error);
         renderCurrentTasks();
         toast("Не вдалося зберегти порядок");
         return false;
@@ -1675,11 +1725,11 @@ async function reorderSelectedTasks({ beforeType = "task", beforeId, groupId = n
       const date = activePlanDate();
       const next = reorderTodayGroupTaskBlock(todayLayout, visibleTodayLayoutTasks(date), date, groupId, selectedIds, beforeId);
       if (JSON.stringify(next.groups.find(item => item.id === groupId).taskIds) === JSON.stringify(group.taskIds)) return false;
-      await changeTodayLayout((layout, visible, currentDate) =>
+      await diagnostics.bind(diagnosticOp, changeTodayLayout)((layout, visible, currentDate) =>
         reorderTodayGroupTaskBlock(layout, visible, currentDate, groupId, selectedIds, beforeId));
       renderCurrentTasks();
       return true;
-    } catch (_error) {
+    } catch (_error) { diagnostics.error(diagnosticOp, _error);
       toast("Не вдалося зберегти порядок");
       renderCurrentTasks();
       return false;
@@ -1688,7 +1738,7 @@ async function reorderSelectedTasks({ beforeType = "task", beforeId, groupId = n
   if (isToday) {
     const date = activePlanDate();
     const next = reorderDayPlan(todayLayout, visibleTodayLayoutTasks(date), date, selectedTaskIds, beforeId);
-    await changeTodayLayout(() => next);
+    await diagnostics.bind(diagnosticOp, changeTodayLayout)(() => next);
     renderCurrentTasks();
     return true;
   }
@@ -1697,12 +1747,13 @@ async function reorderSelectedTasks({ beforeType = "task", beforeId, groupId = n
     const reordered = moveTaskBlockToSection(tasks, movedIds, activeListId, sectionId, beforeId);
     const changed = reordered.filter((task, index) => task !== tasks[index]);
     if (!changed.length) return false;
+    diagnostics.order(diagnosticOp, "task", previous, changed, movedIds);
     tasks = reordered.sort(compareTasks);
-    renderCurrentTasks();
+    diagnostics.observe(diagnosticOp, renderCurrentTasks);
     try {
-      await taskDb.putMany(changed);
+      await diagnostics.bind(diagnosticOp, taskDb.putMany)(changed);
       return true;
-    } catch (_error) {
+    } catch (_error) { diagnostics.error(diagnosticOp, _error);
       tasks = previous;
       renderCurrentTasks();
       toast("Не вдалося зберегти порядок");
@@ -1715,12 +1766,13 @@ async function reorderSelectedTasks({ beforeType = "task", beforeId, groupId = n
   const reordered = reorderTaskBlock(tasks, selectedTaskIds, beforeId, taskOrderScope(selected[0]));
   const changed = reordered.filter((task, index) => task !== tasks[index]);
   if (!changed.length) return false;
+  diagnostics.order(diagnosticOp, "task", previous, changed, selectedTaskIds);
   tasks = reordered.sort(compareTasks);
-  renderCurrentTasks();
+  diagnostics.observe(diagnosticOp, renderCurrentTasks);
   try {
-    await taskDb.putMany(changed);
+    await diagnostics.bind(diagnosticOp, taskDb.putMany)(changed);
     return true;
-  } catch (_error) {
+  } catch (_error) { diagnostics.error(diagnosticOp, _error);
     tasks = previous;
     renderCurrentTasks();
     toast("Не вдалося зберегти порядок");
@@ -1729,12 +1781,13 @@ async function reorderSelectedTasks({ beforeType = "task", beforeId, groupId = n
 }
 
 async function saveOpenTask() {
+  const diagnosticOp = diagnostics.start("task.edit");
   if (!ensureCurrentDay()) return false;
   const id = els.editor.dataset.taskId;
   if (!id) return false;
   const task = tasks.find(item => item.id === id);
   const title = els.input.value.trim();
-  if (!task || !title) return false;
+  if (!task || !title) { diagnostics.capture("operation.rejected", diagnosticOp); return false; }
   const listId = lists.some(list => list.id === els.taskListSelect.value) ? els.taskListSelect.value : task.listId;
   const changedList = listId !== task.listId;
   const sectionId = sections.some(section => section.id === els.taskSectionSelect.value && section.listId === listId) ? els.taskSectionSelect.value : null;
@@ -1745,12 +1798,14 @@ async function saveOpenTask() {
   const shiftedTasks = changedScope
     ? tasks.filter(item => item.id !== task.id && taskOrderScope(item) === taskOrderScope(updatedTask)).map(item => ({ ...item, position: (Number.isFinite(item.position) ? item.position : 0) + 1 }))
     : [];
-  await taskDb.putMany([updatedTask, ...shiftedTasks]);
-  await refresh();
+  diagnostics.capture("task.prepared", diagnosticOp, { task: id, from: task.listId, to: listId, project: project?.id });
+  await diagnostics.bind(diagnosticOp, taskDb.putMany)([updatedTask, ...shiftedTasks]);
+  await refresh({ diagnosticOp, diagnosticTask: id });
   return true;
 }
 
 async function convertOpenTaskToProject() {
+  const diagnosticOp = diagnostics.start("task.convert_to_project");
   const task = tasks.find(item => item.id === els.editor.dataset.taskId);
   if (!task || task.status !== "active" || task.projectId) return;
   const title = els.input.value.trim();
@@ -1765,7 +1820,7 @@ async function convertOpenTaskToProject() {
   const project = projectFromTask(editedTask, projects);
   els.taskConvertProject.disabled = true;
   try {
-    await projectDb.convertTask(task.id, project);
+    await diagnostics.bind(diagnosticOp, projectDb.convertTask)(task.id, project);
     tasks = (await taskDb.all()).sort(compareTasks);
     selectedTaskIds.delete(task.id);
     await loadProjects();
@@ -1774,7 +1829,7 @@ async function convertOpenTaskToProject() {
     openProjects();
     openProject(project.id);
     toast("Проєкт створено");
-  } catch (_error) {
+  } catch (_error) { diagnostics.error(diagnosticOp, _error);
     toast("Не вдалося створити проєкт. Завдання залишилося без змін");
   } finally {
     els.taskConvertProject.disabled = false;
@@ -1782,13 +1837,14 @@ async function convertOpenTaskToProject() {
 }
 
 async function detachOpenTaskFromProject(task, editedTask) {
+  const diagnosticOp = diagnostics.start("project.detach_step");
   const updates = detachProjectTask(editedTask, tasks, new Date().toISOString());
   const changedIds = new Set(updates.map(item => item.id));
   const originals = tasks.filter(item => changedIds.has(item.id))
     .map(item => item.id === task.id ? { ...editedTask, updatedAt: new Date().toISOString() } : item);
   els.taskDetachProject.disabled = true;
   try {
-    await taskDb.putMany(updates);
+    await diagnostics.bind(diagnosticOp, taskDb.putMany)(updates);
     const replacements = new Map(updates.map(item => [item.id, item]));
     tasks = tasks.map(item => replacements.get(item.id) || item).sort(compareTasks);
     await closeProject();
@@ -1798,7 +1854,7 @@ async function detachOpenTaskFromProject(task, editedTask) {
       duration: 3000,
       action: async () => {
         try {
-          await taskDb.restoreDetached(originals, updates, task.projectId);
+          await diagnostics.bind(diagnosticOp, taskDb.restoreDetached)(originals, updates, task.projectId);
           const restored = new Map(originals.map(item => [item.id, item]));
           tasks = tasks.map(item => restored.get(item.id) || item).sort(compareTasks);
           renderCurrentTasks();
@@ -1806,10 +1862,10 @@ async function detachOpenTaskFromProject(task, editedTask) {
           openProject(task.projectId);
           openTaskDetails(restored.get(task.id));
           toast("Від’єднання скасовано");
-        } catch (_error) { toast("Не вдалося скасувати від’єднання"); }
+        } catch (_error) { diagnostics.error(diagnosticOp, _error); toast("Не вдалося скасувати від’єднання"); }
       }
     });
-  } catch (_error) {
+  } catch (_error) { diagnostics.error(diagnosticOp, _error);
     toast("Не вдалося від’єднати завдання. Зміни не збережено");
   } finally {
     els.taskDetachProject.disabled = false;
@@ -1817,11 +1873,12 @@ async function detachOpenTaskFromProject(task, editedTask) {
 }
 
 async function convertOpenStepToProject(task, editedTask) {
+  const diagnosticOp = diagnostics.start("project.step_to_project");
   const project = projectFromTask(editedTask, projects);
   els.taskDetachProject.disabled = true;
   let converted = false;
   try {
-    await projectDb.convertStep(task.id, task.projectId, project);
+    await diagnostics.bind(diagnosticOp, projectDb.convertStep)(task.id, task.projectId, project);
     tasks = tasks.filter(item => item.id !== task.id);
     selectedTaskIds.delete(task.id);
     projects.push(project);
@@ -1835,7 +1892,7 @@ async function convertOpenStepToProject(task, editedTask) {
       action: async () => {
         const restoredTask = { ...editedTask, updatedAt: new Date().toISOString() };
         try {
-          await projectDb.undoConvertedStep(project, restoredTask);
+          await diagnostics.bind(diagnosticOp, projectDb.undoConvertedStep)(project, restoredTask);
           projects = projects.filter(item => item.id !== project.id);
           tasks = [...tasks, restoredTask].sort(compareTasks);
           await closeProject();
@@ -1844,10 +1901,10 @@ async function convertOpenStepToProject(task, editedTask) {
           openProject(task.projectId);
           openTaskDetails(restoredTask);
           toast("Перетворення скасовано");
-        } catch (_error) { toast("Не вдалося скасувати перетворення"); }
+        } catch (_error) { diagnostics.error(diagnosticOp, _error); toast("Не вдалося скасувати перетворення"); }
       }
     });
-  } catch (_error) {
+  } catch (_error) { diagnostics.error(diagnosticOp, _error);
     toast("Не вдалося створити проєкт. Крок залишився на місці");
   } finally {
     mobileNavApplying = false;
@@ -1912,6 +1969,7 @@ async function saveAndLeaveTaskEditor({ allowEmptyNew = false } = {}) {
 }
 
 async function deleteTask(id, { preserveDayGroups = false } = {}) {
+  const diagnosticOp = diagnostics.start("task.delete", { task: id });
   const task = tasks.find(item => item.id === id);
   if (!task) return;
   const groupSnapshot = preserveDayGroups
@@ -1922,12 +1980,12 @@ async function deleteTask(id, { preserveDayGroups = false } = {}) {
   selectedTaskIds.delete(id);
   renderCurrentTasks();
   try {
-    await taskDb.delete(id);
+    await diagnostics.bind(diagnosticOp, taskDb.delete)(id);
     toast("Завдання видалено", {
       duration: 3000,
       action: () => offerDeletedTaskRestore([task], groupSnapshot)
     });
-  } catch (_error) {
+  } catch (_error) { diagnostics.error(diagnosticOp, _error);
     tasks.push(task);
     renderCurrentTasks();
     toast("Не вдалося видалити завдання");
@@ -1940,6 +1998,7 @@ async function deleteTask(id, { preserveDayGroups = false } = {}) {
 }
 
 async function setTaskToday(id, added, { undoOnRemove = false } = {}) {
+  const diagnosticOp = diagnostics.start("task.today", { task: id, active: added });
   if (!ensureCurrentDay()) return;
   const task = tasks.find(item => item.id === id);
   if (!task || task.status !== "active") return;
@@ -1947,7 +2006,7 @@ async function setTaskToday(id, added, { undoOnRemove = false } = {}) {
   const updated = setTaskAddedToToday(task, date, added);
   if (updated === task) return;
   try {
-    await taskDb.put(updated);
+    await diagnostics.bind(diagnosticOp, taskDb.put)(updated);
     await refresh();
     if (els.editor.dataset.taskId === id) openTaskDetails(updated);
     if (!projectEls.screen.hidden) renderOpenProject();
@@ -1956,14 +2015,14 @@ async function setTaskToday(id, added, { undoOnRemove = false } = {}) {
       const current = tasks.find(item => item.id === id);
       if (!current || current.status !== "active" || current.addedToTodayDate) return;
       try {
-        await taskDb.put(setTaskAddedToToday(current, date, true));
+        await diagnostics.bind(diagnosticOp, taskDb.put)(setTaskAddedToToday(current, date, true));
         await refresh();
         if (!projectEls.screen.hidden) renderOpenProject();
         toast(task.dueDate === date ? "Ручне додавання відновлено" : "Повернуто до «Сьогодні»");
-      } catch (_error) { toast("Не вдалося скасувати дію"); }
+      } catch (_error) { diagnostics.error(diagnosticOp, _error); toast("Не вдалося скасувати дію"); }
     } });
     else toast(added ? "Додано до «Сьогодні»" : "Ручне додавання знято");
-  } catch (_error) { toast("Не вдалося змінити «Сьогодні»"); }
+  } catch (_error) { diagnostics.error(diagnosticOp, _error); toast("Не вдалося змінити «Сьогодні»"); }
 }
 function swipeTaskToday(id) {
   const task = tasks.find(item => item.id === id);
@@ -1972,6 +2031,7 @@ function swipeTaskToday(id) {
 }
 
 async function completeTask(task, changes = {}, toggle, { fromSearch = false } = {}) {
+  const diagnosticOp = diagnostics.start("task.complete", { task: task?.id, list: task?.listId });
   if (!task) return;
   if (toggle) toggle.disabled = true;
   startCompletionFeedback(toggle);
@@ -1983,14 +2043,14 @@ async function completeTask(task, changes = {}, toggle, { fromSearch = false } =
     : groupDate && todayLayout?.date === groupDate ? todayLayout : null;
   const groupSuccessor = previousGroupLayout
     ? carryTodayProjectGroup(previousGroupLayout, tasks, completedTask, groupDate, projects) : null;
-  await taskDb.put(completedTask);
-  if (groupSuccessor) await settingsDb.saveTodayLayout(groupSuccessor, groupDate);
-  await refresh({ animateTaskReflow: Boolean(toggle?.closest(".swipe-row")) });
+  await diagnostics.bind(diagnosticOp, taskDb.put)(completedTask);
+  if (groupSuccessor) await diagnostics.bind(diagnosticOp, settingsDb.saveTodayLayout)(groupSuccessor, groupDate);
+  await refresh({ animateTaskReflow: Boolean(toggle?.closest(".swipe-row")), diagnosticOp, diagnosticTask: task.id });
   toast("Виконано", {
     duration: 3000,
     action: async () => {
-      await taskDb.put({ ...completedTask, status: "active", completedAt: null, updatedAt: new Date().toISOString() });
-      if (groupSuccessor && groupDate === localDateValue()) await settingsDb.saveTodayLayout(previousGroupLayout, groupDate);
+      await diagnostics.bind(diagnosticOp, taskDb.put)({ ...completedTask, status: "active", completedAt: null, updatedAt: new Date().toISOString() });
+      if (groupSuccessor && groupDate === localDateValue()) await diagnostics.bind(diagnosticOp, settingsDb.saveTodayLayout)(previousGroupLayout, groupDate);
       await refresh();
       toast("Виконання скасовано");
     }
@@ -2070,7 +2130,7 @@ function globalSearchEntries() {
   return globalSearch.prepared;
 }
 
-function updateGlobalSearch({ reset = false, invalidate = false } = {}) {
+function updateGlobalSearch({ reset = false, invalidate = false, diagnosticOp = null } = {}) {
   clearTimeout(globalSearch.timer);
   if (!globalSearch.dialog.open) return;
   if (invalidate) globalSearch.prepared = null;
@@ -2097,6 +2157,7 @@ function updateGlobalSearch({ reset = false, invalidate = false } = {}) {
   globalSearch.status.textContent = !ready ? "Введіть щонайменше дві літери або цифри."
     : results.length ? `Знайдено: ${results.length}` : "Нічого не знайдено.";
   globalSearch.more.hidden = results.length <= globalSearch.limit;
+  if (diagnosticOp) diagnostics.capture("view.observed", diagnosticOp, { count: results.length, filterActive: ready });
   if (focused) {
     const row = rows.find(item => item.dataset.searchKey === focused.dataset.searchKey);
     const button = row?.querySelector(`[data-search-action="${focusAction}"]:not([data-search-action="delete"])`);
@@ -2138,6 +2199,7 @@ searchDestinationInput.addEventListener("input", () => {
 });
 
 searchDestination.addEventListener("click", async event => {
+  const diagnosticOp = diagnostics.start("search.destination");
   const option = event.target.closest("[data-list-id], [data-project-id]");
   if (!option || globalSearch.busy) return;
   const task = tasks.find(item => item.id === searchDestination.dataset.taskId);
@@ -2157,7 +2219,7 @@ searchDestination.addEventListener("click", async event => {
       await persistTaskProjectMove(task, project.id);
       toast(task.projectId ? "Проєкт завдання змінено" : "Завдання додано до проєкту");
     }
-  } catch (_error) {
+  } catch (_error) { diagnostics.error(diagnosticOp, _error);
     toast("Не вдалося перемістити завдання");
   } finally {
     globalSearch.busy = false;
@@ -2166,6 +2228,7 @@ searchDestination.addEventListener("click", async event => {
 });
 
 function showGlobalSearch({ reset = false, mode = "global" } = {}) {
+  const diagnosticOp = diagnostics.start("search.open");
   if (globalSearch.dialog.open) return;
   globalSearch.mode = mode;
   globalSearch.dialog.classList.toggle("quick-today-search", mode === "today");
@@ -2210,10 +2273,15 @@ function closeGlobalSearch() {
 }
 
 function openGlobalSearchResult(type, id) {
+  const entity = ["task", "list", "project"].includes(type) ? { [type]: id } : {};
+  const diagnosticOp = diagnostics.start("search.open_result", entity);
   const task = type === "task" ? tasks.find(item => item.id === id) : null;
   const project = type === "project" ? projects.find(item => item.id === id)
     : projects.find(item => item.id === task?.projectId);
-  if (type === "task" && !task || type === "project" && !project) return;
+  if (type === "task" && !task || type === "project" && !project) {
+    diagnostics.capture("operation.rejected", diagnosticOp);
+    return;
+  }
   if (mobileNavigationEnabled()) globalSearch.mobileOriginIndex = mobileNavIndex;
   else globalSearch.desktopOrigin = mobileNavigationState();
   hideGlobalSearch();
@@ -2267,7 +2335,10 @@ document.querySelector("#global-search-clear").addEventListener("click", () => {
   globalSearch.input.focus({ preventScroll: true });
   updateGlobalSearch({ reset: true });
 });
-globalSearch.completed.addEventListener("change", () => updateGlobalSearch({ reset: true }));
+globalSearch.completed.addEventListener("change", () => {
+  const diagnosticOp = diagnostics.start("search.filter_completed", { completed: globalSearch.completed.checked });
+  updateGlobalSearch({ reset: true, diagnosticOp });
+});
 globalSearch.more.addEventListener("click", () => {
   const previousLimit = globalSearch.limit;
   globalSearch.limit += 30;
@@ -2296,10 +2367,11 @@ globalSearch.dialog.addEventListener("click", async event => {
   const filter = event.target.closest("[data-search-type]");
   if (filter) {
     globalSearch.type = filter.dataset.searchType;
+    const diagnosticOp = diagnostics.start("search.filter_type", { filter: globalSearch.type });
     for (const button of globalSearch.dialog.querySelectorAll("[data-search-type]")) {
       button.setAttribute("aria-pressed", String(button === filter));
     }
-    updateGlobalSearch({ reset: true });
+    updateGlobalSearch({ reset: true, diagnosticOp });
     return;
   }
   const button = event.target.closest("[data-search-action]");
@@ -2455,13 +2527,14 @@ quickChecklist.backdrop.addEventListener("click", event => { if (event.target ==
 quickChecklist.backdrop.addEventListener("keydown", event => { if (event.key === "Escape") closeQuickChecklist(); });
 quickChecklist.form.addEventListener("submit", async event => {
   event.preventDefault();
+  const diagnosticOp = diagnostics.start("task.quick_checklist", { task: quickChecklist.results.dataset.selectedId });
   const title = quickChecklist.title.value.trim();
   const task = checklistTasks().find(item => item.id === quickChecklist.results.dataset.selectedId);
-  if (!title || !task) return;
+  if (!title || !task) { diagnostics.capture("operation.rejected", diagnosticOp); return; }
   const description = `${task.description.trimEnd()}\n- [ ] ${title.replaceAll("\n", " ")}`;
   quickChecklist.save.disabled = true;
   try {
-    await taskDb.put({ ...task, description, updatedAt: new Date().toISOString() });
+    await diagnostics.bind(diagnosticOp, taskDb.put)({ ...task, description, updatedAt: new Date().toISOString() });
     closeQuickChecklist();
     await refresh();
     toast("Пункт додано");
@@ -2540,6 +2613,7 @@ keyboardShortcutsDialog.addEventListener("cancel", event => { event.preventDefau
 let navigationShortcutPending = false;
 let navigationShortcutTimer;
 async function navigateWithShortcut(destination) {
+  const diagnosticOp = diagnostics.start("navigation.shortcut");
   if (!els.editor.hidden) {
     await saveAndLeaveTaskEditor({ allowEmptyNew: true });
     if (!els.editor.classList.contains("is-closing")) return;
@@ -2651,7 +2725,10 @@ document.querySelector("#clear-data-open").addEventListener("click", () => {
   clearDataDialog.showModal();
   clearDataPhrase.focus();
 });
-document.querySelector("#clear-data-cancel").addEventListener("click", () => clearDataDialog.close());
+document.querySelector("#clear-data-cancel").addEventListener("click", () => {
+  diagnostics.capture("operation.cancelled", diagnostics.start("data.clear"));
+  clearDataDialog.close();
+});
 document.querySelectorAll('#clear-data-form input[type="checkbox"]').forEach(input => input.addEventListener("change", () => {
   clearDataConfirm.disabled = !document.querySelector('#clear-data-form input[type="checkbox"]:checked')
     || clearDataPhrase.value.trim().toLocaleLowerCase("uk-UA").replace(/\s+/g, " ") !== "так, видалити";
@@ -2662,8 +2739,9 @@ clearDataPhrase.addEventListener("input", () => {
   document.querySelector("#clear-data-error").hidden = true;
 });
 document.querySelector("#clear-data-form").addEventListener("submit", async event => {
+  const diagnosticOp = diagnostics.start("data.clear");
   event.preventDefault();
-  if (clearDataConfirm.disabled) { document.querySelector("#clear-data-error").hidden = false; return; }
+  if (clearDataConfirm.disabled) { diagnostics.capture("operation.rejected", diagnosticOp); document.querySelector("#clear-data-error").hidden = false; return; }
   clearDataConfirm.disabled = true;
   const selection = { completed: document.querySelector("#clear-completed").checked,
     active: document.querySelector("#clear-active").checked,
@@ -2672,25 +2750,27 @@ document.querySelector("#clear-data-form").addEventListener("submit", async even
     settings: document.querySelector("#clear-settings").checked };
   try {
     const snapshot = await appDb.exportAll();
-    await appDb.clearUserData(selection);
+    diagnostics.capture("clear.selection", diagnosticOp, selection);
+    await diagnostics.bind(diagnosticOp, appDb.clearUserData)(selection);
     clearDataSnapshot = snapshot;
     clearDataDialog.close();
     await initializeApp();
     toast(selection.completed && !selection.active && !selection.lists && !selection.projects && !selection.settings ? "Історію видалено" : "Вибрані дані видалено", { duration: 3000, action: async () => {
       if (!clearDataSnapshot) return;
+      const undoOp = diagnostics.start("action.undo", { parent: diagnosticOp?.id });
       const saved = clearDataSnapshot;
       clearDataSnapshot = null;
       try {
-        await appDb.replaceAll(saved);
+        await diagnostics.bind(undoOp, appDb.replaceAll)(saved);
         await initializeApp();
         toast("Очищення скасовано");
-      } catch (_error) {
+      } catch (_error) { diagnostics.error(undoOp, _error);
         clearDataSnapshot = saved;
         toast("Не вдалося відновити дані");
       }
     } });
     setTimeout(() => { if (clearDataSnapshot === snapshot) clearDataSnapshot = null; }, 3000);
-  } catch (_error) {
+  } catch (_error) { diagnostics.error(diagnosticOp, _error);
     clearDataConfirm.disabled = false;
     toast("Не вдалося очистити дані");
   }
@@ -2760,16 +2840,18 @@ els.completedTaskDetailBack.addEventListener("click", () => { completedDetailId 
 els.completedTaskRestore.addEventListener("click", async () => {
   const task = tasks.find(item => item.id === completedDetailId && item.status === "completed");
   if (!task) return;
+  const diagnosticOp = diagnostics.start("task.reopen", { task: task.id, list: task.listId });
   els.completedTaskRestore.disabled = true;
   try {
-    await taskDb.put({ ...task, status: "active", completedAt: null, updatedAt: new Date().toISOString() });
+    await diagnostics.bind(diagnosticOp, taskDb.put)({ ...task, status: "active", completedAt: null, updatedAt: new Date().toISOString() });
     completedDetailId = null;
     await refresh();
     toast("Завдання повернуто в активні");
-  } catch (_error) { toast("Не вдалося повернути завдання"); }
+  } catch (_error) { diagnostics.error(diagnosticOp, _error); toast("Не вдалося повернути завдання"); }
   finally { els.completedTaskRestore.disabled = false; }
 });
 els.backupExport.addEventListener("click", async () => {
+  const diagnosticOp = diagnostics.start("backup.export");
   if (backupBusy) return;
   const useFolder = !!backupDirectoryHandle && typeof window.showDirectoryPicker === "function";
   if (!useFolder && els.backupDownloadLink.href) {
@@ -2795,14 +2877,15 @@ els.backupExport.addEventListener("click", async () => {
     } else {
       counts = await downloadBackup(els.backupDownloadLink, { prefix, version });
     }
+    diagnostics.capture("backup.prepared", diagnosticOp, { count: counts.tasks });
     backupNextVersion = version + 1;
-    try { await settingsDb.setBackupNaming(prefix, backupNextVersion); } catch (_error) {
+    try { await diagnostics.bind(diagnosticOp, settingsDb.setBackupNaming)(prefix, backupNextVersion); } catch (_error) { diagnostics.error(diagnosticOp, _error);
       // The file is ready; keep the next number for this session.
     }
     els.backupStatus.textContent = useFolder
       ? `Бекап ${savedName} збережено в папці ${backupDirectoryHandle.name}: ${counts.tasks} завдань, ${counts.projects} проєктів, ${counts.lists} списків.`
       : `Бекап підготовлено: ${counts.tasks} завдань, ${counts.projects} проєктів, ${counts.lists} списків. Якщо завантаження не почалося, натисніть «Експорт бекапу» ще раз.`;
-  } catch (error) {
+  } catch (error) { diagnostics.error(diagnosticOp, error);
     els.backupStatus.textContent = error.name === "NotAllowedError"
       ? "Не вдалося записати бекап у папку. Перевірте дозвіл Chrome або виберіть папку ще раз."
       : error.message || "Не вдалося створити копію";
@@ -2824,7 +2907,7 @@ els.backupPrefix.addEventListener("input", clearPreparedBackupDownload);
 els.backupFile.addEventListener("change", () => chooseBackup(els.backupFile.files[0]));
 els.backupMerge.addEventListener("click", () => applyBackup("merge"));
 els.backupReplace.addEventListener("click", () => applyBackup("replace"));
-els.backupCancel.addEventListener("click", () => { clearBackupSelection(); els.backupStatus.textContent = "Імпорт скасовано"; });
+els.backupCancel.addEventListener("click", () => { diagnostics.capture("operation.cancelled", diagnostics.start("backup.import")); clearBackupSelection(); els.backupStatus.textContent = "Імпорт скасовано"; });
 els.listEditorOpen.addEventListener("click", openListEditor);
 els.listEditorClose.addEventListener("click", saveActiveListName);
 els.listEditorForm.addEventListener("submit", saveActiveListName);
@@ -2904,75 +2987,82 @@ enableListReordering({
   getSelectedIds: () => new Set(selectedListIds)
 });
 els.themeToggle.addEventListener("change", async () => {
+  const diagnosticOp = diagnostics.start("settings.theme_toggle");
   const previousTheme = manualTheme;
   manualTheme = els.themeToggle.checked ? "dark" : "light";
   renderAppearanceSettings();
   try {
-    await settingsDb.setTheme(manualTheme);
-  } catch (_error) {
+    await diagnostics.bind(diagnosticOp, settingsDb.setTheme)(manualTheme);
+  } catch (_error) { diagnostics.error(diagnosticOp, _error);
     manualTheme = previousTheme;
     renderAppearanceSettings();
     toast("Не вдалося зберегти тему");
   }
 });
 els.systemThemeToggle.addEventListener("change", async () => {
+  const diagnosticOp = diagnostics.start("settings.system_theme_toggle");
   const previous = useSystemTheme;
   useSystemTheme = els.systemThemeToggle.checked;
   renderAppearanceSettings();
   try {
-    await settingsDb.setUseSystemTheme(useSystemTheme);
-  } catch (_error) {
+    await diagnostics.bind(diagnosticOp, settingsDb.setUseSystemTheme)(useSystemTheme);
+  } catch (_error) { diagnostics.error(diagnosticOp, _error);
     useSystemTheme = previous;
     renderAppearanceSettings();
     toast("Не вдалося зберегти режим теми");
   }
 });
 els.returnOverdueToggle.addEventListener("change", async () => {
+  const diagnosticOp = diagnostics.start("settings.return_overdue_toggle");
   const previous = returnOverdueToInbox;
   returnOverdueToInbox = els.returnOverdueToggle.checked;
   try {
-    await settingsDb.setReturnOverdueToInbox(returnOverdueToInbox);
+    await diagnostics.bind(diagnosticOp, settingsDb.setReturnOverdueToInbox)(returnOverdueToInbox);
     await processOverdueTasks();
-  } catch (_error) {
+  } catch (_error) { diagnostics.error(diagnosticOp, _error);
     returnOverdueToInbox = previous;
     els.returnOverdueToggle.checked = previous;
     toast("Не вдалося зберегти налаштування");
   }
 });
 els.todayTaskCreationSelect.addEventListener("change", async () => {
+  const diagnosticOp = diagnostics.start("settings.today_task_creation_select");
   const select = els.todayTaskCreationSelect;
   select.disabled = true;
   try {
-    await settingsDb.setTodayTaskCreationMode(select.value);
+    await diagnostics.bind(diagnosticOp, settingsDb.setTodayTaskCreationMode)(select.value);
     todayTaskCreationMode = select.value;
-  } catch (_error) {
+  } catch (_error) { diagnostics.error(diagnosticOp, _error);
     select.value = todayTaskCreationMode;
     toast("Не вдалося зберегти налаштування");
   } finally { select.disabled = false; }
 });
 els.projectPreviewToggle.addEventListener("change", async () => {
+  const diagnosticOp = diagnostics.start("settings.project_preview_toggle");
   const previous = projectPreview;
   projectPreview = els.projectPreviewToggle.checked;
-  try { await settingsDb.setProjectPreview(projectPreview); delete projectEls.steps.dataset.previewProjectId; }
-  catch (_error) { projectPreview = previous; els.projectPreviewToggle.checked = previous; toast("Не вдалося зберегти налаштування"); }
+  try { await diagnostics.bind(diagnosticOp, settingsDb.setProjectPreview)(projectPreview); delete projectEls.steps.dataset.previewProjectId; }
+  catch (_error) { diagnostics.error(diagnosticOp, _error); projectPreview = previous; els.projectPreviewToggle.checked = previous; toast("Не вдалося зберегти налаштування"); }
 });
 els.startScreenSelect.addEventListener("change", async () => {
+  const diagnosticOp = diagnostics.start("settings.start_screen_select");
   const previous = startScreen;
   startScreen = els.startScreenSelect.value;
   try {
-    await settingsDb.setStartScreen(startScreen);
+    await diagnostics.bind(diagnosticOp, settingsDb.setStartScreen)(startScreen);
     toast("Стартовий екран збережено");
-  } catch (_error) {
+  } catch (_error) { diagnostics.error(diagnosticOp, _error);
     startScreen = previous;
     els.startScreenSelect.value = previous;
     toast("Не вдалося зберегти стартовий екран");
   }
 });
 els.calendarRangeSelect.addEventListener("change", async () => {
+  const diagnosticOp = diagnostics.start("settings.calendar_range_select");
   const previous = calendarRangeMode;
   calendarRangeMode = els.calendarRangeSelect.value;
-  try { await settingsDb.setCalendarRange(calendarRangeMode); }
-  catch (_error) {
+  try { await diagnostics.bind(diagnosticOp, settingsDb.setCalendarRange)(calendarRangeMode); }
+  catch (_error) { diagnostics.error(diagnosticOp, _error);
     calendarRangeMode = previous;
     els.calendarRangeSelect.value = previous;
     toast("Не вдалося зберегти період календаря");
@@ -3107,6 +3197,7 @@ function closeDescriptionEdit({ discard = false } = {}) {
   taskDescriptionEdit.focus({ preventScroll: true });
 }
 async function saveDescriptionEdit() {
+  const diagnosticOp = diagnostics.start("task.edit_description");
   if (!els.input.value.trim()) { els.input.focus(); toast("Введіть назву завдання"); return; }
   if (!els.editor.dataset.taskId) {
     closeDescriptionEdit();
@@ -3117,7 +3208,7 @@ async function saveDescriptionEdit() {
     if (!await saveOpenTask()) return;
     closeDescriptionEdit();
     toast("Зміни збережено");
-  } catch (_error) { toast("Не вдалося зберегти завдання"); }
+  } catch (_error) { diagnostics.error(diagnosticOp, _error); toast("Не вдалося зберегти завдання"); }
 }
 function openDescriptionEdit() {
   if (els.editor.hidden || els.editor.classList.contains("description-edit-mode")) return;
@@ -3413,16 +3504,17 @@ els.taskSectionOptions.addEventListener("click", async event => {
     const task = tasks.find(item => item.id === els.editor.dataset.taskId);
     if (!task || task.listId !== listId) return;
     if (task.sectionId !== sectionId) {
+      const diagnosticOp = diagnostics.start("task.move_section", { task: task.id, list: listId, section: sectionId });
       const updatedAt = new Date().toISOString();
       const moved = { ...task, sectionId, position: 0, updatedAt };
       const shifted = tasks.filter(item => item.id !== task.id && taskOrderScope(item) === taskOrderScope(moved))
         .map(item => ({ ...item, position: item.position + 1, updatedAt }));
       try {
-        await taskDb.putMany([moved, ...shifted]);
+        await diagnostics.bind(diagnosticOp, taskDb.putMany)([moved, ...shifted]);
         const replacements = new Map([moved, ...shifted].map(item => [item.id, item]));
         tasks = tasks.map(item => replacements.get(item.id) || item).sort(compareTasks);
         renderCurrentTasks();
-      } catch (_error) { toast("Не вдалося змінити секцію"); return; }
+      } catch (_error) { diagnostics.error(diagnosticOp, _error); toast("Не вдалося змінити секцію"); return; }
     }
   }
   setTaskEditorSectionUI(listId, sectionId);
@@ -3485,7 +3577,10 @@ function closeQuickTask() {
   quickTaskTarget = null;
   els.quickTaskForm.reset();
 }
-els.quickTaskCancel.addEventListener("click", closeQuickTask);
+els.quickTaskCancel.addEventListener("click", () => {
+  diagnostics.capture("operation.cancelled", diagnostics.start("task.quick_create"));
+  closeQuickTask();
+});
 els.quickTaskBackdrop.addEventListener("click", event => { if (event.target === els.quickTaskBackdrop) closeQuickTask(); });
 els.quickTaskForm.addEventListener("keydown", event => {
   if (event.key === "Escape") { event.preventDefault(); closeQuickTask(); }
@@ -3497,10 +3592,11 @@ els.quickTaskForm.addEventListener("keydown", event => {
   }
 });
 els.quickTaskForm.addEventListener("submit", async event => {
+  const diagnosticOp = diagnostics.start("task.quick_create");
   event.preventDefault();
   const title = els.quickTaskTitle.value.trim();
   const target = quickTaskTarget;
-  if (!title) { els.quickTaskTitle.focus(); return; }
+  if (!title) { diagnostics.capture("operation.rejected", diagnosticOp); els.quickTaskTitle.focus(); return; }
   if (!target) return;
   if (target.kind === "group" && (!ensureCurrentDay() || !isDayList() || !todayLayout?.groups.some(group => group.id === target.id))) {
     closeQuickTask();
@@ -3527,14 +3623,15 @@ els.quickTaskForm.addEventListener("submit", async event => {
         position: 0 });
       const shifted = tasks.filter(item => taskOrderScope(item) === taskOrderScope(task))
         .map(item => ({ ...item, position: item.position + 1 }));
-      await taskDb.putMany([task, ...shifted]);
-      if (target.kind === "group") await changeTodayLayout((layout, visible, currentDate) =>
+      diagnostics.capture("task.prepared", diagnosticOp, { task: task.id, list: task.listId, section: task.sectionId });
+      await diagnostics.bind(diagnosticOp, taskDb.putMany)([task, ...shifted]);
+      if (target.kind === "group") await diagnostics.bind(diagnosticOp, changeTodayLayout)((layout, visible, currentDate) =>
         assignTodayGroupTasks(layout, visible.concat(task), currentDate, target.id, [task.id], true));
     }
     closeQuickTask();
     await refresh();
     toast("Завдання додано");
-  } catch (_error) {
+  } catch (_error) { diagnostics.error(diagnosticOp, _error);
     await refresh();
     toast("Не вдалося додати завдання");
   } finally { submit.disabled = false; }
@@ -3684,10 +3781,11 @@ function createTaskProjectOption(project) {
 }
 
 async function persistTaskProjectMove(task, projectId) {
+  const diagnosticOp = diagnostics.start("task.move_project", { task: task.id, project: projectId });
   const updatedAt = new Date().toISOString();
   const bumped = tasks.filter(item => item.projectId === projectId && item.status === "active")
     .map(item => ({ ...item, projectPosition: (item.projectPosition ?? 0) + 1, updatedAt }));
-  await taskDb.putMany([{ ...task, projectId, projectSectionId: null, projectPosition: 0, updatedAt }, ...bumped]);
+  await diagnostics.bind(diagnosticOp, taskDb.putMany)([{ ...task, projectId, projectSectionId: null, projectPosition: 0, updatedAt }, ...bumped]);
   await refresh();
   if (!projectEls.screen.hidden) renderOpenProject();
 }
@@ -4009,6 +4107,7 @@ function scheduleMobileNavigationRecord() {
 }
 
 async function restoreMobileNavigation(view) {
+  const diagnosticOp = diagnostics.start("navigation.history");
   mobileNavApplying = true;
   clearTimeout(mobileNavTimer);
   try {
