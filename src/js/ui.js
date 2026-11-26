@@ -949,6 +949,9 @@ function renderTasks(tasks, selectedIds = new Set(), taskLists = [], taskProject
   els.selectionToolbar.hidden = !selectionMode;
   els.selectionCount.textContent = groupSelection ? `Вибрано груп: ${selectedGroupIds.size}` : `Вибрано: ${selectedIds.size}`;
   els.selectionControls.hidden = groupSelection;
+  const selectionMore = document.querySelector("#task-selection-more-trigger");
+  selectionMore.hidden = groupSelection || selectedIds.size !== 1;
+  if (selectionMore.hidden) closeTaskSelectionMore();
   els.selectedGroupActions.hidden = !groupSelection;
   els.renameSelectedGroup.disabled = selectedGroupIds.size !== 1;
   els.recolorSelectedGroup.disabled = selectedGroupIds.size !== 1;
@@ -1101,6 +1104,7 @@ function syncTaskDescriptionActions() {
 function syncTaskActionsMenu() {
   els.taskActionsMenu.hidden = true;
   els.taskActionsTrigger.setAttribute("aria-expanded", "false");
+  document.querySelector("#duplicate-open-task").hidden = !els.editor.dataset.taskId;
   const merge = document.querySelector("#task-merge-checklist");
   merge.hidden = !els.editor.dataset.taskId || !/^\s*[-*+] \[[ xX]\](?: |$)/m.test(els.description.value || "");
   syncTaskDescriptionActions();

@@ -40,8 +40,6 @@ const { openTestApp } = require("./e2e-helper");
       await dots.click();
       assert.equal(await page.locator(".toast-message").textContent(), "В розробці");
     }
-    await page.evaluate(id => selectTask(id), ids.taskId);
-    await checkPlaceholder("#selection-toolbar");
     await page.evaluate(id => selectListSection(id, true), ids.sectionId);
     await checkPlaceholder("#list-section-selection-toolbar");
     await page.click("#main-menu-open");

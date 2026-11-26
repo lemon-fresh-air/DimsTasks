@@ -3069,6 +3069,114 @@ els.calendarRangeSelect.addEventListener("change", async () => {
   }
 });
 els.editorBack.addEventListener("click", () => saveAndLeaveTaskEditor({ allowEmptyNew: true }));
+const taskSelectionMoreTrigger = document.querySelector("#task-selection-more-trigger");
+const taskSelectionMoreMenu = document.querySelector("#task-selection-more-menu");
+const duplicateTaskDialog = document.querySelector("#duplicate-task-dialog");
+const duplicateTaskList = document.querySelector("#duplicate-task-list");
+const duplicateTaskSave = document.querySelector("#duplicate-task-save");
+const duplicateTaskCancel = document.querySelector("#duplicate-task-cancel");
+const duplicateTaskError = document.querySelector("#duplicate-task-error");
+let duplicateTaskRequest = null;
+
+function closeTaskSelectionMore({ returnFocus = false } = {}) {
+  taskSelectionMoreMenu.hidden = true;
+  taskSelectionMoreTrigger.setAttribute("aria-expanded", "false");
+  if (returnFocus) taskSelectionMoreTrigger.focus({ preventScroll: true });
+}
+
+taskSelectionMoreTrigger.addEventListener("click", () => {
+  if (!taskSelectionMoreMenu.hidden) { closeTaskSelectionMore(); return; }
+  taskSelectionMoreMenu.hidden = false;
+  taskSelectionMoreTrigger.setAttribute("aria-expanded", "true");
+  document.querySelector("#duplicate-selected-task").focus({ preventScroll: true });
+});
+taskSelectionMoreMenu.parentElement.addEventListener("keydown", event => {
+  if (event.key === "Escape" && !taskSelectionMoreMenu.hidden) {
+    event.preventDefault();
+    closeTaskSelectionMore({ returnFocus: true });
+  }
+});
+document.addEventListener("pointerdown", event => {
+  if (!taskSelectionMoreMenu.hidden && !taskSelectionMoreMenu.parentElement.contains(event.target)) closeTaskSelectionMore();
+});
+
+function openDuplicateTask(task, trigger, draft = {}) {
+  if (!task) return;
+  const source = { ...task, ...draft };
+  const listOptions = lists.map(list => new Option(displayListTitle(list), list.id));
+  duplicateTaskList.replaceChildren(...listOptions);
+  duplicateTaskList.value = lists.some(list => list.id === task.listId) ? task.listId : INBOX_LIST_ID;
+  duplicateTaskError.hidden = true;
+  duplicateTaskRequest = { source, trigger,
+    op: diagnostics.start("task.duplicate", { task: task.id, from: task.listId }) };
+  trigger.focus({ preventScroll: true });
+  duplicateTaskDialog.showModal();
+}
+
+document.querySelector("#duplicate-selected-task").addEventListener("click", () => {
+  if (selectedTaskIds.size !== 1) return;
+  const [id] = selectedTaskIds;
+  closeTaskSelectionMore();
+  openDuplicateTask(tasks.find(task => task.id === id), taskSelectionMoreTrigger);
+});
+document.querySelector("#duplicate-open-task").addEventListener("click", () => {
+  closeTaskActionsMenu();
+  openDuplicateTask(tasks.find(task => task.id === els.editor.dataset.taskId), els.taskActionsTrigger, {
+    title: els.input.value, description: els.description.value,
+    dueDate: els.date.value, dueTime: els.time.value
+  });
+});
+
+function cancelDuplicateTask() {
+  if (!duplicateTaskRequest || duplicateTaskSave.disabled) return;
+  diagnostics.capture("operation.cancelled", duplicateTaskRequest.op);
+  duplicateTaskDialog.close();
+}
+duplicateTaskCancel.addEventListener("click", cancelDuplicateTask);
+duplicateTaskDialog.addEventListener("cancel", event => {
+  event.preventDefault();
+  cancelDuplicateTask();
+});
+duplicateTaskDialog.addEventListener("close", () => {
+  duplicateTaskRequest?.trigger.focus({ preventScroll: true });
+  duplicateTaskRequest = null;
+});
+document.querySelector("#duplicate-task-form").addEventListener("submit", async event => {
+  event.preventDefault();
+  if (!duplicateTaskRequest || duplicateTaskSave.disabled || !ensureCurrentDay()) return;
+  const { source, op } = duplicateTaskRequest;
+  const listId = duplicateTaskList.value;
+  if (!source.title.trim() || !lists.some(list => list.id === listId)) {
+    diagnostics.capture("operation.rejected", op);
+    duplicateTaskError.textContent = !source.title.trim() ? "Введіть назву завдання." : "Виберіть наявний список.";
+    duplicateTaskError.hidden = false;
+    return;
+  }
+  const sectionId = listId === source.listId && sections.some(section =>
+    section.id === source.sectionId && section.listId === listId) ? source.sectionId : null;
+  const scope = taskOrderScope({ listId, sectionId });
+  const position = tasks.reduce((next, task) => taskOrderScope(task) === scope
+    ? Math.max(next, (Number.isFinite(task.position) ? task.position : 0) + 1) : next, 0);
+  const copy = duplicateTask(source, { listId, sectionId, position });
+  diagnostics.capture("task.prepared", op, { task: copy.id, from: source.listId, to: listId, section: sectionId });
+  duplicateTaskError.hidden = true;
+  duplicateTaskSave.disabled = duplicateTaskCancel.disabled = duplicateTaskList.disabled = true;
+  try {
+    await diagnostics.bind(op, taskDb.put)(copy);
+    duplicateTaskDialog.close();
+    toast("Копію створено");
+    await refresh({ diagnosticOp: op, diagnosticTask: copy.id });
+  } catch (error) {
+    diagnostics.error(op, error);
+    if (duplicateTaskDialog.open) {
+      duplicateTaskError.textContent = "Не вдалося створити копію. Спробуйте ще раз.";
+      duplicateTaskError.hidden = false;
+    }
+  } finally {
+    duplicateTaskSave.disabled = duplicateTaskCancel.disabled = duplicateTaskList.disabled = false;
+  }
+});
+
 function closeTaskActionsMenu({ returnFocus = false } = {}) {
   els.taskActionsMenu.hidden = true;
   els.taskActionsTrigger.setAttribute("aria-expanded", "false");

@@ -106,6 +106,15 @@ function todayTaskDates(date, mode) {
 function createTask(values = {}) {
   return { ...baseRecord(values), ...values, listId: values.listId || INBOX_LIST_ID, sectionId: values.sectionId || null, projectId: values.projectId || null, projectSectionId: values.projectId ? values.projectSectionId || null : null, title: String(values.title || "").trim(), description: values.description || "", status: values.status || "active", completedAt: values.completedAt || null, dueDate: values.dueDate || null, dueTime: values.dueDate && values.dueTime ? values.dueTime : null, addedToTodayDate: values.addedToTodayDate || null, position: Number.isFinite(values.position) ? values.position : 0, todayPosition: Number.isSafeInteger(values.todayPosition) && values.todayPosition >= 0 ? values.todayPosition : null, projectPosition: Number.isFinite(values.projectPosition) ? values.projectPosition : null, returnedToInboxAt: values.returnedToInboxAt || null, savedSteps: values.savedSteps ?? [], savedProjectLayout: values.savedProjectLayout ?? null };
 }
+function duplicateTask(source, { listId, sectionId = null, position = 0 }) {
+  return createTask({
+    listId, sectionId, position,
+    title: source.title, description: source.description,
+    dueDate: source.dueDate, dueTime: source.dueTime,
+    savedSteps: source.savedSteps, savedProjectLayout: source.savedProjectLayout
+  });
+}
+
 function validSavedSteps(value) {
   return Array.isArray(value) && value.every(step => step && typeof step === "object" && !Array.isArray(step)
     && typeof step.title === "string" && Boolean(step.title.trim()) && typeof step.description === "string"

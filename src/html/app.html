@@ -14,7 +14,12 @@
     <div id="selection-toolbar" class="selection-toolbar" hidden>
       <button id="selection-close" class="toolbar-action" type="button" aria-label="Завершити виділення"><span class="back-icon" aria-hidden="true"></span></button>
       <p id="selection-count">Вибрано: 0</p>
-      <button class="toolbar-action selection-more-placeholder" type="button" aria-label="Додаткові дії з вибраним"><span class="selection-more-dots" aria-hidden="true"></span></button>
+      <div class="task-selection-more">
+        <button id="task-selection-more-trigger" class="toolbar-action" type="button" aria-label="Додаткові дії з вибраним" aria-expanded="false" aria-controls="task-selection-more-menu" hidden><span class="selection-more-dots" aria-hidden="true"></span></button>
+        <div id="task-selection-more-menu" class="task-actions-menu" hidden>
+          <button id="duplicate-selected-task" class="project-attribute" type="button" aria-haspopup="dialog"><span class="description-icon" aria-hidden="true"></span><span>Створити копію</span></button>
+        </div>
+      </div>
       <div id="selection-controls" class="selection-controls">
         <button id="select-all-tasks" class="toolbar-action" type="button" aria-label="Вибрати всі завдання" aria-pressed="false"><svg class="selection-glyph" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="#selection-icon-all"/></svg></button>
         <div class="selection-actions" aria-label="Дії з вибраними завданнями">
@@ -468,6 +473,7 @@
     <span class="editor-context"><span id="editor-list-icon" class="inbox-icon" aria-hidden="true"></span><span id="editor-list-label">Нові</span></span>
     <button id="task-actions-trigger" class="task-actions-trigger" type="button" aria-label="Додаткові дії із завданням" aria-haspopup="menu" aria-expanded="false" aria-controls="task-actions-menu" hidden><span aria-hidden="true"></span></button>
     <div id="task-actions-menu" class="task-actions-menu" role="menu" aria-label="Додаткові дії із завданням" hidden>
+      <button id="duplicate-open-task" class="project-attribute" type="button" role="menuitem" aria-haspopup="dialog" hidden><span class="description-icon" aria-hidden="true"></span><span>Створити копію</span></button>
       <button id="task-copy-description" class="project-attribute" type="button" role="menuitem" data-rich-copy="description" data-rich-target="task-description" hidden><span class="description-icon" aria-hidden="true"></span><span>Копіювати опис</span></button>
       <button class="project-attribute" type="button" role="menuitem" data-rich-copy="title-description" data-rich-target="task-description" hidden><span class="description-icon" aria-hidden="true"></span><span>Копіювати опис із назвою</span></button>
       <button id="task-add-checklist" class="project-attribute" type="button" role="menuitem"><span class="checklist-icon" aria-hidden="true">☑</span><span>Додати чекліст</span></button>
@@ -630,6 +636,15 @@
     <footer><button id="project-create-from-steps-cancel" type="button">Скасувати</button><button id="project-create-from-steps-confirm" type="button">Додати</button></footer>
   </section>
 </div>
+<dialog id="duplicate-task-dialog" class="project-settings-dialog" aria-labelledby="duplicate-task-title">
+  <header><h3 id="duplicate-task-title">Створити копію завдання</h3><button id="duplicate-task-cancel" type="button">Скасувати</button></header>
+  <form id="duplicate-task-form">
+    <label for="duplicate-task-list">Список для копії</label>
+    <select id="duplicate-task-list" required></select>
+    <p id="duplicate-task-error" class="form-error" role="alert" hidden></p>
+    <button id="duplicate-task-save" class="primary-action" type="submit">Створити копію</button>
+  </form>
+</dialog>
 <div id="task-detach-dialog-backdrop" class="project-delete-dialog-backdrop" hidden>
   <section id="task-detach-dialog" class="project-delete-dialog" role="dialog" aria-modal="true" aria-labelledby="task-detach-dialog-title" tabindex="-1">
     <h2 id="task-detach-dialog-title">Що зробити з кроком?</h2>
